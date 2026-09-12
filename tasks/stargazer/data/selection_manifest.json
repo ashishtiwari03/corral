@@ -9,8 +9,7 @@
     "Retain Stargazer task IDs, with no duplicates across levels."
   ],
   "inventory": {
-    "synthetic_tasks": 100,
-    "real_tasks": 20,
+    "synthetic_tasks": 20,
     "official_synthetic_tasks": 20
   },
   "levels": {

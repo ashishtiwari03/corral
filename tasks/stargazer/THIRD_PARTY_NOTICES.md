@@ -9,8 +9,8 @@ This Corral environment adapts algorithms and all task records from the paper:
 
 The upstream source code is distributed under the MIT License. The released
 benchmark task data is distributed under CC BY 4.0. Files under `data/synthetic`
-and `data/real` are adapted from the paper's benchmark and retain their Stargazer
-task IDs. Corral's adaptations include record-schema compatibility and RV-only
+are adapted from the paper's benchmark and retain their Stargazer task IDs.
+Corral's adaptations include record-schema compatibility and RV-only
 coordinate normalization. `data/selection_manifest.json` records the paper
 attribution and official task membership.
 

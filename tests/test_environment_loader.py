@@ -79,7 +79,7 @@ def test_unknown_environment_lists_registered_names():
     assert ", ".join(environment_loader.ENVIRONMENT_NAMES) in message
 
 
-@pytest.mark.parametrize("level", [1, 2, "real"])
+@pytest.mark.parametrize("level", [1, 2])
 def test_stargazer_factory_selects_its_level_bank(monkeypatch, tmp_path, level):
     calls = []
 
@@ -123,7 +123,7 @@ def test_stargazer_custom_selector_config(monkeypatch, tmp_path, config_option):
 
     environments = environment_loader.load_environment_group(
         "stargazer",
-        env_kwargs={config_option: str(selector), "level": "real"},
+        env_kwargs={config_option: str(selector), "level": 1},
         repository_root=tmp_path,
     )
 

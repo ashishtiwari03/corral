@@ -139,9 +139,9 @@ def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
         } == expected_evaluation_budgets[level]
 
 
-@pytest.mark.parametrize("level", [3, "3"])
-def test_removed_third_level_is_rejected(tmp_path, level):
-    with pytest.raises(ValueError, match="level must be"):
+@pytest.mark.parametrize("level", [3, "3", "real"])
+def test_unavailable_levels_are_rejected(tmp_path, level):
+    with pytest.raises(ValueError, match="level must be 1 or 2"):
         create_environments(level=level, work_dir=tmp_path)
 
 
@@ -185,16 +185,6 @@ def test_selected_rv_only_records_keep_observations_and_truth(tmp_path):
             assert environments[task_id].current_task.scoring_fn(answer) == 1.0
 
 
-def test_real_data_is_a_separate_challenge_split(tmp_path):
-    environments = create_environments(level="real", work_dir=tmp_path / "real")
-
-    assert len(environments) == 20
-    assert {
-        environment.current_task.scoring_inputs["benchmark_task"].source
-        for environment in environments.values()
-    } == {"real"}
-
-
 @pytest.mark.anyio
 async def test_released_task_loads_into_isolated_corral_environment(tmp_path):
     selector = tmp_path / "selector.json"
@@ -203,9 +193,9 @@ async def test_released_task_loads_into_isolated_corral_environment(tmp_path):
             [
                 {
                     "source": "synthetic",
-                    "difficulty_min": 1,
-                    "difficulty_max": 1,
-                    "task_ids": ["seed300016_diff1"],
+                    "difficulty_min": 5,
+                    "difficulty_max": 5,
+                    "task_ids": ["seed15_diff5"],
                     "max_evaluations": 2,
                 }
             ]
@@ -215,8 +205,8 @@ async def test_released_task_loads_into_isolated_corral_environment(tmp_path):
         level=1, selector_path=selector, work_dir=tmp_path / "work"
     )
 
-    assert list(environments) == ["seed300016_diff1"]
-    environment = environments["seed300016_diff1"]
+    assert list(environments) == ["seed15_diff5"]
+    environment = environments["seed15_diff5"]
     assert set(environment.tools) == {
         "planet_from_fit",
         "python_repl",
@@ -239,9 +229,12 @@ async def test_released_task_loads_into_isolated_corral_environment(tmp_path):
         assert hidden["analysis_session"] is None
         assert "truth_planets" not in state.model_dump_json()
 
-        planet = asdict(benchmark_task.truth_planets[0])
-        planet.pop("m_true_mjup")
-        answer = json.dumps({"planets": [planet], "noise_jitter_ms": 0.0})
+        raw = json.loads(
+            (DEFAULT_DATA_ROOT / "synthetic" / "seed15_diff5.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        answer = reference_submission(benchmark_task, raw).model_dump_json()
         await _execute(session, "submit_answer", answer=answer)
         submitted = await store.materialize("main")
         assert environment.get_task_output(submitted).output["answer"] == answer

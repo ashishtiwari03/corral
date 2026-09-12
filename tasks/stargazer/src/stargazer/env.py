@@ -264,12 +264,12 @@ def create_environments(
     selector_path: str | Path | None = None,
     work_dir: str | Path = DEFAULT_WORK_DIR,
 ) -> dict[str, Environment]:
-    """Create a scored Stargazer level or the separate real-data challenge."""
+    """Create one of the two scored Stargazer benchmark levels."""
     if isinstance(level, str) and level.isdigit():
         level = int(level)
-    if level not in {1, 2, "real"}:
-        raise ValueError("Stargazer level must be 1, 2, or 'real'")
-    split_name = "real" if level == "real" else f"level_{level}"
+    if level not in {1, 2}:
+        raise ValueError("Stargazer level must be 1 or 2")
+    split_name = f"level_{level}"
     path = (
         Path(selector_path)
         if selector_path
@@ -294,7 +294,7 @@ def main() -> None:
         default=None,
         help="Optional task-bank selector JSON file or directory",
     )
-    parser.add_argument("--level", choices=("1", "2", "real"), default="1")
+    parser.add_argument("--level", choices=("1", "2"), default="1")
     args = parser.parse_args()
 
     Path(DEFAULT_WORK_DIR).mkdir(parents=True, exist_ok=True)

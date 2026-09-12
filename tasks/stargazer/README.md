@@ -20,12 +20,7 @@ Each level selects tasks from the Stargazer paper with passing reference
 solutions, balanced across its difficulties (4/3/3). Tasks retain their
 Stargazer IDs, with no duplicates across levels. `data/selection_manifest.json`
 records the paper attribution, selection criteria, and every selected ID.
-Level 3 is no longer available.
-
-The 20 archival tasks are available separately as the `real` challenge split
-and are not included in official Levels 1–2. Their published systems do not
-currently pass the unchanged observation model and thresholds, so real-split
-results should be reported separately until that split is calibrated.
+Only the 20 tasks used by Levels 1–2 are bundled.
 
 ## Setup and execution
 
@@ -37,15 +32,15 @@ uv venv --python 3.12
 uv sync --locked
 ```
 
-Inspect an official level or the separate real-data split:
+Inspect either benchmark level:
 
 ```bash
 uv run python -m stargazer.env --level 1
-uv run python -m stargazer.env --level real
+uv run python -m stargazer.env --level 2
 ```
 
-Level `2` is also available. These commands build and list environment
-definitions; Corral no longer uses a separate task HTTP server.
+These commands build and list environment definitions; Corral no longer uses
+a separate task HTTP server.
 
 Run one task through the current local runtime:
 
@@ -55,7 +50,7 @@ uv run corral run --agent tool-calling --environment stargazer \
 ```
 
 For scored trials, use `corral bench` with Docker as shown below. Select a split
-with `--env-kwargs '{"level": 2}'` (or `{"level": "real"}`), and use
+with `--env-kwargs '{"level": 2}'`, and use
 `task_config` or `selector_path` in the same object for a custom selector.
 `CORRAL_WORK_DIR` controls the workspace root.
 Use `--sandbox local` only for local debugging.
@@ -176,7 +171,7 @@ truth indices, assignments, signed errors, or the true planet count.
 
 ## Task-bank audit
 
-`python -m stargazer.audit` deterministically evaluates all 120 published
+`python -m stargazer.audit` deterministically evaluates all 20 benchmark
 reference systems through the final scorer, validates official membership, and
 regenerates `data/reference_audit.json`. CI-style verification uses:
 
@@ -184,12 +179,10 @@ regenerates `data/reference_audit.json`. CI-style verification uses:
 uv run python -m stargazer.audit --check
 ```
 
-The committed audit records invalid reference parameters and failures of the
-BIC, RMS, physical-match, and count gates. In the current task bank,
-79/100 synthetic references and 0/20 real references pass. The official levels
-select 20 passing synthetic references in the requested difficulty ranges;
-thresholds are not weakened per task. Validation checks membership counts,
-uniqueness, source, difficulty, and reference scores.
+The committed audit records reference scores and failures of the BIC, RMS,
+physical-match, and count gates. All 20 bundled reference systems pass the
+unchanged thresholds. Validation checks membership counts, uniqueness, source,
+difficulty, and reference scores.
 
 ## Provenance and deliberate interface differences
 

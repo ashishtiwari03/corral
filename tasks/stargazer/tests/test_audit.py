@@ -23,6 +23,10 @@ def test_committed_audit_is_deterministic_and_official_references_pass():
         1: 10,
         2: 10,
     }
+    assert set(score_by_id) == set().union(*selected.values())
+    assert report["summary"]["by_source"] == {
+        "synthetic": {"passing": 20, "total": 20}
+    }
     assert all(
         score_by_id[task_id] == 1.0
         for task_ids in selected.values()
@@ -30,20 +34,18 @@ def test_committed_audit_is_deterministic_and_official_references_pass():
     )
 
 
-def test_audit_records_all_reference_failure_categories():
+def test_audit_reports_no_reference_failures():
     report = json.loads(DEFAULT_REPORT_PATH.read_text(encoding="utf-8"))
     reasons = report["summary"]["failure_reason_counts"]
 
-    assert set(reasons) <= {
+    assert set(reasons) == {
         "invalid_reference_parameters",
         "bic_gate",
         "rms_gate",
         "physical_match_gate",
         "count_gate",
     }
-    assert reasons["invalid_reference_parameters"] == 2
-    assert reasons["bic_gate"] > 0
-    assert reasons["rms_gate"] > 0
+    assert all(count == 0 for count in reasons.values())
 
 
 @pytest.fixture

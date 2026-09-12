@@ -95,26 +95,22 @@ def _audit_record(task_file: Path, source: str) -> dict[str, Any]:
 
 
 def audit_task_bank(data_root: str | Path = DEFAULT_DATA_ROOT) -> dict[str, Any]:
-    """Evaluate all published systems through the final scoring contract."""
+    """Evaluate all bundled benchmark systems through the final scoring contract."""
     root = Path(data_root)
     records = [
-        _audit_record(task_file, source)
-        for source in ("synthetic", "real")
-        for task_file in sorted((root / source).glob("*.json"))
+        _audit_record(task_file, "synthetic")
+        for task_file in sorted((root / "synthetic").glob("*.json"))
     ]
-    by_source: dict[str, dict[str, int]] = {}
-    by_difficulty: dict[str, dict[str, int]] = {}
-    for source in ("synthetic", "real"):
-        source_records = [record for record in records if record["source"] == source]
-        by_source[source] = {
-            "passing": sum(record["score"] == 1.0 for record in source_records),
-            "total": len(source_records),
+    by_source = {
+        "synthetic": {
+            "passing": sum(record["score"] == 1.0 for record in records),
+            "total": len(records),
         }
+    }
+    by_difficulty: dict[str, dict[str, int]] = {}
     for difficulty in range(1, 11):
         difficulty_records = [
-            record
-            for record in records
-            if record["source"] == "synthetic" and record["difficulty"] == difficulty
+            record for record in records if record["difficulty"] == difficulty
         ]
         by_difficulty[str(difficulty)] = {
             "passing": sum(record["score"] == 1.0 for record in difficulty_records),
