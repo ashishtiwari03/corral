@@ -215,14 +215,10 @@
     "rv_semantics": "rv_only_compat",
     "provenance": {
       "source_benchmark": "Stargazer",
-      "source_bank": "stargazer/Stargazer_synthetic_task_repaired_v1",
+      "source_paper": "Stargazer: A Scalable Model-Fitting Benchmark Environment for AI Agents under Astrophysical Constraints",
       "source_task_id": "seed82_diff10",
       "truth_difficulty": 10,
-      "rv_semantics": "rv_only_compat",
-      "archive": "corral_exoplanet_rv.zip",
-      "archive_sha256": "5bd902d8549f8b6e55f58cdc6a3429d74ade63421f79b0921f569fbdcb811ffc",
-      "archive_member": "corral_exoplanet_rv/environments/level_3/tasks_json/tasks.json",
-      "archive_task_id": "exo_rv_hard_5"
+      "rv_semantics": "rv_only_compat"
     }
   }
 }

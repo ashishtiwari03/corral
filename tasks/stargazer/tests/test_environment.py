@@ -145,11 +145,11 @@ def test_removed_third_level_is_rejected(tmp_path, level):
         create_environments(level=level, work_dir=tmp_path)
 
 
-def test_selected_zip_records_keep_exported_observations_and_truth(tmp_path):
+def test_selected_rv_only_records_keep_observations_and_truth(tmp_path):
     manifest = json.loads(
         (DEFAULT_DATA_ROOT / "selection_manifest.json").read_text(encoding="utf-8")
     )
-    zip_ids = {
+    rv_only_ids = {
         1: {"seed15_diff5", "seed64_diff6", "seed43_diff7"},
         2: {
             "seed1_diff8",
@@ -159,29 +159,28 @@ def test_selected_zip_records_keep_exported_observations_and_truth(tmp_path):
             "seed82_diff10",
         },
     }
-    for level, expected in zip_ids.items():
+    for level, expected in rv_only_ids.items():
         environments = create_environments(level=level, work_dir=tmp_path / str(level))
         rows = manifest["levels"][str(level)]["tasks"]
         assert {row["task_id"] for row in rows} == set(environments)
-        assert {
-            row["task_id"] for row in rows if row["selected_from"] == "zip"
-        } == expected
+        assert expected <= set(environments)
         for task_id in expected:
             path = DEFAULT_DATA_ROOT / "synthetic" / f"{task_id}.json"
             raw = json.loads(path.read_text(encoding="utf-8"))
             task = load_task(path, source="synthetic")
-            # Exported RV data must bypass the legacy REBOUND transformation.
+            assert raw["meta"]["rv_semantics"].startswith("rv_only")
+            # RV-only data must bypass the legacy REBOUND transformation.
             assert asdict(task.observations) == {
                 key: tuple(values) for key, values in raw["observations"].items()
             }
             assert task.star_mass_sun == raw["config"]["star"]["M_star_sun"]
-            for planet, exported in zip(
+            for planet, record in zip(
                 task.truth_planets, raw["config"]["planets"], strict=True
             ):
-                assert {key: getattr(planet, key) for key in exported} == exported
+                assert {key: getattr(planet, key) for key in record} == record
             provenance = task.metadata["provenance"]
             assert provenance["source_task_id"] == task_id
-            assert provenance["archive_sha256"] == manifest["archive"]["sha256"]
+            assert provenance["source_paper"] == manifest["source_paper"]
             answer = reference_submission(task, raw).model_dump_json()
             assert environments[task_id].current_task.scoring_fn(answer) == 1.0
 

@@ -1,9 +1,9 @@
 # Stargazer Task Environment
 
-This task adapts the Stargazer radial-velocity exoplanet benchmark to the
-standard Corral lifecycle. An agent receives public observations and tools,
-may request a bounded number of diagnostic candidate evaluations, and is
-scored only on its final JSON answer.
+The tasks come from the Stargazer paper's radial-velocity exoplanet benchmark,
+adapted to the standard Corral lifecycle. An agent receives public observations
+and tools, may request a bounded number of diagnostic candidate evaluations,
+and is scored only on its final JSON answer.
 
 ## Task splits and candidate budgets
 
@@ -16,15 +16,11 @@ so membership never changes at runtime.
 | Level 1 | 5–7 | 10 | 4 | 1 | 5 |
 | Level 2 | 8–10 | 10 | 9 | 1 | 10 |
 
-Selection prioritizes `corral_exoplanet_rv.zip`, deduplicating by the original
-Stargazer task ID. The ZIP contains 15 synthetic tasks, all with IDs already in
-the local bank: three fall in difficulty 5–7 and five in difficulty 8–10. All
-eight are selected using their ZIP datasets, including three repaired systems.
-The remaining seven Level 1 tasks and five Level 2 tasks come from the previous
-official environment banks. Each level is balanced across its difficulties
-(4/3/3), with additional tasks chosen by task ID from passing references.
-`data/selection_manifest.json` records every selected ID, its source, ZIP
-aliases, and the archive checksum. Level 3 is no longer available.
+Each level selects tasks from the Stargazer paper with passing reference
+solutions, balanced across its difficulties (4/3/3). Tasks retain their
+Stargazer IDs, with no duplicates across levels. `data/selection_manifest.json`
+records the paper attribution, selection criteria, and every selected ID.
+Level 3 is no longer available.
 
 The 20 archival tasks are available separately as the `real` challenge split
 and are not included in official Levels 1–2. Their published systems do not
@@ -189,24 +185,18 @@ uv run python -m stargazer.audit --check
 ```
 
 The committed audit records invalid reference parameters and failures of the
-BIC, RMS, physical-match, and count gates. At the current pinned revision,
-79/100 synthetic references and 0/20 real references pass after importing the
-eight selected ZIP records. The official levels select 20 passing synthetic
-references in the requested difficulty ranges; thresholds are not weakened
-per task. Validation checks membership counts, uniqueness, source, difficulty,
-and reference scores.
+BIC, RMS, physical-match, and count gates. In the current task bank,
+79/100 synthetic references and 0/20 real references pass. The official levels
+select 20 passing synthetic references in the requested difficulty ranges;
+thresholds are not weakened per task. Validation checks membership counts,
+uniqueness, source, difficulty, and reference scores.
 
 ## Provenance and deliberate interface differences
 
-The original task bank comes from Stargazer revision
-`3f617667472061e253288c7b26f0e70f186f2dff`. Eight selected synthetic records are
-replaced by the preferred exports in `corral_exoplanet_rv.zip`, whose provenance
-identifies `Stargazer_synthetic_task_repaired_v1`. Their observations, planetary
-truth, and stellar masses are preserved exactly in Stargazer's native record
-schema. They are marked as RV-only to avoid a second compatibility conversion.
-Other synthetic records are converted in memory from their original REBOUND
-signal to the current RV-only Keplerian semantics while retaining their noise
-realization.
+All task records are adapted from the Stargazer paper's benchmark. Corral uses
+Stargazer's RV-only Keplerian semantics: records marked as RV-only are loaded
+directly, while REBOUND records are converted in memory with their noise
+realization preserved.
 
 Compared with the upstream interaction loop, Corral owns the final submission:
 the iterative submission action is named `evaluate_candidate`, the final

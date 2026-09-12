@@ -1,25 +1,18 @@
 # Third-party notices
 
-This Corral environment adapts algorithms and task records from:
+This Corral environment adapts algorithms and all task records from the paper:
 
 - **Stargazer: A Scalable Model-Fitting Benchmark Environment for AI Agents
   under Astrophysical Constraints**
-- Source: <https://github.com/AIPS-UofT/Stargazer>
-- Imported revision: `3f617667472061e253288c7b26f0e70f186f2dff`
+- Paper repository: <https://github.com/AIPS-UofT/Stargazer>
+- Stargazer revision: `3f617667472061e253288c7b26f0e70f186f2dff`
 
 The upstream source code is distributed under the MIT License. The released
-benchmark task data is distributed under CC BY 4.0. Except for the eight
-synthetic imports described below, files under `data/synthetic` and `data/real`
-are unmodified upstream JSON task records; Corral performs its compatibility
-transformation in memory at load time.
-
-Eight synthetic records are adapted from the supplied `corral_exoplanet_rv.zip`,
-whose embedded provenance identifies Stargazer's
-`Stargazer_synthetic_task_repaired_v1` bank. Corral preserves their exported
-observations, reference planets, and stellar masses while adapting the record
-schema and retaining the original source IDs. These exports already use
-RV-only coordinates. `data/selection_manifest.json` and each imported record's
-`meta.provenance` identify the archive, checksum, and original task alias.
+benchmark task data is distributed under CC BY 4.0. Files under `data/synthetic`
+and `data/real` are adapted from the paper's benchmark and retain their Stargazer
+task IDs. Corral's adaptations include record-schema compatibility and RV-only
+coordinate normalization. `data/selection_manifest.json` records the paper
+attribution and official task membership.
 
 CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 

@@ -1,9 +1,10 @@
 """Data model and radial-velocity forward models for Stargazer.
 
-The released synthetic bank was generated with REBOUND.  Stargazer's current
-evaluator uses non-interacting, radial-velocity-only Keplerians, so legacy
-synthetic tasks are converted on load while preserving their original noise
-realisation.  Real archival tasks already use the RV-only convention.
+Tasks come from the Stargazer paper's benchmark. The released synthetic bank
+was generated with REBOUND. Stargazer's current evaluator uses non-interacting,
+radial-velocity-only Keplerians, so legacy synthetic tasks are converted on load
+while preserving their original noise realisation. Real archival tasks already
+use the RV-only convention.
 """
 
 from __future__ import annotations
