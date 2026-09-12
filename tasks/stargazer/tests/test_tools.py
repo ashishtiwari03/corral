@@ -88,6 +88,136 @@ def test_python_repl_supports_scipy_and_persistent_user_functions(analysis_sessi
     assert float(result.strip()) > 0.0
 
 
+def test_analysis_checkpoint_restores_arrays_imports_and_function_globals(
+    analysis_session,
+):
+    result = python_repl.execute(
+        code=(
+            "from scipy.signal import lombscargle\n"
+            "offset = 2\n"
+            "values = np.arange(3)\n"
+            "alias = values\n"
+            "rvs_ms[0] = 123\n"
+            "def advance():\n"
+            "    global offset\n"
+            "    offset += 1\n"
+            "    return offset\n"
+            "def make_shift(shift):\n"
+            "    return lambda value: value + shift + offset\n"
+            "shift = make_shift(3)\n"
+            "def report():\n"
+            "    print(offset)"
+        ),
+        analysis_session=analysis_session,
+    )
+    assert "successfully" in result
+    checkpoint = json.loads(json.dumps(analysis_session.snapshot()))
+    assert isinstance(checkpoint, str)
+    analysis_session.close()
+    analysis_session.restore(checkpoint)
+
+    result = python_repl.execute(
+        code=(
+            "offset = 10\n"
+            "values[0] = 7\n"
+            "[advance(), offset, shift(1), alias.tolist(), "
+            "float(rvs_ms[0]), len(lombscargle(times_days, rvs_ms, np.array([0.1, 0.2])))]"
+        ),
+        analysis_session=analysis_session,
+    )
+    assert json.loads(result) == [11, 11, 15, [7, 1, 2], 123.0, 2]
+    assert (
+        python_repl.execute(code="report()", analysis_session=analysis_session).strip()
+        == "11"
+    )
+    # A second checkpoint must retain functions' connection to the live globals.
+    analysis_session.restore(analysis_session.snapshot())
+    assert (
+        python_repl.execute(
+            code="offset = 20\nadvance()", analysis_session=analysis_session
+        ).strip()
+        == "21"
+    )
+
+
+def test_analysis_checkpoint_preserves_random_state(analysis_session):
+    python_repl.execute(
+        code="np.random.seed(123)\nrng = np.random.default_rng(456)",
+        analysis_session=analysis_session,
+    )
+    checkpoint = analysis_session.snapshot()
+    code = "(np.random.random(3).tolist(), rng.random(3).tolist())"
+    expected = python_repl.execute(code=code, analysis_session=analysis_session)
+    analysis_session.close()
+    analysis_session.restore(checkpoint)
+
+    assert python_repl.execute(code=code, analysis_session=analysis_session) == expected
+
+
+def test_analysis_checkpoint_preserves_shared_and_recursive_closures(analysis_session):
+    python_repl.execute(
+        code=(
+            "def counter():\n"
+            "    count = 0\n"
+            "    def advance():\n"
+            "        nonlocal count\n"
+            "        count += 1\n"
+            "        return count\n"
+            "    def read():\n"
+            "        return count\n"
+            "    return advance, read\n"
+            "advance, read = counter()\n"
+            "def factorial_factory():\n"
+            "    def factorial(n):\n"
+            "        return n * factorial(n - 1) if n else 1\n"
+            "    return factorial\n"
+            "factorial = factorial_factory()"
+        ),
+        analysis_session=analysis_session,
+    )
+    analysis_session.restore(analysis_session.snapshot())
+
+    assert (
+        python_repl.execute(
+            code="(advance(), read(), factorial(5))", analysis_session=analysis_session
+        ).strip()
+        == "(1, 1, 120)"
+    )
+
+
+def test_analysis_checkpoint_keeps_function_builtins_restricted(analysis_session):
+    python_repl.execute(
+        code="def prohibited():\n    import pathlib\ndef read_file():\n    open('secret')",
+        analysis_session=analysis_session,
+    )
+    checkpoint = analysis_session.snapshot()
+    analysis_session.close()
+    analysis_session.restore(checkpoint)
+
+    assert "ImportError" in python_repl.execute(
+        code="prohibited()", analysis_session=analysis_session
+    )
+    assert "NameError" in python_repl.execute(
+        code="read_file()", analysis_session=analysis_session
+    )
+    assert "AttributeError" in python_repl.execute(
+        code="np._SafeModuleProxy__wrapped_module", analysis_session=analysis_session
+    )
+
+
+def test_analysis_checkpoint_retains_changes_before_execution_error(analysis_session):
+    result = python_repl.execute(
+        code="retained = 42\n1 / 0", analysis_session=analysis_session
+    )
+    assert "ZeroDivisionError" in result
+    analysis_session.restore(analysis_session.snapshot())
+
+    assert (
+        python_repl.execute(code="retained", analysis_session=analysis_session).strip()
+        == "42"
+    )
+
+
 def test_python_repl_blocks_filesystem_imports(analysis_session):
     result = python_repl.execute(
         code="import pathlib", analysis_session=analysis_session
@@ -156,6 +286,7 @@ def test_python_repl_timeout_resets_persistent_worker(simple_task):
         timeout = python_repl.execute(
             code="while True:\n    pass", analysis_session=session
         )
+        assert session.snapshot() is None
         after_reset = python_repl.execute(code="retained", analysis_session=session)
     finally:
         session.close()
@@ -190,9 +321,9 @@ def test_planet_from_fit_converts_semi_amplitude(simple_task):
 
 
 def test_hidden_tool_arguments_are_not_exposed():
-    repl_schema = python_repl.to_mcp()["inputSchema"]
-    conversion_schema = planet_from_fit.to_mcp()["inputSchema"]
-    evaluate_schema = evaluate_candidate.to_mcp()["inputSchema"]
+    repl_schema = python_repl.params_json_schema
+    conversion_schema = planet_from_fit.params_json_schema
+    evaluate_schema = evaluate_candidate.params_json_schema
 
     assert "analysis_session" not in repl_schema["properties"]
     assert "star_mass_sun" not in conversion_schema["properties"]

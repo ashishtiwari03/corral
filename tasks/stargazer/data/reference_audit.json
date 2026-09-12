@@ -494,10 +494,8 @@
     },
     {
       "difficulty": 7,
-      "failure_reasons": [
-        "rms_gate"
-      ],
-      "score": 0.0,
+      "failure_reasons": [],
+      "score": 1.0,
       "source": "synthetic",
       "task_id": "seed43_diff7"
     },
@@ -687,10 +685,8 @@
     },
     {
       "difficulty": 10,
-      "failure_reasons": [
-        "rms_gate"
-      ],
-      "score": 0.0,
+      "failure_reasons": [],
+      "score": 1.0,
       "source": "synthetic",
       "task_id": "seed82_diff10"
     },
@@ -726,10 +722,8 @@
     },
     {
       "difficulty": 9,
-      "failure_reasons": [
-        "rms_gate"
-      ],
-      "score": 0.0,
+      "failure_reasons": [],
+      "score": 1.0,
       "source": "synthetic",
       "task_id": "seed93_diff9"
     },
@@ -954,7 +948,7 @@
         "total": 20
       },
       "synthetic": {
-        "passing": 76,
+        "passing": 79,
         "total": 100
       }
     },
@@ -963,7 +957,7 @@
       "count_gate": 0,
       "invalid_reference_parameters": 2,
       "physical_match_gate": 0,
-      "rms_gate": 34
+      "rms_gate": 31
     },
     "passing_synthetic_by_difficulty": {
       "1": {
@@ -971,7 +965,7 @@
         "total": 10
       },
       "10": {
-        "passing": 5,
+        "passing": 6,
         "total": 10
       },
       "2": {
@@ -995,7 +989,7 @@
         "total": 10
       },
       "7": {
-        "passing": 4,
+        "passing": 5,
         "total": 10
       },
       "8": {
@@ -1003,7 +997,7 @@
         "total": 10
       },
       "9": {
-        "passing": 4,
+        "passing": 5,
         "total": 10
       }
     }

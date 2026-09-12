@@ -1,4 +1,4 @@
-"""Corral server for the Stargazer radial-velocity benchmark."""
+"""Corral environments for the Stargazer radial-velocity benchmark."""
 
 from __future__ import annotations
 
@@ -6,16 +6,22 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from corral.backend.env import Environment, Toolset, build_environments
-from corral.backend.server import run_server
-from corral.backend.task import TaskDefinition
+from corral.core.environment import Environment, Toolset, build_environments
+from corral.core.task import EnvironmentSetup, TaskDefinition
+from corral.core.transition import ToolExecutionResult
+from corral.runtime import permissions
+from stargazer.docker import execute_analysis
 from stargazer.evaluator import make_stargazer_scorer
 from stargazer.models import load_task
 from stargazer.tools import create_analysis_session, create_tools
+
+if TYPE_CHECKING:
+    from corral.core.state import ExecutionState
+    from corral.core.tool import Tool
 
 TASK_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = TASK_ROOT / "data"
@@ -70,7 +76,7 @@ def _task_matches_selector(task_file: Path, selector: dict[str, Any]) -> bool:
     return minimum <= difficulty <= maximum
 
 
-def _task_prompt(env: Environment) -> str:
+def _task_prompt(env: Environment, _state: ExecutionState) -> str:
     task = env.current_task
     benchmark_task = task.scoring_inputs["benchmark_task"]
     summary = benchmark_task.public_summary()
@@ -108,29 +114,98 @@ Return the final answer as canonical JSON in this schema:
 """
 
 
-def _configure_trial(env: Environment) -> str:
+def _configure_trial(env: Environment, _state: ExecutionState) -> EnvironmentSetup:
     benchmark_task = env.current_task.scoring_inputs["benchmark_task"]
     maximum = int(env.current_task.scoring_inputs["max_evaluations"])
-    evaluations: list[dict[str, Any]] = []
-    evaluation_session = {
-        "evaluations": evaluations,
-        "max_evaluations": maximum,
-        "locked": False,
-    }
-    observations = benchmark_task.observations
-    env.hidden_args = {
-        "benchmark_task": benchmark_task,
-        "evaluation_session": evaluation_session,
-        "star_mass_sun": benchmark_task.star_mass_sun,
-        "analysis_session": create_analysis_session(
-            times_days=observations.times_days,
-            rvs_ms=observations.rvs_ms,
-            sigmas_ms=observations.sigmas_ms,
-            instruments=observations.instruments,
-            star_mass_sun=benchmark_task.star_mass_sun,
-        ),
-    }
-    return "Persistent RV analysis and evaluator sessions configured."
+    return EnvironmentSetup(
+        hidden_arguments={
+            # Truth belongs to the task definition; only its identity is persisted.
+            "benchmark_task": benchmark_task.task_id,
+            "evaluation_session": {
+                "evaluations": [],
+                "max_evaluations": maximum,
+                "locked": False,
+            },
+            "star_mass_sun": benchmark_task.star_mass_sun,
+            "analysis_session": None,
+        },
+        status="RV analysis and evaluator state configured.",
+    )
+
+
+class StargazerEnvironment(Environment):
+    """Restore disposable sessions from Corral's committed execution state.
+
+    Evaluation history and the Python checkpoint live in the hidden arguments
+    of ``ExecutionState.environment``. No live session is kept on the environment,
+    so a restored execution or fork receives exactly its own committed state.
+    """
+
+    def execute_tool(
+        self,
+        state: ExecutionState,
+        tool: Tool,
+        arguments: dict[str, Any],
+    ) -> Any:
+        if tool.name not in {"python_repl", "evaluate_candidate"}:
+            return super().execute_tool(state, tool, arguments)
+
+        benchmark_task = self.current_task.scoring_inputs["benchmark_task"]
+        environment_values = dict(state.environment.values)
+        hidden = dict(environment_values["hidden_arguments"])
+        if hidden["benchmark_task"] != benchmark_task.task_id:
+            raise ValueError("Stargazer state belongs to a different task")
+        if tool.name == "python_repl":
+            observations = benchmark_task.observations
+            if permissions.enabled():
+                result = execute_analysis(
+                    code=arguments["code"],
+                    public_data={
+                        "times_days": observations.times_days,
+                        "rvs_ms": observations.rvs_ms,
+                        "sigmas_ms": observations.sigmas_ms,
+                        "instruments": observations.instruments,
+                        "star_mass_sun": benchmark_task.star_mass_sun,
+                    },
+                    checkpoint=arguments["analysis_session"],
+                    workspace=self.workspace_path,
+                )
+                hidden["analysis_session"] = result["checkpoint"]
+                return ToolExecutionResult(
+                    content=result["output"],
+                    environment={
+                        **environment_values,
+                        "hidden_arguments": hidden,
+                    },
+                )
+            session = create_analysis_session(
+                times_days=observations.times_days,
+                rvs_ms=observations.rvs_ms,
+                sigmas_ms=observations.sigmas_ms,
+                instruments=observations.instruments,
+                star_mass_sun=benchmark_task.star_mass_sun,
+            )
+            try:
+                session.restore(arguments["analysis_session"])
+                content = tool.execute(**{**arguments, "analysis_session": session})
+                hidden["analysis_session"] = session.snapshot()
+            finally:
+                session.close()
+        else:
+            evaluation_session = json.loads(json.dumps(arguments["evaluation_session"]))
+            content = tool.execute(
+                **{
+                    **arguments,
+                    "benchmark_task": benchmark_task,
+                    "evaluation_session": evaluation_session,
+                }
+            )
+            hidden["evaluation_session"] = evaluation_session
+
+        return ToolExecutionResult(
+            content=content,
+            environment={**environment_values, "hidden_arguments": hidden},
+        )
 
 
 def load_tasks_from_json(
@@ -192,8 +267,8 @@ def create_environments(
     """Create a scored Stargazer level or the separate real-data challenge."""
     if isinstance(level, str) and level.isdigit():
         level = int(level)
-    if level not in {1, 2, 3, "real"}:
-        raise ValueError("Stargazer level must be 1, 2, 3, or 'real'")
+    if level not in {1, 2, "real"}:
+        raise ValueError("Stargazer level must be 1, 2, or 'real'")
     split_name = "real" if level == "real" else f"level_{level}"
     path = (
         Path(selector_path)
@@ -207,22 +282,19 @@ def create_environments(
         base_work_dir=str(work_dir),
         name=f"stargazer_{split_name}",
         toolset=Toolset(pool=create_tools(), workspace_factory=None),
+        env_cls=StargazerEnvironment,
     )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stargazer benchmark server")
+    parser = argparse.ArgumentParser(description="Inspect Stargazer environments")
     parser.add_argument(
         "selector_path",
         nargs="?",
         default=None,
         help="Optional task-bank selector JSON file or directory",
     )
-    parser.add_argument("--level", choices=("1", "2", "3", "real"), default="1")
-    parser.add_argument("--host", default=os.environ.get("CORRAL_HOST", "0.0.0.0"))
-    parser.add_argument(
-        "--port", type=int, default=int(os.environ.get("CORRAL_PORT", "8000"))
-    )
+    parser.add_argument("--level", choices=("1", "2", "real"), default="1")
     args = parser.parse_args()
 
     Path(DEFAULT_WORK_DIR).mkdir(parents=True, exist_ok=True)
@@ -231,7 +303,8 @@ def main() -> None:
         selector_path=args.selector_path,
         work_dir=DEFAULT_WORK_DIR,
     )
-    run_server(environments, args.host, args.port)
+    for task_id, environment in environments.items():
+        logger.info("{}: {}", task_id, environment.current_task.name)
 
 
 if __name__ == "__main__":

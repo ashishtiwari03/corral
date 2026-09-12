@@ -7,22 +7,31 @@ scored only on its final JSON answer.
 
 ## Task splits and candidate budgets
 
-The three official levels contain 20 fixed, reference-valid synthetic tasks
+The two official levels contain 10 fixed, reference-valid synthetic tasks
 each. Their explicit IDs are committed in `environments/level_*/tasks_json`,
 so membership never changes at runtime.
 
 | Split | Upstream difficulty | Synthetic tasks | Diagnostic evaluations | Final answer | Total candidates |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Level 1 | 1–2 | 20 | 2 | 1 | 3 |
-| Level 2 | 3–6 | 20 | 4 | 1 | 5 |
-| Level 3 | 7–10 | 20 | 9 | 1 | 10 |
+| Level 1 | 5–7 | 10 | 4 | 1 | 5 |
+| Level 2 | 8–10 | 10 | 9 | 1 | 10 |
+
+Selection prioritizes `corral_exoplanet_rv.zip`, deduplicating by the original
+Stargazer task ID. The ZIP contains 15 synthetic tasks, all with IDs already in
+the local bank: three fall in difficulty 5–7 and five in difficulty 8–10. All
+eight are selected using their ZIP datasets, including three repaired systems.
+The remaining seven Level 1 tasks and five Level 2 tasks come from the previous
+official environment banks. Each level is balanced across its difficulties
+(4/3/3), with additional tasks chosen by task ID from passing references.
+`data/selection_manifest.json` records every selected ID, its source, ZIP
+aliases, and the archive checksum. Level 3 is no longer available.
 
 The 20 archival tasks are available separately as the `real` challenge split
-and are not included in official Levels 1–3. Their published systems do not
+and are not included in official Levels 1–2. Their published systems do not
 currently pass the unchanged observation model and thresholds, so real-split
 results should be reported separately until that split is calibrated.
 
-## Setup and server
+## Setup and execution
 
 Create and synchronize the task-local Python 3.12 environment:
 
@@ -32,15 +41,78 @@ uv venv --python 3.12
 uv sync --locked
 ```
 
-Run an official level or the separate real-data split:
+Inspect an official level or the separate real-data split:
 
 ```bash
 uv run python -m stargazer.env --level 1
 uv run python -m stargazer.env --level real
 ```
 
-Levels `2` and `3` are also available. The server honors `CORRAL_HOST`,
-`CORRAL_PORT`, and `CORRAL_WORK_DIR`.
+Level `2` is also available. These commands build and list environment
+definitions; Corral no longer uses a separate task HTTP server.
+
+Run one task through the current local runtime:
+
+```bash
+uv run corral run --agent tool-calling --environment stargazer \
+  --task seed15_diff5 --model openai/gpt-4o
+```
+
+For scored trials, use `corral bench` with Docker as shown below. Select a split
+with `--env-kwargs '{"level": 2}'` (or `{"level": "real"}`), and use
+`task_config` or `selector_path` in the same object for a custom selector.
+`CORRAL_WORK_DIR` controls the workspace root.
+Use `--sandbox local` only for local debugging.
+
+For Docker execution, build the task image from the repository root (build the
+base image first if `corral-benchmark:latest` is unavailable):
+
+```bash
+docker build -f docker/benchmark.Dockerfile -t corral-benchmark:latest .
+docker build -f docker/stargazer.Dockerfile -t corral-stargazer:latest .
+tasks/stargazer/.venv/bin/python -m corral.cli bench \
+  --agent tool-calling --environment stargazer --task seed15_diff5 \
+  --model openai/gpt-5.6-terra --sandbox docker \
+  --sandbox-image corral-stargazer:latest --trials 1 \
+  --agent-kwargs '{"reasoning_effort": "medium", "additional_drop_params": ["temperature"]}'
+```
+
+Docker runs model-written analysis in Corral's unprivileged worker filesystem.
+Only public observations and an opaque analysis checkpoint cross that boundary.
+The checkpoint is decoded after privilege dropping; the controller never
+unpickles it. Source under `/opt/corral`, task truth, private checkpoints,
+other workspaces, and the host filesystem are not mounted into the worker.
+The writable worker filesystem is limited to its trial workspace; installed
+OS and scientific dependencies are available read-only. The REPL worker also
+clears its environment before decoding state or running analysis code.
+
+All task images built from the repository root use the shared `.dockerignore`
+to exclude credentials, virtual environments, caches, and local workspaces.
+The REBOUND compatibility fix lives in
+[`scripts/install_rebound.py`](scripts/install_rebound.py), which installs the
+locked source after verifying its checksum and corrects REBOUND 5.1.1's x86
+architecture detection on ARM. The Dockerfile calls this task setup script;
+it can also be run with a local environment's Python interpreter when a C
+compiler is available.
+
+## Execution state
+
+Like Wetlab, `StargazerEnvironment` restores disposable sessions from
+`ExecutionState.environment` and returns their changes for Corral to commit.
+Diagnostic history, remaining budget, and the success lock persist across
+resumption and branch forks. The Python namespace is checkpointed inside its
+public-data-only worker, preserving arrays, functions, and numerical random
+state without replaying earlier code. Checkpoints are decoded only inside the
+worker and should be resumed with the same Python and scientific environment.
+Task truth stays in the task definition, outside the analysis checkpoint.
+Values that cannot be checkpointed, such as live generators, cause the call to
+fail without committing its namespace changes.
+
+Run the task's regression suite with:
+
+```bash
+uv run pytest
+```
 
 ## Interaction and submission contract
 
@@ -118,17 +190,23 @@ uv run python -m stargazer.audit --check
 
 The committed audit records invalid reference parameters and failures of the
 BIC, RMS, physical-match, and count gates. At the current pinned revision,
-76/100 synthetic references and 0/20 real references pass. The official levels
-select 60 of the passing synthetic references, stratified by upstream
-difficulty as evenly as the valid records allow; thresholds are not weakened
-per task.
+79/100 synthetic references and 0/20 real references pass after importing the
+eight selected ZIP records. The official levels select 20 passing synthetic
+references in the requested difficulty ranges; thresholds are not weakened
+per task. Validation checks membership counts, uniqueness, source, difficulty,
+and reference scores.
 
 ## Provenance and deliberate interface differences
 
-The task records are copied without modification from Stargazer revision
-`3f617667472061e253288c7b26f0e70f186f2dff`. Legacy synthetic records are
-converted in memory from their original REBOUND signal to the current RV-only
-Keplerian semantics while retaining their noise realization.
+The original task bank comes from Stargazer revision
+`3f617667472061e253288c7b26f0e70f186f2dff`. Eight selected synthetic records are
+replaced by the preferred exports in `corral_exoplanet_rv.zip`, whose provenance
+identifies `Stargazer_synthetic_task_repaired_v1`. Their observations, planetary
+truth, and stellar masses are preserved exactly in Stargazer's native record
+schema. They are marked as RV-only to avoid a second compatibility conversion.
+Other synthetic records are converted in memory from their original REBOUND
+signal to the current RV-only Keplerian semantics while retaining their noise
+realization.
 
 Compared with the upstream interaction loop, Corral owns the final submission:
 the iterative submission action is named `evaluate_candidate`, the final

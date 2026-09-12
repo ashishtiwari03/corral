@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ TASK_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = TASK_ROOT / "data"
 DEFAULT_REPORT_PATH = DEFAULT_DATA_ROOT / "reference_audit.json"
 UPSTREAM_REVISION = "3f617667472061e253288c7b26f0e70f186f2dff"
+OFFICIAL_LEVEL_DIFFICULTIES = {1: (5, 7), 2: (8, 10)}
 FAILURE_REASONS = (
     "invalid_reference_parameters",
     "bic_gate",
@@ -145,10 +146,11 @@ def audit_task_bank(data_root: str | Path = DEFAULT_DATA_ROOT) -> dict[str, Any]
 def selected_task_ids(
     environments_root: str | Path | None = None,
 ) -> dict[int, set[str]]:
-    """Read the explicit official task memberships committed for Levels 1-3."""
+    """Read the explicit synthetic memberships committed for Levels 1 and 2."""
     root = Path(environments_root or TASK_ROOT / "environments")
-    selected: dict[int, set[str]] = defaultdict(set)
-    for level in (1, 2, 3):
+    selected: dict[int, set[str]] = {}
+    for level, (minimum, maximum) in OFFICIAL_LEVEL_DIFFICULTIES.items():
+        selected[level] = set()
         for selector_file in sorted(
             (root / f"level_{level}" / "tasks_json").glob("*.json")
         ):
@@ -156,34 +158,92 @@ def selected_task_ids(
                 payload = json.load(handle)
             selectors = payload if isinstance(payload, list) else [payload]
             for selector in selectors:
-                selected[level].update(selector.get("task_ids", []))
-    return dict(selected)
+                if not isinstance(selector, dict):
+                    raise ValueError(
+                        f"Selectors in {selector_file} must be JSON objects"
+                    )
+                if selector.get("source") != "synthetic":
+                    raise ValueError(f"Level {level} must select only synthetic tasks")
+                if (
+                    selector.get("difficulty_min") != minimum
+                    or selector.get("difficulty_max") != maximum
+                ):
+                    raise ValueError(
+                        f"Level {level} must select difficulties {minimum}-{maximum}"
+                    )
+                task_ids = selector.get("task_ids")
+                if not isinstance(task_ids, list) or not all(
+                    isinstance(task_id, str) and task_id for task_id in task_ids
+                ):
+                    raise ValueError(
+                        f"Level {level} task_ids must be an explicit list of strings"
+                    )
+                duplicates = {
+                    task_id for task_id, count in Counter(task_ids).items() if count > 1
+                } | (selected[level] & set(task_ids))
+                if duplicates:
+                    raise ValueError(
+                        f"Level {level} contains duplicate task IDs: {sorted(duplicates)}"
+                    )
+                selected[level].update(task_ids)
+    return selected
 
 
-def validate_official_banks(report: dict[str, Any]) -> None:
-    """Require 20 unique, reference-valid synthetic tasks in every level."""
-    passing = {
-        record["task_id"]
-        for record in report["records"]
-        if record["source"] == "synthetic" and record["score"] == 1.0
-    }
-    selected = selected_task_ids()
+def validate_official_banks(
+    report: dict[str, Any], environments_root: str | Path | None = None
+) -> None:
+    """Require 10 distinct, reference-valid synthetic tasks in each difficulty band."""
+    records_by_id: dict[str, dict[str, Any]] = {}
+    for record in report["records"]:
+        task_id = record["task_id"]
+        if task_id in records_by_id:
+            raise ValueError(f"Audit contains duplicate task ID: {task_id}")
+        records_by_id[task_id] = record
+    selected = selected_task_ids(environments_root)
     all_ids: set[str] = set()
-    for level in (1, 2, 3):
+    for level in OFFICIAL_LEVEL_DIFFICULTIES:
         task_ids = selected.get(level, set())
-        if len(task_ids) != 20:
+        if len(task_ids) != 10:
             raise ValueError(
-                f"Level {level} selects {len(task_ids)} tasks, expected 20"
-            )
-        invalid = task_ids - passing
-        if invalid:
-            raise ValueError(
-                f"Level {level} contains reference-invalid tasks: {sorted(invalid)}"
+                f"Level {level} selects {len(task_ids)} tasks, expected 10"
             )
         overlap = all_ids & task_ids
         if overlap:
             raise ValueError(f"Official levels overlap: {sorted(overlap)}")
         all_ids.update(task_ids)
+    for level, (minimum, maximum) in OFFICIAL_LEVEL_DIFFICULTIES.items():
+        task_ids = selected[level]
+        missing = task_ids - records_by_id.keys()
+        if missing:
+            raise ValueError(
+                f"Level {level} tasks missing from audit: {sorted(missing)}"
+            )
+        non_synthetic = {
+            task_id
+            for task_id in task_ids
+            if records_by_id[task_id]["source"] != "synthetic"
+        }
+        if non_synthetic:
+            raise ValueError(
+                f"Level {level} contains non-synthetic tasks: {sorted(non_synthetic)}"
+            )
+        out_of_range = {
+            task_id
+            for task_id in task_ids
+            if not minimum <= records_by_id[task_id]["difficulty"] <= maximum
+        }
+        if out_of_range:
+            raise ValueError(
+                f"Level {level} tasks outside difficulties {minimum}-{maximum}: "
+                f"{sorted(out_of_range)}"
+            )
+        invalid = {
+            task_id for task_id in task_ids if records_by_id[task_id]["score"] != 1.0
+        }
+        if invalid:
+            raise ValueError(
+                f"Level {level} contains reference-invalid tasks: {sorted(invalid)}"
+            )
 
 
 def main() -> None:

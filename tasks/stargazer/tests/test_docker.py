@@ -1,0 +1,139 @@
+"""Portable dispatch checks and opt-in tests of the real Docker REPL boundary."""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import tempfile
+from dataclasses import asdict
+from types import SimpleNamespace
+
+import cloudpickle
+import pytest
+from stargazer.docker import execute_analysis
+from stargazer.env import create_environments
+
+from corral.runtime import permissions
+
+
+def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
+    tmp_path, monkeypatch
+):
+    environment = create_environments(level=1, work_dir=tmp_path)["seed15_diff5"]
+    task = environment.current_task.scoring_inputs["benchmark_task"]
+    hidden = {
+        "benchmark_task": task.task_id,
+        "analysis_session": "untrusted-opaque-checkpoint",
+        "evaluation_session": {"evaluations": [], "locked": False},
+    }
+    state = SimpleNamespace(
+        environment=SimpleNamespace(values={"hidden_arguments": hidden})
+    )
+    requests = []
+
+    def run(kind, payload, workspace, **kwargs):
+        assert kind == "tool"
+        assert workspace == environment.workspace_path
+        assert "cancel" in kwargs
+        step, arguments = payload
+        assert not step.trusted
+        assert not step.hidden_args
+        arguments["public_data"] = json.loads(arguments["public_data"])
+        requests.append(arguments)
+        return {
+            "content": json.dumps(
+                {"output": "42", "checkpoint": "new-opaque-checkpoint"}
+            )
+        }
+
+    monkeypatch.setattr(permissions, "enabled", lambda: True)
+    monkeypatch.setattr(permissions, "run_worker", run)
+    result = permissions.execute_tool(
+        environment,
+        state,
+        environment.tools["python_repl"],
+        {"code": "6 * 7", "analysis_session": hidden["analysis_session"]},
+    )
+    assert requests == [
+        {
+            "code": "6 * 7",
+            "checkpoint": hidden["analysis_session"],
+            "public_data": json.loads(
+                json.dumps(
+                    {
+                        **asdict(task.observations),
+                        "star_mass_sun": task.star_mass_sun,
+                    }
+                )
+            ),
+        }
+    ]
+    assert result.content == "42"
+    assert result.environment["hidden_arguments"] == {
+        **hidden,
+        "analysis_session": "new-opaque-checkpoint",
+    }
+    assert hidden["analysis_session"] == "untrusted-opaque-checkpoint"
+
+
+@pytest.fixture
+def docker_workspace(tmp_path):
+    if os.environ.get("CORRAL_PERMISSION_TESTS") != "1":
+        pytest.skip("requires the real Docker trial permission boundary")
+    assert os.geteuid() == 0
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir(mode=0o700)
+    permissions.configure(checkpoints)
+    with tempfile.TemporaryDirectory(
+        prefix="stargazer-test-", dir="/workspace"
+    ) as workspace:
+        yield workspace
+    permissions._enabled = False
+
+
+def test_docker_repl_persists_functions_arrays_and_blocks_source_reads(
+    docker_workspace, simple_task
+):
+    data = {
+        **asdict(simple_task.observations),
+        "star_mass_sun": simple_task.star_mass_sun,
+    }
+    first = execute_analysis(
+        code="values = np.arange(3.0)\ndef shifted():\n    return values + 2\nshifted().tolist()",
+        public_data=data,
+        checkpoint=None,
+        workspace=docker_workspace,
+    )
+    assert json.loads(first["output"]) == [2.0, 3.0, 4.0]
+    restored = execute_analysis(
+        code="values[0] = 40.0\nshifted().tolist()",
+        public_data=data,
+        checkpoint=first["checkpoint"],
+        workspace=docker_workspace,
+    )
+    assert json.loads(restored["output"]) == [42.0, 3.0, 4.0]
+    blocked = execute_analysis(
+        code="np.loadtxt('/opt/corral/tasks/stargazer/data/synthetic/seed15_diff5.json')",
+        public_data=data,
+        checkpoint=restored["checkpoint"],
+        workspace=docker_workspace,
+    )
+    assert "unavailable" in blocked["output"]
+
+
+def test_docker_checkpoint_decoding_is_unprivileged_and_has_no_credentials(
+    docker_workspace,
+):
+    class CheckpointProbe:
+        def __reduce__(self):
+            # A pickle can execute arbitrary code before namespace validation.
+            # This must only run after chroot, privilege drop, and env clearing.
+            expression = "(_ for _ in ()).throw(RuntimeError('checkpoint uid=' + str(__import__('os').getuid()) + ',key=' + str('OPENAI_API_KEY' in __import__('os').environ)))"
+            return eval, (expression,)
+
+    checkpoint = base64.b64encode(cloudpickle.dumps(CheckpointProbe())).decode()
+    with pytest.raises(RuntimeError, match=r"checkpoint uid=[1-9][0-9]+,key=False"):
+        execute_analysis(
+            code="1", public_data={}, checkpoint=checkpoint, workspace=docker_workspace
+        )

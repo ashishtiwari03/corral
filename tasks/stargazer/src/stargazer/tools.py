@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ast
+import base64
 import builtins
+import importlib
 import io
 import json
 import multiprocessing as mp
@@ -18,11 +20,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import cloudpickle
 import numpy as np
 import scipy
 from scipy import optimize, signal
 
-from corral.backend.tool import Tool, tool
+from corral.core.tool import Tool, tool
 from stargazer.evaluator import SubmissionError, evaluate_submission
 from stargazer.models import (
     CandidatePlanet,
@@ -171,6 +174,101 @@ def _safe_module(value: Any) -> Any:
     return proxy
 
 
+def _restore_module_proxy(name: str) -> _SafeModuleProxy:
+    return _safe_module(importlib.import_module(name))
+
+
+def _restore_session_function(
+    code: types.CodeType,
+    namespace: dict[str, Any],
+    safe_builtins: dict[str, Any],
+    closure: tuple[types.CellType, ...] | None,
+) -> types.FunctionType:
+    # FunctionType captures its builtins at construction. Ordinary cloudpickle
+    # restores unrestricted builtins and gives functions a separate globals dict.
+    namespace["__builtins__"] = safe_builtins
+    return types.FunctionType(code, namespace, closure=closure)
+
+
+def _restore_function_state(function: types.FunctionType, state: tuple) -> None:
+    attributes, closure = state
+    for name, value in attributes.items():
+        setattr(function, name, value)
+    if closure is not None:
+        for target, source in zip(function.__closure__, closure, strict=True):
+            with suppress(ValueError):  # A closure cell can be empty.
+                target.cell_contents = source.cell_contents
+
+
+class _SessionPickler(cloudpickle.CloudPickler):
+    """Keep notebook functions attached to the restored, restricted namespace."""
+
+    def __init__(self, file: io.BytesIO, namespace: dict[str, Any]):
+        super().__init__(file)
+        self.namespace = namespace
+        self.closure_cells: dict[int, types.CellType] = {}
+
+    def reducer_override(self, value: Any) -> Any:
+        if isinstance(value, _SafeModuleProxy):
+            module = object.__getattribute__(value, "_SafeModuleProxy__wrapped_module")
+            return _restore_module_proxy, (module.__name__,)
+        if (
+            isinstance(value, types.FunctionType)
+            and value.__globals__ is self.namespace
+        ):
+            attributes = {
+                name: getattr(value, name)
+                for name in (
+                    "__name__",
+                    "__qualname__",
+                    "__defaults__",
+                    "__kwdefaults__",
+                    "__annotations__",
+                    "__dict__",
+                    "__module__",
+                    "__doc__",
+                )
+            }
+            # Shared nonlocal variables need shared cells. Empty placeholders
+            # allow a closure to refer recursively to its own function.
+            closure = (
+                tuple(
+                    self.closure_cells.setdefault(id(cell), types.CellType())
+                    for cell in value.__closure__
+                )
+                if value.__closure__ is not None
+                else None
+            )
+            return (
+                _restore_session_function,
+                (
+                    value.__code__,
+                    self.namespace,
+                    self.namespace["__builtins__"],
+                    closure,
+                ),
+                (attributes, value.__closure__),
+                None,
+                None,
+                _restore_function_state,
+            )
+        return super().reducer_override(value)
+
+
+def _snapshot_namespace(namespace: dict[str, Any]) -> str:
+    output = io.BytesIO()
+    # Captured print belongs to a single call, including its output buffer.
+    captured_print = namespace["__builtins__"].pop("print", None)
+    try:
+        # Preserve the legacy module RNG as well as Generator objects in locals.
+        random_state = np.random.get_state()  # noqa: NPY002
+        _SessionPickler(output, namespace).dump((namespace, random_state))
+    finally:
+        if captured_print is not None:
+            namespace["__builtins__"]["print"] = captured_print
+    return base64.b64encode(output.getvalue()).decode("ascii")
+
+
 class AnalysisSession:
     """Handle for a persistent, public-data-only analysis worker process."""
 
@@ -188,12 +286,6 @@ class AnalysisSession:
         self._process: Any = None
         self._worker_directory: tempfile.TemporaryDirectory[str] | None = None
         self._lock = threading.RLock()
-
-    def __deepcopy__(self, memo: dict[int, Any]) -> AnalysisSession:
-        # Corral drops hidden arguments from snapshots immediately after its
-        # dataclass traversal. Keeping this opaque avoids trying to pickle
-        # imported scientific modules during that traversal.
-        return self
 
     def _stop_worker(self) -> None:
         connection, process = self._connection, self._process
@@ -261,6 +353,23 @@ class AnalysisSession:
             raise UnsafeAnalysisCode(
                 f"Analysis code is limited to {_MAX_CODE_CHARS:,} characters"
             )
+        return str(self._request({"command": "execute", "code": code}))
+
+    def snapshot(self) -> str | None:
+        """Export JSON-compatible state; a stopped or timed-out worker is empty."""
+        with self._lock:
+            if self._process is None or not self._process.is_alive():
+                return None
+            return self._request({"command": "snapshot"})
+
+    def restore(self, checkpoint: str | None) -> None:
+        """Restore state in an isolated worker, never unpickling in the controller."""
+        with self._lock:
+            self._stop_worker()
+            if checkpoint is not None:
+                self._request({"command": "restore", "checkpoint": checkpoint})
+
+    def _request(self, request: dict[str, Any]) -> Any:
         with self._lock:
             process = self._process
             if process is None or not process.is_alive():
@@ -268,7 +377,7 @@ class AnalysisSession:
             connection = self._connection
             assert connection is not None
             try:
-                connection.send({"command": "execute", "code": code})
+                connection.send(request)
                 if not connection.poll(self._execution_timeout_seconds):
                     timeout = self._execution_timeout_seconds
                     self._stop_worker()
@@ -285,13 +394,16 @@ class AnalysisSession:
                     "The analysis worker stopped unexpectedly; "
                     "the persistent session was reset"
                 ) from exc
+            if isinstance(response, dict) and "error" in response:
+                self._stop_worker()
+                raise RuntimeError(response["error"])
             if not isinstance(response, dict) or "result" not in response:
                 self._stop_worker()
                 raise RuntimeError(
                     "The analysis worker returned an invalid response; "
                     "the persistent session was reset"
                 )
-            return str(response["result"])
+            return response["result"]
 
     def close(self) -> None:
         """Release the worker process and its private IPC channel."""
@@ -530,6 +642,22 @@ def _analysis_worker(
             command = request.get("command")
             if command == "close":
                 return
+            if command in {"snapshot", "restore"}:
+                try:
+                    if command == "snapshot":
+                        checkpoint = _snapshot_namespace(namespace)
+                        connection.send({"result": checkpoint})
+                    else:
+                        # Checkpoints may contain Python objects, so decoding is
+                        # confined to this public-data-only, audited worker.
+                        namespace, random_state = cloudpickle.loads(
+                            base64.b64decode(request["checkpoint"], validate=True)
+                        )
+                        np.random.set_state(random_state)  # noqa: NPY002
+                        connection.send({"result": None})
+                except BaseException:
+                    connection.send({"error": traceback.format_exc(limit=8)})
+                continue
             if command != "execute" or not isinstance(request.get("code"), str):
                 connection.send({"result": "Invalid analysis-worker request."})
                 continue
@@ -609,7 +737,9 @@ def _execute_persistent(code: str, namespace: dict[str, Any]) -> str:
     return result or "Code executed successfully (no output)."
 
 
-@tool(hidden_args=["analysis_session"])
+# Only the environment's dispatcher is trusted. It runs model-written code in
+# a separate analysis process locally, or a jailed unprivileged worker in Docker.
+@tool(hidden_args=["analysis_session"], trusted=True)
 def python_repl(code: str, analysis_session: Any) -> str:
     """[BRIEF] Execute scientific Python in a persistent RV-analysis session. [/BRIEF]
 
@@ -680,7 +810,7 @@ def python_repl(code: str, analysis_session: Any) -> str:
     return result
 
 
-@tool(hidden_args=["star_mass_sun"])
+@tool(hidden_args=["star_mass_sun"], trusted=True)
 def planet_from_fit(
     period_days: float,
     semi_amplitude_ms: float,
@@ -796,7 +926,7 @@ def planet_from_fit(
     return json.dumps(result, allow_nan=False)
 
 
-@tool(hidden_args=["benchmark_task", "evaluation_session"])
+@tool(hidden_args=["benchmark_task", "evaluation_session"], trusted=True)
 def evaluate_candidate(
     planets: list[CandidatePlanet],
     benchmark_task: Any,
