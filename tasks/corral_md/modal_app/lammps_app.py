@@ -9,6 +9,7 @@ import log_lammps_reader
 import modal
 from loguru import logger
 from modal import App, Image
+import sys
 
 lammps_image = (
     Image.debian_slim(python_version="3.12")
@@ -34,13 +35,9 @@ lammps_image = (
         "ase",
         "log-lammps-reader",
         "polars",
-    )
-    .env(
-        {
-            "LAMMPS_POTENTIALS": (
-                "/potentials/EAM:/potentials/EAM_FS:/potentials/TERSOFF"
-            )
-        }
+        "mace-torch",
+        "scikit-learn",
+        "dscribe", 
     )
     .run_commands(
         "git clone --depth 1 https://github.com/lammps/lammps.git /root/lammps",
@@ -167,4 +164,59 @@ def run_lammps(
         os.chdir(original_cwd)
         if original_input is not None:
             input_path.write_text(original_input, encoding="utf-8")
+        volume_sim.commit()
+
+@app.function(
+    image=lammps_image,
+    gpu="A100",
+    cpu=CPUS,
+    timeout=7200,
+    memory=10240,
+    volumes={
+        "/potentials": volume_potential.read_only(),
+        "/results": volume_sim,
+        "/structures": volume_struct.read_only(),
+        "/test_files": volume_test_files,
+    },
+)
+def run_python_gpu(
+    script_file: str,
+    args: list[str],
+    local_workspace: str | None = None,
+    remote_workspace: str | None = None,
+) -> None:
+    """Run a Python script from the simulations Volume with GPU access."""
+    script_path = Path(script_file)
+    original_script: str | None = None
+    original_cwd = Path.cwd()
+
+    try:
+        volume_sim.reload()
+        original_script = script_path.read_text(encoding="utf-8")
+
+        rewritten = original_script
+        if local_workspace and remote_workspace:
+            rewritten = rewritten.replace(local_workspace, remote_workspace)
+        if rewritten != original_script:
+            script_path.write_text(rewritten, encoding="utf-8")
+            volume_sim.commit()
+
+        os.chdir(script_path.parent)
+        command = [sys.executable, script_path.name, *args]
+        result = subprocess.run(
+            command, shell=False, check=False, capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise ValueError(
+                f"GPU script failed (exit {result.returncode}):\n"
+                f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            )
+        volume_sim.commit()
+    except Exception as exc:
+        logger.error(f"GPU script execution failed: {exc}")
+        raise ValueError(str(exc)) from exc
+    finally:
+        os.chdir(original_cwd)
+        if original_script is not None:
+            script_path.write_text(original_script, encoding="utf-8")
         volume_sim.commit()

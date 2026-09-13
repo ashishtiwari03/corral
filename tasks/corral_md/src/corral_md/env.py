@@ -16,7 +16,7 @@ from corral_md.score import (
 from corral_md.tools import (
     build_run_lammps_tool,
     convert_structure_to_lammps_data,
-    execute_python_script,
+    build_execute_python_script_tool,
     get_nth_run_log,
     get_potential_metadata,
     get_structure_from_mp_text,
@@ -142,7 +142,7 @@ def _md_file_tools(workspace: str) -> dict[str, Tool]:
             )
         },
         "library_docs": get_library_documentation,
-        "execute_python_script": execute_python_script,
+        "execute_python_script": build_execute_python_script_tool(workspace),
         # Overrides the statically selected tool with a workspace-aware variant
         # that handles Modal upload and download internally.
         "run_lammps": build_run_lammps_tool(workspace),
@@ -191,16 +191,7 @@ Required submission format:
 
     prompt += "\nAvailable input data:\n"
 
-    prompt += (
-        "All potentials are mounted read-only below /potentials/. Use these exact "
-        "catalog paths in LAMMPS inputs: /potentials/SW/Si.sw, "
-        "/potentials/TERSOFF/2007_SiO.tersoff, "
-        "/potentials/EAM/Al99.eam.alloy, "
-        "/potentials/EAM/Cu_Zhou04.eam.alloy, "
-        "/potentials/EAM/Mg_Zhou04.eam.alloy, "
-        "/potentials/EAM/Fe-C_Hepburn_Ackland.eam.fs, and "
-        "/potentials/BKS/pot.mod.\n\n"
-    )
+    prompt += ("")
 
     # Display resolved inputs from dependencies
     resolved = env.resolve_inputs(state)
@@ -221,6 +212,7 @@ Required submission format:
             "to a workspace tool.\n\n"
             "### Important Resource and File Access Guidelines ###\n"
             "1. **Potential Files**:\n"
+            "   - All potentials are mounted read-only below /potentials/. Hence whenever working with potential files, always use absolute paths (eg. /potentials/SW/Si.sw) as all potential files are mounted at fixed locations. Otherwise, the simulation will fail due to wrong path for the potential.\n"
             "   - These files are *fully verified and correct*.\n"
             "   - You must **not attempt to read or parse them directly**.\n"
             "   - Reading them is unnecessary and will waste important computational resources.\n\n"
@@ -228,6 +220,16 @@ Required submission format:
             "   - These files are *very large* and should **not be directly parsed**.\n"
             "   - Direct parsing would cause excessive cost and resource usage.\n\n"
             "Important: Files in /structures and /potentials should not be modified at any cost, including operations like copying or moving them. Doing this will immediately return in error.\n\n"
+            "### Choosing a Simulation Engine ###\n"
+            "If the task calls for a MACE-family potential/model, always conduct the "
+            "MD simulation via an ASE Python script (execute_python_script), not LAMMPS. "
+            "For all other potentials (SW, Tersoff, EAM, BKS, etc.), always use LAMMPS "
+            "via run_lammps.\n\n"
+            "### GPU Execution ###\n"
+            "Set `use_gpu=True` in execute_python_script only for scripts that construct "
+            "an ASE Calculator backed by a MACE model. Leave it False (default) for "
+            "everything else, including analysis and plotting — those run locally and "
+            "are faster and cheaper.\n\n"
             "### Simulation Logging Requirements ###\n"
             "For every simulation run involving any ensemble (e.g., NVT, NPT, NVE, etc.), if applicable, the log file **must** record the following quantities:\n"
             "   - Step\n"

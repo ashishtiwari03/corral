@@ -231,5 +231,96 @@ def run_lammps_in_modal(
         ) from remote_error
     return local_log, downloaded
 
+def run_python_in_modal(
+    workspace: str | Path,
+    script_file: str,
+    args: list[str] | None = None,
+    *,
+    volume: Any | None = None,
+    remote_function: Any | None = None,
+    job_id: str | None = None,
+) -> int:
+    """Run a Python script on Modal (GPU) and sync its workspace outputs back locally.
 
-__all__ = ["run_lammps_in_modal"]
+    Same upload -> remote execute -> download -> atomic publish pattern as
+    `run_lammps_in_modal`, but for arbitrary GPU-backed Python scripts (e.g.
+    ASE calculations using a MACE calculator) instead of a LAMMPS input.
+    """
+    local_workspace = _validate_workspace(workspace)
+    local_script, relative_script = _resolve_input(local_workspace, script_file)
+    identifier = job_id or uuid.uuid4().hex
+    if not identifier or any(
+        char not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+        for char in identifier.lower()
+    ):
+        raise ValueError(f"Invalid Modal job id: {identifier!r}")
+
+    remote_volume_directory = _REMOTE_VOLUME_ROOT / identifier
+    remote_workspace = _REMOTE_MOUNT_ROOT / remote_volume_directory.relative_to("/")
+    remote_script = remote_workspace / relative_script
+
+    if volume is None:
+        volume_name = os.getenv("CORRAL_MD_MODAL_VOLUME", _DEFAULT_VOLUME_NAME)
+        volume = modal.Volume.from_name(volume_name)
+    if remote_function is None:
+        remote_function = modal.Function.from_name(_modal_app_name(), "run_python_gpu")
+
+    with volume.batch_upload(force=True) as upload:
+        upload.put_directory(str(local_workspace), str(remote_volume_directory))
+
+    remote_error: Exception | None = None
+    try:
+        remote_function.remote(
+            str(remote_script),
+            args or [],
+            str(local_workspace),
+            str(remote_workspace),
+        )
+    except Exception as exc:  # preserve diagnostic files from failed runs
+        remote_error = exc
+
+    temporary_root = Path(
+        tempfile.mkdtemp(
+            prefix=f".{local_workspace.name}.modal-", dir=local_workspace.parent
+        )
+    )
+    staged_workspace = temporary_root / "workspace"
+    staged_workspace.mkdir()
+    try:
+        downloaded = _download_workspace(
+            volume,
+            remote_volume_directory,
+            staged_workspace,
+        )
+        _publish_workspace(staged_workspace, local_workspace)
+    except Exception as sync_error:
+        detail = (
+            f" after the Modal GPU script call failed with {remote_error}"
+            if remote_error is not None
+            else ""
+        )
+        raise RuntimeError(
+            f"Failed to synchronize Modal GPU outputs back to "
+            f"{str(local_workspace)!r}{detail}: {sync_error}"
+        ) from sync_error
+    finally:
+        shutil.rmtree(temporary_root, ignore_errors=True)
+
+    try:
+        volume.remove_file(str(remote_volume_directory), recursive=True)
+    except Exception as cleanup_error:  # outputs are already durable locally
+        _LOGGER.warning(
+            "Could not remove temporary Modal workspace %s: %s",
+            remote_volume_directory,
+            cleanup_error,
+        )
+
+    if remote_error is not None:
+        raise RuntimeError(
+            f"GPU script failed on Modal; remote diagnostics were synchronized to "
+            f"{str(local_workspace)!r}: {remote_error}"
+        ) from remote_error
+    return downloaded
+
+
+__all__ = ["run_lammps_in_modal", "run_python_in_modal"]

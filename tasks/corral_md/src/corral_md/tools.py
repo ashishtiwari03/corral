@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from corral_md.modal_workspace import run_lammps_in_modal
+from corral_md.modal_workspace import run_lammps_in_modal, run_python_in_modal
 
 from corral.core.tool import tool
 
@@ -170,135 +170,167 @@ def keyword_log_extractor(path: str, keyword: str) -> str:
         return json.dumps({"error": f"Error processing keyword {keyword!r}: {e}"})
 
 
-@tool
-def execute_python_script(
-    script_path: str,
-    args: list | None = None,
-    timeout: int = 600,
-    working_dir: str | None = None,
-) -> str:
-    """[BRIEF] Execute a Python script file with arguments in a controlled environment. [/BRIEF]
+def build_execute_python_script_tool(workspace: str | Path):
+    """Build execute_python_script bound to one local Corral task workspace."""
 
-    [DETAILED] This tool executes existing Python script files with command-line arguments, providing a controlled environment for running complex analysis workflows, data processing pipelines, or computational simulations.
-    It captures all output streams and provides comprehensive execution monitoring with timeout protection.
-    This is essential for integrating existing Python scripts into automated workflows and materials analysis pipelines. [/DETAILED]
+    @tool
+    def execute_python_script(
+        script_path: str,
+        args: list | None = None,
+        timeout: int = 600,
+        working_dir: str | None = None,
+        use_gpu: bool = False,
+    ) -> str:
+        """[BRIEF] Execute a Python script file with arguments in a controlled environment, optionally on remote GPU compute. [/BRIEF]
 
-    [PROCEDURAL] When to use this tool:
-    - Use when you need to execute existing Python scripts with specific arguments. You can also use io tool to write a script and then execute it.
-    - Best suited for running complex analysis workflows or simulations
-    - Essential for integrating external Python tools into automated pipelines
-    - Recommended for batch processing and computational workflows
-    - Avoid for simple code execution
-    [/PROCEDURAL]
+        [DETAILED] This tool executes existing Python script files with command-line arguments, providing a controlled environment for running complex analysis workflows, data processing pipelines, or computational simulations.
+        It captures all output streams and provides comprehensive execution monitoring with timeout protection.
+        This is essential for integrating existing Python scripts into automated workflows and materials analysis pipelines.
+        By default, scripts run locally on CPU. Setting `use_gpu=True` instead runs the script on remote GPU compute (Modal): the entire task workspace is uploaded, the script executes there with GPU access, and all resulting files (including any it wrote) are synchronized back into the local workspace afterward. This should only be used for scripts that genuinely require GPU acceleration. [/DETAILED]
 
-    [CONTEXTUAL] How this tool works:
-    - Validates script file existence and accessibility
-    - Constructs command with script path and provided arguments
-    - Executes script in subprocess with timeout protection
-    - Captures standard output, error streams, and return codes
-    - Provides comprehensive execution monitoring and error reporting
-    - Supports custom working directory for script execution
-    [/CONTEXTUAL]
+        [PROCEDURAL] When to use this tool:
+        - Use when you need to execute existing Python scripts with specific arguments. You can also use io tool to write a script and then execute it.
+        - Best suited for running complex analysis workflows or simulations
+        - Essential for integrating external Python tools into automated pipelines
+        - Recommended for batch processing and computational workflows
+        - Avoid for simple code execution
+        - Set `use_gpu=True` only for scripts that construct an ASE Calculator backed by a MACE model, or otherwise require GPU acceleration. Leave `use_gpu=False` (default) for everything else, including analysis and plotting — those run locally and are faster and cheaper.
+        [/PROCEDURAL]
 
-    [WORKFLOW_INTEGRATION] Typical workflow integration example:
-    1. [PREREQUISITE] Ensure script file exists and is executable with proper dependencies [/PREREQUISITE]
-    2. [CURRENT] Execute script with appropriate arguments and timeout [/CURRENT]
-    3. [FOLLOW_UP] Process script output and results for further analysis. Can be used to process json script as required [/FOLLOW_UP]
-    [/WORKFLOW_INTEGRATION]
+        [CONTEXTUAL] How this tool works:
+        - Validates script file existence and accessibility
+        - Constructs command with script path and provided arguments
+        - If `use_gpu=False` (default): executes the script in a local subprocess with timeout protection, using `working_dir` (or the script's own directory) as the working directory.
+        - If `use_gpu=True`: uploads the entire task workspace to remote GPU compute, executes the script there, and downloads the complete workspace back afterward, atomically replacing the local copy. `timeout` and `working_dir` do not apply in this mode; the effective working directory is the task workspace root.
+        - Captures standard output, error streams, and return codes (or, for GPU runs, surfaces failure diagnostics — including remote stdout/stderr — in the error message if the script fails)
+        - Provides comprehensive execution monitoring and error reporting
+        [/CONTEXTUAL]
 
-    [SYNTACTICAL] Usage examples:
-    `execute_python_script("analysis.py", ["--input", "data.json", "--output", "results.json"], 300)`,
-    `execute_python_script("simulation.py", ["--steps", "1000", "--temp", "300"], 1800, "/path/to/workdir")`,
-    `execute_python_script("processing.py", None, 600, None)`,
-    [/SYNTACTICAL]
+        [WORKFLOW_INTEGRATION] Typical workflow integration example:
+        1. [PREREQUISITE] Ensure script file exists and is executable with proper dependencies [/PREREQUISITE]
+        2. [CURRENT] Execute script with appropriate arguments and timeout, setting `use_gpu=True` only if the script needs GPU acceleration [/CURRENT]
+        3. [FOLLOW_UP] Process script output and results for further analysis. Can be used to process json script as required [/FOLLOW_UP]
+        [/WORKFLOW_INTEGRATION]
 
-    Args:
-        script_path: [ARGS_BRIEF] Path to the Python script file to execute. [/ARGS_BRIEF]
-                    [ARGS_DETAILED] Complete file path to the Python script that should be executed.
-                    The script must exist and be readable.
-                    The path can be relative to the current working directory or absolute.
-                    The script should be a valid Python file with appropriate shebang or run using the Python interpreter. [/ARGS_DETAILED]
-                    [ARGS_SYNTACTICAL] "Valid file path to Python script" [/ARGS_SYNTACTICAL]
-                    [ARGS_EXAMPLES] "scripts/analysis.py", "/home/user/simulations/run_sim.py", "data_processing.py" [/ARGS_EXAMPLES]
-        args: [ARGS_BRIEF] Optional list of command-line arguments for the script. [/ARGS_BRIEF]
-             [ARGS_DETAILED] A list of strings representing command-line arguments to pass to the script.
-             These arguments will be passed to the script in the order provided.
-             Common arguments include input files, output paths, configuration parameters, and processing options.
-             If None, the script will be executed without arguments. [/ARGS_DETAILED]
-             [ARGS_SYNTACTICAL] ["arg1", "arg2", "arg3", ...] or None [/ARGS_SYNTACTICAL]
-             [ARGS_EXAMPLES] ["--input", "data.json"], ["--verbose", "--output", "results.csv"], None [/ARGS_EXAMPLES]
-        timeout: [ARGS_BRIEF] Maximum execution time in seconds. Defaults to 600. [/ARGS_BRIEF]
-                [ARGS_DETAILED] The maximum time in seconds the script is allowed to run before being terminated.
-                This prevents runaway processes and ensures resource management.
-                Choose appropriate values based on expected script execution time.
-                For computational simulations, longer timeouts may be necessary. [/ARGS_DETAILED]
-                [ARGS_SYNTACTICAL] positive integer representing seconds [/ARGS_SYNTACTICAL]
-                [ARGS_EXAMPLES] 300 (5 minutes), 600 (10 minutes), 3600 (1 hour) [/ARGS_EXAMPLES]
-        working_dir: [ARGS_BRIEF] Optional working directory for script execution. [/ARGS_BRIEF]
-                    [ARGS_DETAILED] The directory from which the script should be executed.
-                    This affects relative path resolution and file I/O operations within the script.
-                    If None, the current working directory will be used.
-                    This is useful when scripts expect to run from specific directories or access relative files. [/ARGS_DETAILED]
-                    [ARGS_SYNTACTICAL] Valid directory path or None [/ARGS_SYNTACTICAL]
-                    [ARGS_EXAMPLES] "/path/to/project", "data/analysis", None [/ARGS_EXAMPLES]
+        [SYNTACTICAL] Usage examples:
+        `execute_python_script("analysis.py", ["--input", "data.json", "--output", "results.json"], 300)`,
+        `execute_python_script("simulation.py", ["--steps", "1000", "--temp", "300"], 1800, "/path/to/workdir")`,
+        `execute_python_script("processing.py", None, 600, None)`,
+        `execute_python_script("mace_md.py", ["--structure", "input/Mg.data"], use_gpu=True)`,
+        [/SYNTACTICAL]
 
-    Returns:
-        str: [RETURNS_BRIEF] JSON string with comprehensive execution results and monitoring data. [/RETURNS_BRIEF]
-             [RETURNS_DETAILED] A JSON-formatted string containing execution status, captured output streams, error messages, return code, and the complete command that was executed.
-             This provides full visibility into the script execution process and enables debugging and monitoring of automated workflows. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] "{"success": true, "stdout": "Processing complete", "stderr": "", "return_code": 0, "command": "python script.py --input data.json"}" [/RETURNS_EXAMPLES]
+        Args:
+            script_path: [ARGS_BRIEF] Path to the Python script file to execute. [/ARGS_BRIEF]
+                        [ARGS_DETAILED] Complete file path to the Python script that should be executed.
+                        The script must exist and be readable.
+                        The path can be relative to the current working directory or absolute.
+                        The script should be a valid Python file with appropriate shebang or run using the Python interpreter. [/ARGS_DETAILED]
+                        [ARGS_SYNTACTICAL] "Valid file path to Python script" [/ARGS_SYNTACTICAL]
+                        [ARGS_EXAMPLES] "scripts/analysis.py", "/home/user/simulations/run_sim.py", "data_processing.py" [/ARGS_EXAMPLES]
+            args: [ARGS_BRIEF] Optional list of command-line arguments for the script. [/ARGS_BRIEF]
+                 [ARGS_DETAILED] A list of strings representing command-line arguments to pass to the script.
+                 These arguments will be passed to the script in the order provided.
+                 Common arguments include input files, output paths, configuration parameters, and processing options.
+                 If None, the script will be executed without arguments. [/ARGS_DETAILED]
+                 [ARGS_SYNTACTICAL] ["arg1", "arg2", "arg3", ...] or None [/ARGS_SYNTACTICAL]
+                 [ARGS_EXAMPLES] ["--input", "data.json"], ["--verbose", "--output", "results.csv"], None [/ARGS_EXAMPLES]
+            timeout: [ARGS_BRIEF] Maximum execution time in seconds for local (use_gpu=False) runs. Defaults to 600. [/ARGS_BRIEF]
+                    [ARGS_DETAILED] The maximum time in seconds the script is allowed to run before being terminated.
+                    This prevents runaway processes and ensures resource management.
+                    Choose appropriate values based on expected script execution time.
+                    For computational simulations, longer timeouts may be necessary.
+                    Ignored when `use_gpu=True`. [/ARGS_DETAILED]
+                    [ARGS_SYNTACTICAL] positive integer representing seconds [/ARGS_SYNTACTICAL]
+                    [ARGS_EXAMPLES] 300 (5 minutes), 600 (10 minutes), 3600 (1 hour) [/ARGS_EXAMPLES]
+            working_dir: [ARGS_BRIEF] Optional working directory for local (use_gpu=False) script execution. [/ARGS_BRIEF]
+                        [ARGS_DETAILED] The directory from which the script should be executed.
+                        This affects relative path resolution and file I/O operations within the script.
+                        If None, the script's own directory will be used.
+                        This is useful when scripts expect to run from specific directories or access relative files.
+                        Ignored when `use_gpu=True`, where the task workspace root is always used instead. [/ARGS_DETAILED]
+                        [ARGS_SYNTACTICAL] Valid directory path or None [/ARGS_SYNTACTICAL]
+                        [ARGS_EXAMPLES] "/path/to/project", "data/analysis", None [/ARGS_EXAMPLES]
+            use_gpu: [ARGS_BRIEF] If True, runs the script on remote GPU compute instead of locally. Defaults to False. [/ARGS_BRIEF]
+                    [ARGS_DETAILED] When True, the entire task workspace is uploaded to remote compute with GPU access, the script is executed there, and all resulting files are synchronized back into the local workspace afterward (replacing it atomically). Use this only for scripts that require GPU acceleration, such as ASE calculations using a MACE calculator. For everything else — including analysis, plotting, and non-GPU simulations — leave this False; local execution is faster and cheaper. [/ARGS_DETAILED]
+                    [ARGS_SYNTACTICAL] true or false [/ARGS_SYNTACTICAL]
+                    [ARGS_EXAMPLES] True, False [/ARGS_EXAMPLES]
 
-    [RAISES] Exceptions:
-        FileNotFoundError: [ERROR_WHEN] When the specified script file doesn't exist [/ERROR_WHEN]
-                          [ERROR_DETAILS] Script path is invalid or file is not accessible [/ERROR_DETAILS]
-                          [ERROR_RECOVERY] Verify script path exists and is readable [/ERROR_RECOVERY]
-        TimeoutExpired: [ERROR_WHEN] When script execution exceeds the specified timeout [/ERROR_WHEN]
-                       [ERROR_DETAILS] Script terminated due to timeout limit [/ERROR_DETAILS]
-                       [ERROR_RECOVERY] Increase timeout value or optimize script performance [/ERROR_RECOVERY]
-        PermissionError: [ERROR_WHEN] When script file lacks execute permissions [/ERROR_WHEN]
-                        [ERROR_DETAILS] Insufficient permissions to execute the script [/ERROR_DETAILS]
-                        [ERROR_RECOVERY] Check file permissions and ensure script is executable [/ERROR_RECOVERY]
-    [/RAISES]
+        Returns:
+            str: [RETURNS_BRIEF] JSON string with comprehensive execution results and monitoring data. [/RETURNS_BRIEF]
+                 [RETURNS_DETAILED] A JSON-formatted string containing execution status, captured output streams, error messages, and return code. For local runs this also includes the exact command executed. For GPU runs, failures include remote stdout/stderr embedded in the error message.
+                 This provides full visibility into the script execution process and enables debugging and monitoring of automated workflows. [/RETURNS_DETAILED]
+                 [RETURNS_EXAMPLES] "{"success": true, "stdout": "Processing complete", "stderr": "", "return_code": 0, "command": "python script.py --input data.json"}", "{"success": true, "stdout": "GPU script ran successfully. Downloaded 4 workspace file(s).", "stderr": "", "return_code": 0}" [/RETURNS_EXAMPLES]
 
-    [LIMITATIONS] Known limitations:
-    - Cannot modify script execution environment beyond working directory
-    - Limited to Python scripts and available system Python installation
-    - No real-time output streaming during execution
-    - Cannot interact with scripts requiring user input
-    [/LIMITATIONS]
-    """
-    script = Path(script_path)
-    if not script.is_file():
-        return json.dumps(
-            {"success": False, "error": f"Script file not found: {script_path}"}
-        )
+        [RAISES] Exceptions:
+            FileNotFoundError: [ERROR_WHEN] When the specified script file doesn't exist [/ERROR_WHEN]
+                              [ERROR_DETAILS] Script path is invalid or file is not accessible [/ERROR_DETAILS]
+                              [ERROR_RECOVERY] Verify script path exists and is readable [/ERROR_RECOVERY]
+            TimeoutExpired: [ERROR_WHEN] When script execution exceeds the specified timeout (local runs only) [/ERROR_WHEN]
+                           [ERROR_DETAILS] Script terminated due to timeout limit [/ERROR_DETAILS]
+                           [ERROR_RECOVERY] Increase timeout value or optimize script performance [/ERROR_RECOVERY]
+            PermissionError: [ERROR_WHEN] When script file lacks execute permissions [/ERROR_WHEN]
+                            [ERROR_DETAILS] Insufficient permissions to execute the script [/ERROR_DETAILS]
+                            [ERROR_RECOVERY] Check file permissions and ensure script is executable [/ERROR_RECOVERY]
+        [/RAISES]
 
-    command = [sys.executable, str(script), *(str(arg) for arg in (args or []))]
+        [LIMITATIONS] Known limitations:
+        - Cannot modify script execution environment beyond working directory
+        - Limited to Python scripts and available system Python installation
+        - No real-time output streaming during execution
+        - Cannot interact with scripts requiring user input
+        - GPU runs (use_gpu=True) replace the entire local workspace with what comes back from remote compute; any local changes made to workspace files during the remote run that weren't reflected remotely could be lost
+        [/LIMITATIONS]
+        """
+        script = Path(script_path)
+        if not script.is_file():
+            return json.dumps(
+                {"success": False, "error": f"Script file not found: {script_path}"}
+            )
+
+        if use_gpu:
+            return _execute_python_script_gpu(Path(workspace), script, args or [])
+
+        command = [sys.executable, str(script), *(str(arg) for arg in (args or []))]
+        try:
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=working_dir or str(script.parent),
+                check=False,
+            )
+            return json.dumps(
+                {
+                    "success": process.returncode == 0,
+                    "stdout": process.stdout,
+                    "stderr": process.stderr,
+                    "return_code": process.returncode,
+                    "command": command,
+                },
+                indent=2,
+            )
+        except subprocess.TimeoutExpired:
+            return json.dumps(
+                {"success": False, "error": f"Script execution timed out after {timeout} seconds"}
+            )
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    return execute_python_script
+
+
+def _execute_python_script_gpu(workspace: Path, script: Path, args: list) -> str:
     try:
-        process = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=working_dir or str(script.parent),
-            check=False,
-        )
+        downloaded = run_python_in_modal(workspace, str(script.resolve()), args)
         return json.dumps(
             {
-                "success": process.returncode == 0,
-                "stdout": process.stdout,
-                "stderr": process.stderr,
-                "return_code": process.returncode,
-                "command": command,
+                "success": True,
+                "stdout": f"GPU script ran successfully. Downloaded {downloaded} workspace file(s).",
+                "stderr": "",
+                "return_code": 0,
             },
             indent=2,
-        )
-    except subprocess.TimeoutExpired:
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"Script execution timed out after {timeout} seconds",
-            }
         )
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})
@@ -390,6 +422,7 @@ def get_potential_metadata(file_path: str) -> str:
             "Na (Sodium), Si (Silicon), O (Oxygen), "
             "pair_style : hybrid/overlay buck/coul/long + kspace_style pppm}"
         ),
+        
     }
     POTENTIAL_PATHS = {
         "Si.sw": "/potentials/SW/Si.sw",
