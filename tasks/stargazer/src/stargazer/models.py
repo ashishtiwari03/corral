@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -25,7 +25,7 @@ M_JUPITER_KG = 1.89813e27
 
 
 class CandidatePlanet(BaseModel):
-    """Canonical agent-facing parameters for one candidate planet."""
+    """Canonical planet fields for normalized submissions and reference audits."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -53,12 +53,12 @@ class CandidatePlanet(BaseModel):
 
 
 class CandidateSubmission(BaseModel):
-    """Canonical JSON contract shared by diagnostics and final scoring."""
+    """Canonical candidate; omitted jitter is estimated by the action builder."""
 
     model_config = ConfigDict(extra="forbid")
 
     planets: list[CandidatePlanet]
-    noise_jitter_ms: float = 0.0
+    noise_jitter_ms: float | None = None
 
     def canonical_payload(self) -> dict[str, Any]:
         """Return JSON-compatible canonical fields, omitting compatibility defaults."""
@@ -109,11 +109,38 @@ class StargazerTask:
     observations: Observations
     instruments: tuple[InstrumentParams, ...]
     metadata: dict[str, Any]
+    config: dict[str, Any] = field(default_factory=dict)
 
     @property
     def max_planets(self) -> int:
         """Published submission limit for this task family."""
-        return 7 if self.source == "real" else 4
+        return 7
+
+    def public_observation(self) -> dict[str, Any]:
+        """The original observation envelope, with evaluator-only truth excluded."""
+        meta = {
+            "time_unit": "day",
+            "rv_unit": "m/s",
+            "instrument_labels": [instrument.label for instrument in self.instruments],
+            "star_mass_sun": self.star_mass_sun,
+            "los_axis": self.config.get("los_axis", "x"),
+            "integrator_preference": self.config.get("integrator_preference", "whfast"),
+            "engine": self.config.get("engine", "rebound"),
+        }
+        meta.update(
+            {
+                key: self.metadata[key]
+                for key in ("task_description", "hints", "reference")
+                if self.metadata.get(key)
+            }
+        )
+        return {
+            "times_days": self.observations.times_days,
+            "rvs_ms": self.observations.rvs_ms,
+            "sigmas_ms": self.observations.sigmas_ms,
+            "instruments": self.observations.instruments,
+            "meta": meta,
+        }
 
     def public_summary(self) -> dict[str, Any]:
         """Return metadata safe to show to an agent."""
@@ -254,7 +281,10 @@ def _planet_from_dict(payload: dict[str, Any]) -> PlanetParams:
 
 
 def _simulate_legacy_rebound_rv(
-    raw_config: dict[str, Any], planets: tuple[PlanetParams, ...], times: np.ndarray
+    raw_config: dict[str, Any],
+    planets: tuple[PlanetParams, ...],
+    times: np.ndarray,
+    t_ref_days: float = 0.0,
 ) -> np.ndarray:
     """Reproduce the clean signal in a released synthetic task."""
     simulation = rebound.Simulation()
@@ -263,14 +293,16 @@ def _simulate_legacy_rebound_rv(
     simulation.add(m=float(star["M_star_sun"]))
 
     for planet in planets:
-        sin_inclination = math.sin(planet.inc_rad)
-        if abs(sin_inclination) < 1e-3:
-            raise ValueError("Cannot recover a true mass for a face-on orbit")
-        true_mass_mjup = (
-            planet.m_true_mjup
-            if planet.m_true_mjup is not None
-            else planet.m_sin_i_mjup / sin_inclination
-        )
+        if planet.P_days <= 0 or not 0 <= planet.e < 1:
+            raise ValueError("Invalid period or eccentricity")
+        true_mass_mjup = planet.m_true_mjup
+        if true_mass_mjup is None:
+            sin_inclination = math.sin(planet.inc_rad)
+            if abs(sin_inclination) < 1e-3:
+                raise ValueError("Cannot recover a true mass for a face-on orbit")
+            true_mass_mjup = planet.m_sin_i_mjup / sin_inclination
+            if true_mass_mjup > 20.0:
+                raise ValueError("Derived true mass exceeds 20 Jupiter masses")
         mass_solar = true_mass_mjup * M_JUPITER_KG / M_SUN_KG
         simulation.add(
             m=mass_solar,
@@ -297,7 +329,7 @@ def _simulate_legacy_rebound_rv(
 
     rv = np.zeros(times.shape, dtype=float)
     for index, time_days in enumerate(times):
-        simulation.integrate(float(time_days) * DAY_SECONDS)
+        simulation.integrate((float(time_days) - t_ref_days) * DAY_SECONDS)
         host = simulation.particles[0]
         rv[index] = {"x": host.vx, "y": host.vy, "z": host.vz}[axis]
     return rv
@@ -311,12 +343,17 @@ def _normalize_rv_semantics(
 ) -> tuple[tuple[PlanetParams, ...], Observations, dict[str, Any]]:
     """Convert legacy REBOUND task records to Stargazer's RV-only semantics."""
     metadata = dict(raw.get("meta") or {})
-    if str(metadata.get("rv_semantics", "")).startswith("rv_only"):
+    if str(metadata.get("rv_semantics", "")).startswith("rv_only") or metadata.get(
+        "rv_only_compat_applied"
+    ):
         return planets, observations, metadata
 
     raw_config = raw["config"]
     times = np.asarray(observations.times_days, dtype=float)
-    old_clean = _simulate_legacy_rebound_rv(raw_config, planets, times)
+    try:
+        old_clean = _simulate_legacy_rebound_rv(raw_config, planets, times)
+    except Exception:
+        return planets, observations, metadata
     converted_planets = tuple(
         replace(
             planet,
@@ -425,4 +462,42 @@ def load_task(path: str | Path, source: str | None = None) -> StargazerTask:
         observations=observations,
         instruments=instruments,
         metadata=metadata,
+        config=raw_config,
     )
+
+
+def simulate_submission_rv(
+    task: StargazerTask, planets: tuple[PlanetParams, ...]
+) -> np.ndarray:
+    """Reproduce the original action builder's REBOUND model and analytic fallback.
+
+    This model estimates omitted jitter. The evaluator independently uses the
+    analytic RV-only model when computing its likelihood and matching score.
+    """
+    times = np.asarray(task.observations.times_days, dtype=float)
+    axis = task.config.get("los_axis", "x")
+    axis = axis if axis in {"x", "y", "z"} else "x"
+    shift = {"x": np.pi / 2, "y": np.pi, "z": 0.0}[axis]
+    oriented = tuple(
+        replace(
+            planet,
+            Omega_rad=(planet.Omega_rad + shift) % (2 * np.pi),
+            l_rad=(planet.l_rad + shift) % (2 * np.pi),
+        )
+        for planet in planets
+    )
+    try:
+        return _simulate_legacy_rebound_rv(
+            {
+                "star": {"M_star_sun": task.star_mass_sun},
+                "los_axis": axis,
+                "integrator_preference": task.config.get(
+                    "integrator_preference", "whfast"
+                ),
+            },
+            oriented,
+            times,
+            t_ref_days=float(times[0]),
+        )
+    except Exception:
+        return simulate_keplerian_rv(planets, times, task.star_mass_sun)

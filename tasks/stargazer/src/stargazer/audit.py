@@ -84,7 +84,9 @@ def _audit_record(task_file: Path, source: str) -> dict[str, Any]:
 
     score = make_stargazer_scorer(task)(final_answer)
     if score != result.score:
-        raise RuntimeError(f"Final scorer diverged from evaluator for {task.task_id}")
+        raise RuntimeError(
+            f"Candidate scorer diverged from evaluator for {task.task_id}"
+        )
     return {
         "task_id": task.task_id,
         "source": source,
@@ -95,7 +97,7 @@ def _audit_record(task_file: Path, source: str) -> dict[str, Any]:
 
 
 def audit_task_bank(data_root: str | Path = DEFAULT_DATA_ROOT) -> dict[str, Any]:
-    """Evaluate all bundled benchmark systems through the final scoring contract."""
+    """Evaluate all bundled reference systems through the live action/evaluator path."""
     root = Path(data_root)
     records = [
         _audit_record(task_file, "synthetic")

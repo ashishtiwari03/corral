@@ -3,448 +3,147 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
-from stargazer.models import semi_amplitude_ms
-from stargazer.score import evaluate_submission
-from stargazer.tools import (
-    create_analysis_session,
-    evaluate_candidate,
-    planet_from_fit,
-    python_repl,
-)
+from stargazer.tools import AnalysisTimeoutError, create_analysis_session, create_tools
 
 
 @pytest.fixture
 def analysis_session(simple_task):
-    observations = simple_task.observations
     session = create_analysis_session(
-        times_days=observations.times_days,
-        rvs_ms=observations.rvs_ms,
-        sigmas_ms=observations.sigmas_ms,
-        instruments=observations.instruments,
+        **vars(simple_task.observations),
         star_mass_sun=simple_task.star_mass_sun,
     )
     yield session
     session.close()
 
 
-def test_python_repl_persists_state(analysis_session):
-    first = python_repl.execute(
-        code="candidate = 3.5", analysis_session=analysis_session
-    )
-    second = python_repl.execute(
-        code="candidate + 2", analysis_session=analysis_session
-    )
-
-    assert "successfully" in first
-    assert float(second.strip()) == 5.5
-
-
-def test_python_namespaces_are_isolated_between_trials(simple_task):
-    observations = simple_task.observations
-    sessions = [
-        create_analysis_session(
-            times_days=observations.times_days,
-            rvs_ms=observations.rvs_ms,
-            sigmas_ms=observations.sigmas_ms,
-            instruments=observations.instruments,
-            star_mass_sun=simple_task.star_mass_sun,
-        )
-        for _ in range(2)
+def test_original_tool_schemas_are_preserved(protocol_reference):
+    actual = list(create_tools().values())
+    assert [tool.name for tool in actual] == ["PythonREPL", "submit_action"]
+    assert [tool.get_openai_tool_format() for tool in actual] == protocol_reference[
+        "tools"
     ]
-    try:
-        python_repl.execute(code="private_fit = 42", analysis_session=sessions[0])
-        isolated = python_repl.execute(code="private_fit", analysis_session=sessions[1])
-    finally:
-        for session in sessions:
-            session.close()
-
-    assert "NameError" in isolated
+    assert all(not tool.hidden_args for tool in actual)
 
 
-def test_python_repl_allows_single_underscore_variables(analysis_session):
-    result = python_repl.execute(
-        code="_candidate_period = 17.25\n_candidate_period",
-        analysis_session=analysis_session,
-    )
-
-    assert float(result.strip()) == 17.25
-
-
-def test_python_repl_supports_scipy_and_persistent_user_functions(analysis_session):
-    defined = python_repl.execute(
-        code=(
-            "from scipy.signal import lombscargle\n"
-            "def _center(values):\n"
-            "    return values - np.mean(values)"
-        ),
-        analysis_session=analysis_session,
-    )
-    result = python_repl.execute(
-        code="float(np.std(_center(rvs_ms)))", analysis_session=analysis_session
-    )
-
-    assert "successfully" in defined
-    assert float(result.strip()) > 0.0
-
-
-def test_analysis_checkpoint_restores_arrays_imports_and_function_globals(
-    analysis_session,
+def test_repl_and_checkpoints_match_original_reference(
+    analysis_session, protocol_reference
 ):
-    result = python_repl.execute(
-        code=(
-            "from scipy.signal import lombscargle\n"
-            "offset = 2\n"
-            "values = np.arange(3)\n"
-            "alias = values\n"
-            "rvs_ms[0] = 123\n"
-            "def advance():\n"
-            "    global offset\n"
-            "    offset += 1\n"
-            "    return offset\n"
-            "def make_shift(shift):\n"
-            "    return lambda value: value + shift + offset\n"
-            "shift = make_shift(3)\n"
-            "def report():\n"
-            "    print(offset)"
-        ),
-        analysis_session=analysis_session,
-    )
-    assert "successfully" in result
-    checkpoint = json.loads(json.dumps(analysis_session.snapshot()))
-    assert isinstance(checkpoint, str)
-    analysis_session.close()
-    analysis_session.restore(checkpoint)
+    for step in protocol_reference["repl"]:
+        assert analysis_session.execute(step["code"]) == step["output"], step["code"]
+        analysis_session.restore(analysis_session.snapshot())
+    assert analysis_session.protocol_acknowledged()
 
-    result = python_repl.execute(
-        code=(
-            "offset = 10\n"
-            "values[0] = 7\n"
-            "[advance(), offset, shift(1), alias.tolist(), "
-            "float(rvs_ms[0]), len(lombscargle(times_days, rvs_ms, np.array([0.1, 0.2])))]"
-        ),
-        analysis_session=analysis_session,
+
+def test_helper_clamps_and_converts_inside_repl(analysis_session):
+    result = analysis_session.execute(
+        "import json\nprint(json.dumps(stargazer_planet_from_fit(17.25, -4, e=2, inc_rad=-2, Omega_rad=8, M0_rad=7)))"
     )
-    assert json.loads(result) == [11, 11, 15, [7, 1, 2], 123.0, 2]
-    assert (
-        python_repl.execute(code="report()", analysis_session=analysis_session).strip()
-        == "11"
-    )
-    # A second checkpoint must retain functions' connection to the live globals.
-    analysis_session.restore(analysis_session.snapshot())
-    assert (
-        python_repl.execute(
-            code="offset = 20\nadvance()", analysis_session=analysis_session
-        ).strip()
-        == "21"
-    )
+    planet = json.loads(result)
+    assert planet["m_sin_i_mjup"] == 0.001
+    assert planet["e"] == 0.8
+    assert planet["inc_rad"] == 0
+    assert planet["Omega_rad"] == pytest.approx(8 % (2 * np.pi))
+    assert planet["l_rad"] == pytest.approx(15 % (2 * np.pi))
+
+
+def test_namespace_matches_upstream_public_surface(analysis_session):
+    assert analysis_session.execute("history").strip() == "[]"
+    for name in (
+        "benchmark_task",
+        "StargazerTask",
+        "instruments",
+        "scipy",
+        "optimize",
+        "signal",
+    ):
+        assert "NameError" in analysis_session.execute(name)
 
 
 def test_analysis_checkpoint_preserves_random_state(analysis_session):
-    python_repl.execute(
-        code="np.random.seed(123)\nrng = np.random.default_rng(456)",
-        analysis_session=analysis_session,
-    )
+    analysis_session.execute("np.random.seed(123)\nrng = np.random.default_rng(456)")
     checkpoint = analysis_session.snapshot()
-    code = "(np.random.random(3).tolist(), rng.random(3).tolist())"
-    expected = python_repl.execute(code=code, analysis_session=analysis_session)
-    analysis_session.close()
+    code = "print((np.random.random(3).tolist(), rng.random(3).tolist()))"
+    expected = analysis_session.execute(code)
     analysis_session.restore(checkpoint)
+    assert analysis_session.execute(code) == expected
 
-    assert python_repl.execute(code=code, analysis_session=analysis_session) == expected
 
-
-def test_analysis_checkpoint_preserves_shared_and_recursive_closures(analysis_session):
-    python_repl.execute(
-        code=(
-            "def counter():\n"
-            "    count = 0\n"
-            "    def advance():\n"
-            "        nonlocal count\n"
-            "        count += 1\n"
-            "        return count\n"
-            "    def read():\n"
-            "        return count\n"
-            "    return advance, read\n"
-            "advance, read = counter()\n"
-            "def factorial_factory():\n"
-            "    def factorial(n):\n"
-            "        return n * factorial(n - 1) if n else 1\n"
-            "    return factorial\n"
-            "factorial = factorial_factory()"
-        ),
-        analysis_session=analysis_session,
-    )
+def test_analysis_checkpoint_preserves_shared_recursive_closures(analysis_session):
+    analysis_session.execute("""def counter():
+    count = 0
+    def advance():
+        nonlocal count
+        count += 1
+        return count
+    def read():
+        return count
+    return advance, read
+advance, read = counter()
+def factorial_factory():
+    def factorial(n):
+        return n * factorial(n - 1) if n else 1
+    return factorial
+fact_callable = factorial_factory()""")
     analysis_session.restore(analysis_session.snapshot())
-
     assert (
-        python_repl.execute(
-            code="(advance(), read(), factorial(5))", analysis_session=analysis_session
-        ).strip()
+        analysis_session.execute("print((advance(), read(), fact_callable(5)))").strip()
         == "(1, 1, 120)"
     )
 
 
-def test_analysis_checkpoint_keeps_function_builtins_restricted(analysis_session):
-    python_repl.execute(
-        code="def prohibited():\n    import pathlib\ndef read_file():\n    open('secret')",
-        analysis_session=analysis_session,
+def test_function_builtins_stay_restricted_after_restore(analysis_session):
+    analysis_session.execute(
+        'def prohibited():\n    import pathlib\ndef read_file():\n    open("secret")'
     )
-    checkpoint = analysis_session.snapshot()
-    analysis_session.close()
-    analysis_session.restore(checkpoint)
-
-    assert "ImportError" in python_repl.execute(
-        code="prohibited()", analysis_session=analysis_session
-    )
-    assert "NameError" in python_repl.execute(
-        code="read_file()", analysis_session=analysis_session
-    )
-    assert "AttributeError" in python_repl.execute(
-        code="np._SafeModuleProxy__wrapped_module", analysis_session=analysis_session
-    )
-
-
-def test_analysis_checkpoint_retains_changes_before_execution_error(analysis_session):
-    result = python_repl.execute(
-        code="retained = 42\n1 / 0", analysis_session=analysis_session
-    )
-    assert "ZeroDivisionError" in result
     analysis_session.restore(analysis_session.snapshot())
-
-    assert (
-        python_repl.execute(code="retained", analysis_session=analysis_session).strip()
-        == "42"
-    )
-
-
-def test_python_repl_blocks_filesystem_imports(analysis_session):
-    result = python_repl.execute(
-        code="import pathlib", analysis_session=analysis_session
-    )
-
-    assert "ImportError" in result
-    assert "disabled" in result
-
-
-def test_python_repl_blocks_task_bank_reads(analysis_session):
-    data_root = Path(__file__).resolve().parents[1] / "data" / "synthetic"
-    bank_file = sorted(data_root.glob("*.json"))[0]
-    result = python_repl.execute(
-        code=f"import json\njson.codecs.open({str(bank_file)!r}).read()",
-        analysis_session=analysis_session,
-    )
-
-    assert "PermissionError" in result
-    assert "Filesystem access is unavailable" in result
-    assert "truth_planets" not in result
+    assert "ImportError" in analysis_session.execute("prohibited()")
+    assert "NameError" in analysis_session.execute("read_file()")
 
 
 @pytest.mark.parametrize(
     "payload",
     [
         "stargazer_planet_from_fit.__closure__[0].cell_contents",
-        "simulate_keplerian_rv.__globals__['Path']('tasks/stargazer/data')",
         "np.mean.__globals__",
+        'np.loadtxt("secret")',
     ],
 )
-def test_python_repl_blocks_reviewer_introspection_payloads(analysis_session, payload):
-    result = python_repl.execute(code=payload, analysis_session=analysis_session)
-
-    assert "UnsafeAnalysisCode" in result
-    assert "Dunder" in result
+def test_repl_blocks_introspection_and_io(analysis_session, payload):
+    assert "UnsafeAnalysisCode" in analysis_session.execute(payload)
 
 
-def test_python_repl_module_proxy_cannot_be_unwrapped(analysis_session):
-    result = python_repl.execute(
-        code="np._SafeModuleProxy__wrapped_module",
-        analysis_session=analysis_session,
+def test_repl_blocks_task_bank_reads(analysis_session):
+    bank_file = next(
+        (Path(__file__).resolve().parents[1] / "data/synthetic").glob("*.json")
+    )
+    result = analysis_session.execute(
+        f"import json\njson.codecs.open({str(bank_file)!r}).read()"
+    )
+    assert "PermissionError" in result
+    assert "Filesystem access is unavailable" in result
+    assert "truth_planets" not in result
+
+
+def test_repl_proxy_cannot_be_unwrapped(analysis_session):
+    assert "AttributeError" in analysis_session.execute(
+        "np._SafeModuleProxy__wrapped_module"
     )
 
-    assert "AttributeError" in result
-    assert "unavailable" in result
 
-
-def test_python_repl_does_not_expose_task_or_submission_history(analysis_session):
-    for name in ("benchmark_task", "history", "StargazerTask"):
-        result = python_repl.execute(code=name, analysis_session=analysis_session)
-        assert "NameError" in result
-
-
-def test_python_repl_timeout_resets_persistent_worker(simple_task):
-    observations = simple_task.observations
+def test_timeout_resets_worker(simple_task):
     session = create_analysis_session(
-        times_days=observations.times_days,
-        rvs_ms=observations.rvs_ms,
-        sigmas_ms=observations.sigmas_ms,
-        instruments=observations.instruments,
+        **vars(simple_task.observations),
         star_mass_sun=simple_task.star_mass_sun,
         execution_timeout_seconds=0.2,
     )
     try:
-        python_repl.execute(code="retained = 42", analysis_session=session)
-        timeout = python_repl.execute(
-            code="while True:\n    pass", analysis_session=session
-        )
+        session.execute("retained = 42")
+        with pytest.raises(AnalysisTimeoutError):
+            session.execute("while True:\n    retained = 42")
         assert session.snapshot() is None
-        after_reset = python_repl.execute(code="retained", analysis_session=session)
+        assert not session.protocol_acknowledged()
+        assert "NameError" in session.execute("retained")
     finally:
         session.close()
-
-    assert "AnalysisTimeoutError" in timeout
-    assert "session was reset" in timeout
-    assert "NameError" in after_reset
-
-
-def test_planet_from_fit_converts_semi_amplitude(simple_task):
-    truth = simple_task.truth_planets[0]
-    amplitude = semi_amplitude_ms(
-        truth.m_sin_i_mjup,
-        truth.P_days,
-        truth.e,
-        simple_task.star_mass_sun,
-    )
-
-    converted = json.loads(
-        planet_from_fit.execute(
-            period_days=truth.P_days,
-            semi_amplitude_ms=amplitude,
-            eccentricity=truth.e,
-            omega_rad=truth.omega_rad,
-            mean_anomaly_rad=truth.l_rad - truth.omega_rad,
-            star_mass_sun=simple_task.star_mass_sun,
-        )
-    )
-
-    assert converted["m_sin_i_mjup"] == pytest.approx(truth.m_sin_i_mjup)
-    assert converted["l_rad"] == pytest.approx(truth.l_rad)
-
-
-def test_hidden_tool_arguments_are_not_exposed():
-    repl_schema = python_repl.params_json_schema
-    conversion_schema = planet_from_fit.params_json_schema
-    evaluate_schema = evaluate_candidate.params_json_schema
-
-    assert "analysis_session" not in repl_schema["properties"]
-    assert "star_mass_sun" not in conversion_schema["properties"]
-    assert "benchmark_task" not in evaluate_schema["properties"]
-    assert "evaluation_session" not in evaluate_schema["properties"]
-    assert "notes" not in evaluate_schema["properties"]
-
-
-def test_evaluate_candidate_returns_redacted_criterion_feedback(
-    simple_task, exact_submission
-):
-    session = {"evaluations": [], "max_evaluations": 1, "locked": False}
-    planet = {
-        key: exact_submission["planets"][0][key]
-        for key in ("P_days", "m_sin_i_mjup", "e", "omega_rad", "l_rad")
-    }
-
-    raw = evaluate_candidate.execute(
-        planets=[planet],
-        noise_jitter_ms=0.0,
-        benchmark_task=simple_task,
-        evaluation_session=session,
-    )
-    feedback = json.loads(raw)
-
-    assert feedback["accepted"]
-    assert feedback["success"]
-    assert feedback["criteria"]["planet_count"]["passed"]
-    assert "truth" not in raw.lower()
-    assert "matched_pairs" not in raw
-    assert "count_difference" not in raw
-    assert len(session["evaluations"]) == 1
-
-    locked = json.loads(
-        evaluate_candidate.execute(
-            planets=[planet],
-            benchmark_task=simple_task,
-            evaluation_session=session,
-        )
-    )
-    assert not locked["accepted"]
-    assert "locked" in locked["error"]
-    assert locked["remaining_evaluations"] == 0
-
-
-def test_invalid_candidate_does_not_consume_evaluation(simple_task):
-    session = {"evaluations": [], "max_evaluations": 2, "locked": False}
-
-    feedback = json.loads(
-        evaluate_candidate.execute(
-            planets=[
-                {
-                    "P_days": -1,
-                    "m_sin_i_mjup": 0.2,
-                    "e": 0.0,
-                    "omega_rad": 0.0,
-                    "l_rad": 0.0,
-                }
-            ],
-            benchmark_task=simple_task,
-            evaluation_session=session,
-        )
-    )
-
-    assert not feedback["accepted"]
-    assert feedback["remaining_evaluations"] == 2
-    assert session["evaluations"] == []
-
-
-def test_evaluate_candidate_arguments_are_final_answer_json(
-    simple_task, exact_submission
-):
-    session = {"evaluations": [], "max_evaluations": 2, "locked": False}
-    planets = [
-        {
-            key: planet[key]
-            for key in ("P_days", "m_sin_i_mjup", "e", "omega_rad", "l_rad")
-        }
-        for planet in exact_submission["planets"]
-    ]
-    feedback = json.loads(
-        evaluate_candidate.execute(
-            planets=planets,
-            noise_jitter_ms=exact_submission["noise_jitter_ms"],
-            benchmark_task=simple_task,
-            evaluation_session=session,
-        )
-    )
-    final_answer = {
-        "planets": planets,
-        "noise_jitter_ms": exact_submission["noise_jitter_ms"],
-    }
-
-    result = evaluate_submission(simple_task, final_answer)
-
-    assert feedback["success"] == result.success
-    assert feedback["criteria"] == result.agent_feedback()["criteria"]
-    assert session["evaluations"][0]["candidate"] == final_answer
-
-
-def test_valid_failures_consume_exact_evaluation_budget(simple_task):
-    session = {"evaluations": [], "max_evaluations": 2, "locked": False}
-
-    for expected_remaining in (1, 0):
-        feedback = json.loads(
-            evaluate_candidate.execute(
-                planets=[],
-                benchmark_task=simple_task,
-                evaluation_session=session,
-            )
-        )
-        assert feedback["accepted"]
-        assert not feedback["success"]
-        assert feedback["remaining_evaluations"] == expected_remaining
-
-    exhausted = json.loads(
-        evaluate_candidate.execute(
-            planets=[],
-            benchmark_task=simple_task,
-            evaluation_session=session,
-        )
-    )
-    assert not exhausted["accepted"]
-    assert exhausted["remaining_evaluations"] == 0

@@ -5,17 +5,19 @@ from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
+from stargazer.audit import DEFAULT_DATA_ROOT, reference_submission
 from stargazer.models import (
     CandidateSubmission,
     Observations,
     PlanetParams,
+    load_task,
     simulate_keplerian_rv,
 )
 from stargazer.score import (
-    SubmissionError,
     evaluate_submission,
     make_stargazer_scorer,
     normalize_submission,
+    submit_candidate,
 )
 
 
@@ -109,7 +111,7 @@ def test_semi_amplitude_alias_converts_to_native_mass(simple_task, exact_submiss
                 "semi_amplitude_ms": amplitude,
                 "eccentricity": planet["e"],
                 "omega_rad": planet["omega_rad"],
-                "mean_longitude_rad": planet["l_rad"],
+                "l_rad": planet["l_rad"],
             }
         ]
     }
@@ -129,22 +131,17 @@ def test_canonical_json_and_shared_model_normalize_identically(
     from_json = normalize_submission(json.dumps(exact_submission), simple_task)
     from_model = normalize_submission(model, simple_task)
 
-    assert from_json == from_model == model
+    assert from_json == from_model
+    assert from_json.noise_jitter_ms == 0.1
+    assert from_json.planets == model.planets
 
 
-def test_legacy_nested_noise_is_accepted_as_compatibility_input(
-    simple_task, exact_submission
-):
-    legacy = {
-        "planets": exact_submission["planets"],
-        "noise": {"sigma_jitter_ms": 0.25},
-    }
-
-    normalized = normalize_submission(legacy, simple_task)
-
-    assert normalized.noise_jitter_ms == 0.25
-    assert "noise" not in normalized.canonical_payload()
-    assert normalized.canonical_payload()["noise_jitter_ms"] == 0.25
+def test_omitted_jitter_uses_upstream_action_residuals(simple_task, exact_submission):
+    payload = {"planets": exact_submission["planets"]}
+    result = normalize_submission(payload, simple_task)
+    # Captured from the original action builder with the test_single dataset.
+    assert result.noise_jitter_ms == pytest.approx(6.461971104042583)
+    assert CandidateSubmission.model_validate(payload).noise_jitter_ms is None
 
 
 def test_invalid_submission_scores_zero(simple_task):
@@ -154,17 +151,48 @@ def test_invalid_submission_scores_zero(simple_task):
     assert scorer('{"planets": [{"P_days": 1, "e": 1.2}]}') == 0.0
 
 
-def test_out_of_range_eccentricity_is_rejected(simple_task):
-    with pytest.raises(SubmissionError, match="between 0 and 0.8"):
-        normalize_submission(
-            {
-                "planets": [
-                    {
-                        "P_days": 10,
-                        "m_sin_i_mjup": 1,
-                        "e": 0.9,
-                    }
-                ]
-            },
-            simple_task,
-        )
+def test_eccentricity_and_mass_clamps_match_upstream(simple_task):
+    normalized = normalize_submission(
+        {"planets": [{"P_days": 10, "m_sin_i_mjup": 50, "e": 0.9}]}, simple_task
+    )
+    assert normalized.planets[0].e == 0.8
+    assert normalized.planets[0].m_sin_i_mjup == 30.0
+
+
+def test_seven_planet_runner_limit_truncates_extra_candidates(simple_task):
+    planet = {"P_days": 10, "m_sin_i_mjup": 0.1, "e": 0}
+    normalized = normalize_submission({"planets": [planet] * 8}, simple_task)
+    assert len(normalized.planets) == simple_task.max_planets == 7
+
+
+def test_task_hint_overrides_are_used(simple_task, exact_submission):
+    task = replace(
+        simple_task,
+        metadata={
+            **simple_task.metadata,
+            "hints": {"target_match_score": 1.1, "max_rms_ms": 0.01},
+        },
+    )
+    result = evaluate_submission(task, exact_submission)
+    assert result.maximum_rms_ms == 0.01
+    assert result.ok_rms
+    assert not result.ok_match
+
+
+@pytest.mark.parametrize("kind", ["reference", "omitted_jitter"])
+def test_all_twenty_tasks_match_original_feedback(
+    kind, protocol_reference, assert_protocol_equal
+):
+    for expected in protocol_reference["records"]:
+        if expected["kind"] != kind:
+            continue
+        path = DEFAULT_DATA_ROOT / "synthetic" / f"{expected['task_id']}.json"
+        raw = json.loads(path.read_text())
+        task = load_task(path)
+        payload = reference_submission(task, raw).canonical_payload()
+        if kind == "omitted_jitter":
+            payload.pop("noise_jitter_ms", None)
+        session = {"steps": 0, "max_submissions": 10, "history": []}
+        feedback = json.loads(submit_candidate(task, payload, session))
+        assert_protocol_equal(feedback, expected["feedback"])
+        assert_protocol_equal(session["history"][-1]["metrics"], expected["metrics"])

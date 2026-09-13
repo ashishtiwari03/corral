@@ -45,6 +45,8 @@ def _analysis_step(code: str, public_data: str, checkpoint: str | None) -> str:
                 base64.b64decode(checkpoint, validate=True)
             )
             np.random.set_state(random_state)  # noqa: NPY002
+        if json.loads(public_data).get("history") is not None:
+            namespace["history"] = json.loads(public_data)["history"]
         try:
             output = _execute_persistent(code, namespace)
         except BaseException:
@@ -53,6 +55,7 @@ def _analysis_step(code: str, public_data: str, checkpoint: str | None) -> str:
             {
                 "output": output[:_MAX_OUTPUT_CHARS],
                 "checkpoint": _snapshot_namespace(namespace),
+                "protocol_ack": bool(namespace.get("_protocol_guide_ack", False)),
             }
         )
     finally:
@@ -95,14 +98,16 @@ def execute_analysis(
         return {
             "output": f"AnalysisTimeoutError: analysis worker exceeded {timeout:g} seconds including startup; the persistent session was reset",
             "checkpoint": None,
+            "protocol_ack": False,
         }
     finally:
         timer.cancel()
     if (
         not isinstance(result, dict)
-        or set(result) != {"output", "checkpoint"}
+        or set(result) != {"output", "checkpoint", "protocol_ack"}
         or not isinstance(result["output"], str)
         or not isinstance(result["checkpoint"], str)
+        or not isinstance(result["protocol_ack"], bool)
     ):
         raise RuntimeError("Invalid Docker analysis result")
     return result

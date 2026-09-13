@@ -25,7 +25,15 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
     hidden = {
         "benchmark_task": task.task_id,
         "analysis_session": "untrusted-opaque-checkpoint",
-        "evaluation_session": {"evaluations": [], "locked": False},
+        "submission_session": {
+            "history": [],
+            "steps": 0,
+            "done": False,
+            "max_submissions": 5,
+            "protocol_ack": False,
+            "force_submit": False,
+        },
+        "analysis_history_revision": 0,
     }
     state = SimpleNamespace(
         environment=SimpleNamespace(values={"hidden_arguments": hidden})
@@ -43,7 +51,11 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
         requests.append(arguments)
         return {
             "content": json.dumps(
-                {"output": "42", "checkpoint": "new-opaque-checkpoint"}
+                {
+                    "output": "42",
+                    "checkpoint": "new-opaque-checkpoint",
+                    "protocol_ack": True,
+                }
             )
         }
 
@@ -52,12 +64,12 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
     result = permissions.execute_tool(
         environment,
         state,
-        environment.tools["python_repl"],
-        {"code": "6 * 7", "analysis_session": hidden["analysis_session"]},
+        environment.tools["PythonREPL"],
+        {"input_code": "print(6 * 7)"},
     )
     assert requests == [
         {
-            "code": "6 * 7",
+            "code": "print(6 * 7)",
             "checkpoint": hidden["analysis_session"],
             "public_data": json.loads(
                 json.dumps(
@@ -73,6 +85,7 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
     assert result.environment["hidden_arguments"] == {
         **hidden,
         "analysis_session": "new-opaque-checkpoint",
+        "submission_session": {**hidden["submission_session"], "protocol_ack": True},
     }
     assert hidden["analysis_session"] == "untrusted-opaque-checkpoint"
 
@@ -100,14 +113,14 @@ def test_docker_repl_persists_functions_arrays_and_blocks_source_reads(
         "star_mass_sun": simple_task.star_mass_sun,
     }
     first = execute_analysis(
-        code="values = np.arange(3.0)\ndef shifted():\n    return values + 2\nshifted().tolist()",
+        code="values = np.arange(3.0)\ndef shifted():\n    return values + 2\nprint(shifted().tolist())",
         public_data=data,
         checkpoint=None,
         workspace=docker_workspace,
     )
     assert json.loads(first["output"]) == [2.0, 3.0, 4.0]
     restored = execute_analysis(
-        code="values[0] = 40.0\nshifted().tolist()",
+        code="values[0] = 40.0\nprint(shifted().tolist())",
         public_data=data,
         checkpoint=first["checkpoint"],
         workspace=docker_workspace,
@@ -137,3 +150,28 @@ def test_docker_checkpoint_decoding_is_unprivileged_and_has_no_credentials(
         execute_analysis(
             code="1", public_data={}, checkpoint=checkpoint, workspace=docker_workspace
         )
+
+
+def test_docker_protocol_and_history_updates_survive_checkpoint(
+    docker_workspace, simple_task
+):
+    data = {
+        **asdict(simple_task.observations),
+        "star_mass_sun": simple_task.star_mass_sun,
+    }
+    first = execute_analysis(
+        code="print(STARGAZER_SUBMISSION_GUIDE)\n_protocol_guide_ack = True\nprint(_protocol_guide_ack)",
+        public_data=data,
+        checkpoint=None,
+        workspace=docker_workspace,
+    )
+    assert first["protocol_ack"] is True
+    history = [{"step": 1, "reward": -1, "done": False, "success": False}]
+    second = execute_analysis(
+        code="import json\nprint(json.dumps(history))",
+        public_data={**data, "history": history},
+        checkpoint=first["checkpoint"],
+        workspace=docker_workspace,
+    )
+    assert second["protocol_ack"] is True
+    assert json.loads(second["output"]) == history

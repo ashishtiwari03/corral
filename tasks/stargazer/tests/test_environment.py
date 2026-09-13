@@ -15,7 +15,7 @@ from stargazer.env import (
     create_environments,
 )
 from stargazer.models import load_task
-from stargazer.score import make_stargazer_scorer
+from stargazer.score import make_stargazer_scorer, score_execution
 from stargazer.tools import create_tools
 
 from corral.agents.session import AgentSession
@@ -36,10 +36,11 @@ def environment(simple_task):
     task = TaskDefinition(
         name="Stargazer test",
         description="Infer the planetary system.",
-        tools=["python_repl", "planet_from_fit", "evaluate_candidate"],
+        tools=["PythonREPL", "submit_action"],
         scoring_fn=make_stargazer_scorer(simple_task),
+        state_scoring_fn=score_execution,
         submission_format=SUBMISSION_FORMAT,
-        scoring_inputs={"benchmark_task": simple_task, "max_evaluations": 2},
+        scoring_inputs={"benchmark_task": simple_task, "max_submissions": 2},
         prompt_fn=_task_prompt,
         setup_fn=_configure_trial,
         resolve_answer=False,
@@ -99,8 +100,8 @@ async def _execute(session, name, **arguments):
     return result.result
 
 
-def _evaluation_state(state):
-    return state.environment.values["hidden_arguments"]["evaluation_session"]
+def _submission_state(state):
+    return state.environment.values["hidden_arguments"]["submission_session"]
 
 
 def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
@@ -121,7 +122,7 @@ def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
         1: {5: 4, 6: 3, 7: 3},
         2: {8: 4, 9: 3, 10: 3},
     }
-    expected_evaluation_budgets = {1: {4}, 2: {9}}
+    expected_evaluation_budgets = {1: {5, 10}, 2: {10}}
     for level, environments in levels.items():
         source_counts: dict[str, int] = {}
         difficulty_counts: dict[int, int] = {}
@@ -134,7 +135,7 @@ def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
         assert source_counts == expected_source_counts[level]
         assert difficulty_counts == expected_difficulty_counts[level]
         assert {
-            environment.current_task.scoring_inputs["max_evaluations"]
+            environment.current_task.scoring_inputs["max_submissions"]
             for environment in environments.values()
         } == expected_evaluation_budgets[level]
 
@@ -185,196 +186,201 @@ def test_selected_rv_only_records_keep_observations_and_truth(tmp_path):
             assert environments[task_id].current_task.scoring_fn(answer) == 1.0
 
 
+async def _ack(session):
+    return await _execute(
+        session,
+        "PythonREPL",
+        input_code="print(STARGAZER_SUBMISSION_GUIDE)\n_protocol_guide_ack = True\nprint(_protocol_guide_ack)",
+    )
+
+
 @pytest.mark.anyio
-async def test_released_task_loads_into_isolated_corral_environment(tmp_path):
-    selector = tmp_path / "selector.json"
-    selector.write_text(
-        json.dumps(
-            [
-                {
-                    "source": "synthetic",
-                    "difficulty_min": 5,
-                    "difficulty_max": 5,
-                    "task_ids": ["seed15_diff5"],
-                    "max_evaluations": 2,
-                }
-            ]
-        )
-    )
-    environments = create_environments(
-        level=1, selector_path=selector, work_dir=tmp_path / "work"
-    )
-
-    assert list(environments) == ["seed15_diff5"]
-    environment = environments["seed15_diff5"]
-    assert set(environment.tools) == {
-        "planet_from_fit",
-        "python_repl",
-        "evaluate_candidate",
-    }
-
-    benchmark_task = environment.current_task.scoring_inputs["benchmark_task"]
-    truth_period = str(benchmark_task.truth_planets[0].P_days)
+async def test_released_environment_uses_original_workflow_and_completion(tmp_path):
+    environment = create_environments(work_dir=tmp_path)["seed15_diff5"]
+    task = environment.current_task.scoring_inputs["benchmark_task"]
+    assert set(environment.tools) == {"PythonREPL", "submit_action"}
     async with SQLiteCommitStore(tmp_path / "released.sqlite3", "released") as store:
-        session = await _start_session(environment.for_task(store.execution_id), store)
+        session = await _start_session(environment.for_task("released"), store)
         state = await store.materialize("main")
         prompt = environment.get_task_prompt(state)
-        assert truth_period not in prompt
-        assert "times_days" in prompt
-        assert '"noise_jitter_ms"' in prompt
-        assert "Only the final Corral answer is scored" in prompt
-        assert "Lomb" not in prompt
-        hidden = state.environment.values["hidden_arguments"]
-        assert hidden["benchmark_task"] == benchmark_task.task_id
-        assert hidden["analysis_session"] is None
+        assert "Lomb-Scargle" in prompt
+        assert "MANDATORY MODEL GATING" in prompt
+        assert str(task.truth_planets[0].P_days) not in prompt
         assert "truth_planets" not in state.model_dump_json()
-
         raw = json.loads(
-            (DEFAULT_DATA_ROOT / "synthetic" / "seed15_diff5.json").read_text(
-                encoding="utf-8"
+            (DEFAULT_DATA_ROOT / "synthetic/seed15_diff5.json").read_text()
+        )
+        payload = reference_submission(task, raw).canonical_payload()
+        assert "protocol guide not acknowledged" in await _execute(
+            session, "submit_action", **payload
+        )
+        await _ack(session)
+        feedback = json.loads(await _execute(session, "submit_action", **payload))
+        assert feedback["success"]
+        assert feedback["done"]
+        submitted = await store.materialize("main")
+        assert submitted.submission is None  # Corral's extra closing step remains.
+        await _execute(session, "submit_answer", answer="Completed.")
+        assert (
+            TaskScorer(environment.current_task)
+            .evaluate(await store.materialize("main"))
+            .score
+            == 1
+        )
+
+
+@pytest.mark.anyio
+async def test_live_feedback_equals_original_submit_action(
+    tmp_path, environment, protocol_reference, assert_protocol_equal
+):
+    async with SQLiteCommitStore(tmp_path / "feedback.sqlite3", "feedback") as store:
+        session = await _start_session(environment, store)
+        await _ack(session)
+        for step in protocol_reference["submissions"]:
+            actual = await _execute(session, "submit_action", **step["payload"])
+            if step["output"].startswith("{"):
+                assert_protocol_equal(json.loads(actual), json.loads(step["output"]))
+            else:
+                assert actual == step["output"]
+        feedback = json.loads(actual)
+        assert feedback["comparison"]["matched_pairs"][0]["components"]
+        assert "unmatched_truth" in feedback["matching"]["assignment"]
+        assert "count" not in feedback["components"]
+        assert _submission_state(await store.materialize("main"))["steps"] == 2
+
+
+@pytest.mark.anyio
+async def test_forced_submission_and_history_survive_restore(tmp_path, environment):
+    database = tmp_path / "protocol.sqlite3"
+    async with SQLiteCommitStore(database, "protocol") as store:
+        session = await _start_session(environment, store)
+        await _ack(session)
+        output = await _execute(
+            session,
+            "PythonREPL",
+            input_code='print("Gate decision: Kepler=YES; Best_RMS_over_med_sigma=1.09")',
+        )
+        assert "1.09" in output
+    async with SQLiteCommitStore(database, "protocol") as store:
+        session = _resume_session(environment, await store.materialize("main"), store)
+        assert "Policy gate active" in await _execute(
+            session, "PythonREPL", input_code="print(42)"
+        )
+        rejected = await _execute(session, "submit_action", planets=[{"P_days": -1}])
+        assert "rejected" in rejected
+        state = _submission_state(await store.materialize("main"))
+        assert state["steps"] == 0
+        assert len(state["history"]) == 1
+        assert not state["force_submit"]
+        history = await _execute(
+            session, "PythonREPL", input_code="import json\nprint(json.dumps(history))"
+        )
+        assert json.loads(history) == state["history"]
+        await _execute(session, "submit_action", planets=[])
+        history = json.loads(
+            await _execute(
+                session,
+                "PythonREPL",
+                input_code='import json\nprint(json.dumps(history[-1]["metrics"]["components"]))',
             )
         )
-        answer = reference_submission(benchmark_task, raw).model_dump_json()
-        await _execute(session, "submit_answer", answer=answer)
-        submitted = await store.materialize("main")
-        assert environment.get_task_output(submitted).output["answer"] == answer
-        assert TaskScorer(environment.current_task).evaluate(submitted).score == 1.0
+        assert "count" in history  # Upstream history is not the redacted response.
 
 
 @pytest.mark.anyio
-async def test_same_task_trials_keep_independent_evaluation_state(
+async def test_done_budget_and_success_are_isolated_across_forks(
     tmp_path, environment, exact_submission
 ):
-    async with (
-        SQLiteCommitStore(tmp_path / "trials.sqlite3", "first") as first_store,
-        SQLiteCommitStore(tmp_path / "trials.sqlite3", "second") as second_store,
-    ):
-        first = await _start_session(environment.for_task("first"), first_store)
-        second = await _start_session(environment.for_task("second"), second_store)
-        initial = await first_store.materialize("main")
-        first_feedback = json.loads(
-            await _execute(first, "evaluate_candidate", **exact_submission)
-        )
-        assert first_feedback["success"]
-        assert not _evaluation_state(initial)["evaluations"]
-        assert not _evaluation_state(await second_store.materialize("main"))[
-            "evaluations"
-        ]
-        second_feedback = json.loads(
-            await _execute(second, "evaluate_candidate", **exact_submission)
-        )
-        assert second_feedback["accepted"]
-        assert second_feedback["evaluation_number"] == 1
-
-
-@pytest.mark.anyio
-async def test_evaluation_budget_and_success_lock_survive_fork_and_restore(
-    tmp_path, environment, exact_submission
-):
-    database = tmp_path / "evaluations.sqlite3"
-    async with SQLiteCommitStore(database, "evaluations") as store:
+    database = tmp_path / "fork.sqlite3"
+    async with SQLiteCommitStore(database, "fork") as store:
         session = await _start_session(environment, store)
-        invalid = [{**exact_submission["planets"][0], "P_days": -1.0}]
-        rejected = json.loads(
-            await _execute(session, "evaluate_candidate", planets=invalid)
-        )
-        assert not rejected["accepted"]
-        assert rejected["remaining_evaluations"] == 2
-        assert not _evaluation_state(await store.materialize("main"))["evaluations"]
-
-        feedback = json.loads(await _execute(session, "evaluate_candidate", planets=[]))
-        assert feedback["accepted"]
-        assert not feedback["success"]
-        assert feedback["remaining_evaluations"] == 1
+        await _ack(session)
+        await _execute(session, "submit_action", planets=[])
         branch = await session.fork_branch(branch_id="alternative")
         passed = json.loads(
-            await _execute(session, "evaluate_candidate", **exact_submission)
+            await _execute(session, "submit_action", **exact_submission)
         )
+        failed = json.loads(await _execute(branch, "submit_action", planets=[]))
         assert passed["success"]
-
-        alternate = json.loads(await _execute(branch, "evaluate_candidate", planets=[]))
-        assert alternate["accepted"]
-        assert not alternate["success"]
-        exhausted = json.loads(
-            await _execute(branch, "evaluate_candidate", **exact_submission)
+        assert passed["done"]
+        assert not failed["success"]
+        assert failed["done"]
+        for target in (session, branch):
+            assert "Stargazer is done" in await _execute(
+                target, "PythonREPL", input_code="print(42)"
+            )
+            assert "Stargazer is done" in await _execute(
+                target, "submit_action", **exact_submission
+            )
+        await _execute(branch, "submit_answer", answer=json.dumps(exact_submission))
+        assert (
+            TaskScorer(environment.current_task)
+            .evaluate(await store.materialize("alternative"))
+            .score
+            == 0
         )
-        assert not exhausted["accepted"]
-        assert "exhausted" in exhausted["error"]
-        committed = await store.materialize("main")
-        assert _evaluation_state(committed)["locked"]
-        assert not _evaluation_state(await store.materialize("alternative"))["locked"]
-
-    async with SQLiteCommitStore(database, "evaluations") as restored_store:
-        checkpoint = await restored_store.materialize("main")
-        assert checkpoint == committed
-        restored = _resume_session(
-            environment.for_task("evaluations"), checkpoint, restored_store
+    async with SQLiteCommitStore(database, "fork") as store:
+        restored = _resume_session(environment, await store.materialize("main"), store)
+        await _execute(restored, "submit_answer", answer="Not a candidate JSON.")
+        assert (
+            TaskScorer(environment.current_task)
+            .evaluate(await store.materialize("main"))
+            .score
+            == 1
         )
-        locked = json.loads(
-            await _execute(restored, "evaluate_candidate", **exact_submission)
-        )
-        assert not locked["accepted"]
-        assert "locked" in locked["error"]
-        assert locked["remaining_evaluations"] == 0
-        assert _evaluation_state(
-            await restored_store.materialize("main")
-        ) == _evaluation_state(checkpoint)
 
 
 @pytest.mark.anyio
-async def test_python_state_restores_functions_arrays_and_isolated_branches(
+async def test_final_answer_cannot_bypass_stargazer_submissions(
+    tmp_path, environment, exact_submission
+):
+    async with SQLiteCommitStore(tmp_path / "bypass.sqlite3", "bypass") as store:
+        session = await _start_session(environment, store)
+        await _execute(session, "submit_answer", answer=json.dumps(exact_submission))
+        assert (
+            TaskScorer(environment.current_task)
+            .evaluate(await store.materialize("main"))
+            .score
+            == 0
+        )
+
+
+@pytest.mark.anyio
+async def test_python_state_and_protocol_are_isolated_between_trials_and_forks(
     tmp_path, environment
 ):
     database = tmp_path / "analysis.sqlite3"
-    async with SQLiteCommitStore(database, "analysis") as store:
-        session = await _start_session(environment, store)
-        initialized = await _execute(
+    async with (
+        SQLiteCommitStore(database, "analysis") as store,
+        SQLiteCommitStore(database, "other") as other_store,
+    ):
+        session = await _start_session(environment.for_task("analysis"), store)
+        other = await _start_session(environment.for_task("other"), other_store)
+        await _ack(session)
+        await _execute(
             session,
-            "python_repl",
-            code="values = np.arange(3.0)\noffset = 2.0\ndef shifted():\n    return values + offset",
-        )
-        assert "successfully" in initialized
-        committed = await store.materialize("main")
-        assert isinstance(
-            committed.environment.values["hidden_arguments"]["analysis_session"], str
+            "PythonREPL",
+            input_code="values = np.arange(3.0)\ndef shifted():\n    return values + 2",
         )
         branch = await session.fork_branch(branch_id="alternative")
-        mutated = await _execute(
-            branch,
-            "python_repl",
-            code="values[0] = 40.0\noffset = 3.0\nshifted().tolist()",
+        result = await _execute(
+            branch, "PythonREPL", input_code="values[0] = 40\nprint(shifted().tolist())"
         )
-        assert json.loads(mutated) == [43.0, 4.0, 5.0]
-        assert (await store.materialize("main")).environment == committed.environment
-
-    async with SQLiteCommitStore(database, "analysis") as restored_store:
-        checkpoint = await restored_store.materialize("main")
-        restored = _resume_session(
-            environment.for_task("analysis"), checkpoint, restored_store
+        assert json.loads(result) == [42, 3, 4]
+        assert "NameError" in await _execute(other, "PythonREPL", input_code="values")
+        assert "protocol guide not acknowledged" in await _execute(
+            other, "submit_action", planets=[]
         )
-        result = await _execute(restored, "python_repl", code="shifted().tolist()")
-        assert json.loads(result) == [2.0, 3.0, 4.0]
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("submit_correct_answer", [True, False])
-async def test_only_the_final_submission_is_scored(
-    tmp_path, environment, exact_submission, submit_correct_answer
-):
-    async with SQLiteCommitStore(tmp_path / "scoring.sqlite3", "scoring") as store:
-        session = await _start_session(environment, store)
-        feedback = json.loads(
-            await _execute(session, "evaluate_candidate", **exact_submission)
+    async with SQLiteCommitStore(database, "analysis") as store:
+        session = _resume_session(
+            environment.for_task("analysis"), await store.materialize("main"), store
         )
-        assert feedback["success"]
-        diagnostic_state = await store.materialize("main")
-        assert diagnostic_state.submission is None
-        assert environment.get_task_output(diagnostic_state) is None
-        scorer = TaskScorer(environment.current_task)
-        with pytest.raises(ValueError, match="completed"):
-            scorer.evaluate(diagnostic_state)
-
-        answer = json.dumps(exact_submission) if submit_correct_answer else "{}"
-        await _execute(session, "submit_answer", answer=answer)
-        submitted = await store.materialize("main")
-        assert scorer.evaluate(submitted).score == float(submit_correct_answer)
+        assert json.loads(
+            await _execute(
+                session, "PythonREPL", input_code="print(shifted().tolist())"
+            )
+        ) == [2, 3, 4]
+        assert (
+            json.loads(await _execute(session, "submit_action", planets=[]))["success"]
+            is False
+        )

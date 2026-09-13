@@ -7,32 +7,25 @@ import base64
 import builtins
 import importlib
 import io
-import json
 import multiprocessing as mp
 import os
+import re
 import sys
 import sysconfig
 import tempfile
 import threading
 import traceback
 import types
-from contextlib import suppress
+from contextlib import redirect_stdout, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import cloudpickle
 import numpy as np
-import scipy
-from scipy import optimize, signal
+import scipy  # noqa: F401 - preload numerical extensions before the worker audit hook
+from scipy import optimize, signal  # noqa: F401 - safe lazy-import support
 
-from corral.core.tool import Tool, tool
-from stargazer.models import (
-    CandidatePlanet,
-    CandidateSubmission,
-    StargazerTask,
-    mass_from_semi_amplitude,
-)
-from stargazer.score import SubmissionError, evaluate_submission
+from corral.core.tool import Tool
 
 try:
     import resource
@@ -42,12 +35,15 @@ except ImportError:  # pragma: no cover - unavailable on Windows
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-_MAX_OUTPUT_CHARS = 12_000
+_MAX_OUTPUT_CHARS = 5_000 + len("...(output truncated)")
 _MAX_CODE_CHARS = 50_000
 DEFAULT_ANALYSIS_TIMEOUT_SECONDS = 10.0
 _WORKER_START_TIMEOUT_SECONDS = 30.0
 _WORKER_ADDRESS_SPACE_BYTES = 2 * 1024**3
 _ALLOWED_IMPORTS = {
+    "baselines",
+    "celerite2",
+    "rebound",
     "collections",
     "functools",
     "itertools",
@@ -59,6 +55,7 @@ _ALLOWED_IMPORTS = {
 }
 _SAFE_BUILTIN_NAMES = {
     "ArithmeticError",
+    "print",
     "AssertionError",
     "Exception",
     "IndexError",
@@ -150,9 +147,11 @@ class _SafeModuleProxy:
         object.__setattr__(self, "_SafeModuleProxy__wrapped_module", module)
 
     def __getattribute__(self, name: str) -> Any:
+        module = object.__getattribute__(self, "_SafeModuleProxy__wrapped_module")
+        if module.__name__ == "json" and name in {"dumps", "loads"}:
+            return getattr(module, name)
         if name.startswith("_") or name in _BLOCKED_MODULE_ATTRIBUTES:
             raise AttributeError(f"Module attribute {name!r} is unavailable")
-        module = object.__getattribute__(self, "_SafeModuleProxy__wrapped_module")
         value = getattr(module, name)
         return _safe_module(value)
 
@@ -175,7 +174,9 @@ def _safe_module(value: Any) -> Any:
 
 
 def _restore_module_proxy(name: str) -> _SafeModuleProxy:
-    return _safe_module(importlib.import_module(name))
+    return _safe_module(
+        baselines if name == "baselines" else importlib.import_module(name)
+    )
 
 
 def _restore_session_function(
@@ -214,7 +215,7 @@ class _SessionPickler(cloudpickle.CloudPickler):
             return _restore_module_proxy, (module.__name__,)
         if (
             isinstance(value, types.FunctionType)
-            and value.__globals__ is self.namespace
+            and value.__globals__.get("__name__") == "__stargazer_session__"
         ):
             attributes = {
                 name: getattr(value, name)
@@ -243,8 +244,8 @@ class _SessionPickler(cloudpickle.CloudPickler):
                 _restore_session_function,
                 (
                     value.__code__,
-                    self.namespace,
-                    self.namespace["__builtins__"],
+                    value.__globals__,
+                    value.__globals__["__builtins__"],
                     closure,
                 ),
                 (attributes, value.__closure__),
@@ -347,13 +348,21 @@ class AnalysisSession:
             self._stop_worker()
             raise RuntimeError(f"The Stargazer analysis worker failed: {ready!r}")
 
-    def execute(self, code: str) -> str:
+    def execute(self, code: str, history: list[dict[str, Any]] | None = None) -> str:
         """Run code in the persistent worker, terminating it on timeout."""
         if len(code) > _MAX_CODE_CHARS:
             raise UnsafeAnalysisCode(
                 f"Analysis code is limited to {_MAX_CODE_CHARS:,} characters"
             )
-        return str(self._request({"command": "execute", "code": code}))
+        return str(
+            self._request({"command": "execute", "code": code, "history": history})
+        )
+
+    def protocol_acknowledged(self) -> bool:
+        """Read only the protocol boolean from the worker, never decode its checkpoint."""
+        if self._process is None:
+            return False
+        return bool(self._request({"command": "protocol_ack"}))
 
     def snapshot(self) -> str | None:
         """Export JSON-compatible state; a stopped or timed-out worker is empty."""
@@ -430,8 +439,14 @@ def _restricted_import(
     fromlist: tuple[str, ...] = (),
     level: int = 0,
 ):
+    if name == "baselines":
+        return _safe_module(baselines)
     root = name.split(".", 1)[0]
     if root not in _ALLOWED_IMPORTS:
+        if root in PRELOADED_VARS:
+            # A preloaded variable is not an importable module. Preserve the
+            # original REPL's corrective hint for this common agent mistake.
+            raise ModuleNotFoundError(f"No module named '{root}'", name=root)
         raise ImportError(
             f"Import of {root!r} is disabled in the Stargazer analysis session"
         )
@@ -487,15 +502,18 @@ def _create_worker_namespace(public_data: dict[str, Any]) -> dict[str, Any]:
         "__builtins__": _safe_builtins(),
         "__name__": "__stargazer_session__",
         "np": _safe_module(np),
-        "scipy": _safe_module(scipy),
-        "optimize": _safe_module(optimize),
-        "signal": _safe_module(signal),
         "times_days": times,
         "rvs_ms": np.asarray(public_data["rvs_ms"], dtype=float).copy(),
         "sigmas_ms": np.asarray(public_data["sigmas_ms"], dtype=float).copy(),
-        "instruments": np.asarray(public_data["instruments"], dtype=str).copy(),
         "star_mass_sun": float(public_data["star_mass_sun"]),
         "t_ref_days": float(times[0]),
+        "baselines": _safe_module(baselines),
+        "history": public_data.get("history") or [],
+        "stargazer_planet_from_fit": make_planet_from_fit(
+            float(public_data["star_mass_sun"])
+        ),
+        "STARGAZER_SUBMISSION_GUIDE": STARGAZER_SUBMISSION_GUIDE,
+        "_protocol_guide_ack": False,
     }
 
 
@@ -642,6 +660,11 @@ def _analysis_worker(
             command = request.get("command")
             if command == "close":
                 return
+            if command == "protocol_ack":
+                connection.send(
+                    {"result": bool(namespace.get("_protocol_guide_ack", False))}
+                )
+                continue
             if command in {"snapshot", "restore"}:
                 try:
                     if command == "snapshot":
@@ -662,6 +685,8 @@ def _analysis_worker(
                 connection.send({"result": "Invalid analysis-worker request."})
                 continue
             try:
+                if request.get("history") is not None:
+                    namespace["history"] = request["history"]
                 result = _execute_persistent(request["code"], namespace)
             except BaseException:
                 result = traceback.format_exc(limit=8)
@@ -682,7 +707,8 @@ def _validate_repl_tree(tree: ast.AST) -> None:
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             raise UnsafeAnalysisCode("Dunder names are unavailable")
         if isinstance(node, ast.Attribute) and (
-            node.attr.startswith("__") or node.attr in _BLOCKED_MODULE_ATTRIBUTES
+            node.attr.startswith("__")
+            or node.attr in _BLOCKED_MODULE_ATTRIBUTES - {"dumps", "loads"}
         ):
             raise UnsafeAnalysisCode(
                 f"Dunder or I/O attribute {node.attr!r} is unavailable "
@@ -690,393 +716,483 @@ def _validate_repl_tree(tree: ast.AST) -> None:
             )
 
 
+def _format_execution_error(error: Exception, code: str) -> str:
+    result = "Error Traceback:\n"
+    lines = code.split("\n")
+    for frame in traceback.extract_tb(error.__traceback__):
+        if frame.filename == "<string>":
+            result += f"  line {frame.lineno}:\n"
+            if 0 < frame.lineno <= len(lines):
+                result += f"    {lines[frame.lineno - 1].strip()}\n"
+    return result + f"{type(error).__name__}: {error}"
+
+
 def _execute_persistent(code: str, namespace: dict[str, Any]) -> str:
+    """Run the original REPL protocol inside the isolated analysis worker."""
+    if "matplotlib" in code:
+        return "No plotting is allowed. Code was not executed since it contained 'matplotlib'."
+    cleaned = wrap_last_line_with_print(sanitize_input(code))
+    try:
+        tree = ast.parse(cleaned, mode="exec")
+    except SyntaxError:
+        pass  # Let exec format the original syntax error.
+    else:
+        _validate_repl_tree(tree)
+    # Stargazer executes each call in merged globals/locals. Functions retain
+    # that call's globals, including after Corral checkpoint restoration.
+    execution_namespace = dict(namespace)
+    conflict = detect_shadowing_callable_conflict(cleaned, execution_namespace)
+    if conflict:
+        return conflict
+
     class CappedOutput(io.StringIO):
         truncated = False
 
         def write(self, value: str) -> int:
-            remaining = _MAX_OUTPUT_CHARS - self.tell()
+            remaining = 5000 - self.tell()
             if remaining > 0:
                 super().write(value[:remaining])
-            if len(value) > remaining:
-                self.truncated = True
+            self.truncated |= len(value) > remaining
             return len(value)
 
     output = CappedOutput()
-    real_print = builtins.print
-
-    def captured_print(
-        *values: Any,
-        sep: str = " ",
-        end: str = "\n",
-        file: Any = None,
-        flush: bool = False,
-    ) -> None:
-        if file is not None:
-            raise ValueError("Writing to file handles is disabled")
-        real_print(*values, sep=sep, end=end, file=output, flush=flush)
-
-    namespace["__builtins__"]["print"] = captured_print
-    tree = ast.parse(code, mode="exec")
-    _validate_repl_tree(tree)
-    final_expression = None
-    statements = tree.body
-    if statements and isinstance(statements[-1], ast.Expr):
-        final_expression = ast.Expression(statements[-1].value)
-        statements = statements[:-1]
-    if statements:
-        module = ast.Module(body=statements, type_ignores=[])
-        exec(compile(module, "<stargazer-repl>", "exec"), namespace)
-    if final_expression is not None:
-        value = eval(compile(final_expression, "<stargazer-repl>", "eval"), namespace)
-        if value is not None:
-            captured_print(repr(value))
-    result = output.getvalue()
-    if output.truncated:
-        result += "\n... output truncated"
-    return result or "Code executed successfully (no output)."
-
-
-# Only the environment's dispatcher is trusted. It runs model-written code in
-# a separate analysis process locally, or a jailed unprivileged worker in Docker.
-@tool(hidden_args=["analysis_session"], trusted=True)
-def python_repl(code: str, analysis_session: Any) -> str:
-    """[BRIEF] Execute scientific Python in a persistent RV-analysis session. [/BRIEF]
-
-    [DETAILED] Runs Python against the current trial's preloaded radial-velocity
-    arrays. The namespace contains `times_days`, `rvs_ms`, `sigmas_ms`,
-    `instruments`, NumPy as `np`, SciPy helpers, `star_mass_sun`, and
-    `t_ref_days`. Variables and functions persist between calls in the same
-    trial. [/DETAILED]
-
-    [PROCEDURAL] Use this tool for numerical exploration, period searches,
-    optimization, and residual analysis. Print important intermediate values
-    or leave an expression as the last line to inspect it. [/PROCEDURAL]
-
-    [WORKFLOW_INTEGRATION]
-    1. [PREREQUISITE] Inspect the preloaded measurements and uncertainties. [/PREREQUISITE]
-    2. [CURRENT] Execute one bounded analysis or fitting step and retain useful variables. [/CURRENT]
-    3. [FOLLOW_UP] Refine the model or pass fitted planet parameters to `evaluate_candidate`. [/FOLLOW_UP]
-    [/WORKFLOW_INTEGRATION]
-
-    [CONTEXTUAL] The session uses an isolated namespace per Corral trial.
-    Scientific imports are allow-listed, direct built-in file access is
-    removed, output is captured, and the final expression is displayed.
-    [/CONTEXTUAL]
-
-    [SYNTACTICAL] Usage examples:
-    - `python_repl("print(len(times_days), np.median(sigmas_ms))")`
-    - `python_repl("from scipy.signal import lombscargle")`
-    - `python_repl("candidate_periods[:5]")`
-    [/SYNTACTICAL]
-
-    Args:
-        code: [ARGS_BRIEF] Python code to execute. [/ARGS_BRIEF]
-              [ARGS_DETAILED] One or more Python statements or an expression
-              evaluated in the persistent trial namespace. [/ARGS_DETAILED]
-              [ARGS_SYNTACTICAL] A valid Python source string. [/ARGS_SYNTACTICAL]
-              [ARGS_EXAMPLES] `"print(np.std(rvs_ms))"`,
-              `"best_period = 12.3"` [/ARGS_EXAMPLES]
-
-    Returns:
-        str: [RETURNS_BRIEF] Captured analysis output. [/RETURNS_BRIEF]
-             [RETURNS_DETAILED] Printed text, the representation of the final
-             expression, a traceback, or a no-output confirmation. Long output
-             is truncated. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] `"120 0.94\n"`, `"array([1., 2.])\n"` [/RETURNS_EXAMPLES]
-
-    [RAISES] Exceptions:
-        RuntimeError:
-            [ERROR_WHEN] If the hidden per-trial session was not configured. [/ERROR_WHEN]
-            [ERROR_DETAILS] Corral setup did not inject the analysis namespace. [/ERROR_DETAILS]
-            [ERROR_RECOVERY] Start a configured Stargazer trial before calling the tool. [/ERROR_RECOVERY]
-    [/RAISES]
-
-    [LIMITATIONS] This is a numerical notebook-like helper, not a hardened
-    Python security boundary. Direct file/network/process imports are blocked,
-    plotting packages are not installed, and output is capped at 12,000
-    characters. [/LIMITATIONS]
-    """
-    if not isinstance(analysis_session, AnalysisSession):
-        raise RuntimeError("The persistent analysis session is not configured")
+    execution_namespace["__builtins__"]["print"] = builtins.print
+    result = None
     try:
-        result = analysis_session.execute(code)
-    except (AnalysisTimeoutError, UnsafeAnalysisCode, RuntimeError) as exc:
-        result = f"{type(exc).__name__}: {exc}"
-    except Exception:
-        result = traceback.format_exc(limit=8)
-    if len(result) > _MAX_OUTPUT_CHARS:
-        return result[:_MAX_OUTPUT_CHARS] + "\n... output truncated"
-    return result
-
-
-@tool(hidden_args=["star_mass_sun"], trusted=True)
-def planet_from_fit(
-    period_days: float,
-    semi_amplitude_ms: float,
-    star_mass_sun: Any,
-    eccentricity: float = 0.0,
-    omega_rad: float = 0.0,
-    mean_anomaly_rad: float = 0.0,
-) -> str:
-    """[BRIEF] Convert fitted RV parameters into native Stargazer fields. [/BRIEF]
-
-    [DETAILED] Converts period, velocity semi-amplitude, eccentricity,
-    argument of periapsis, and mean anomaly into the minimum-mass and mean
-    longitude representation accepted by `evaluate_candidate`. The current
-    task's stellar mass is injected privately by Corral. [/DETAILED]
-
-    [PROCEDURAL] Use this after fitting a Keplerian semi-amplitude in the
-    analysis session. Copy the returned planet object into a candidate system
-    and combine it with any other recovered signals. [/PROCEDURAL]
-
-    [WORKFLOW_INTEGRATION]
-    1. [PREREQUISITE] Fit a period, semi-amplitude, eccentricity, and phase. [/PREREQUISITE]
-    2. [CURRENT] Convert those values to native submission parameters. [/CURRENT]
-    3. [FOLLOW_UP] Pass the returned object to `evaluate_candidate`. [/FOLLOW_UP]
-    [/WORKFLOW_INTEGRATION]
-
-    [CONTEXTUAL] Angles use radians at the public reference epoch. Mean
-    longitude is `omega_rad + mean_anomaly_rad` modulo one orbit. [/CONTEXTUAL]
-
-    [SYNTACTICAL] Usage example:
-    `planet_from_fit(period_days=23.5, semi_amplitude_ms=4.2,
-    eccentricity=0.1, omega_rad=1.2, mean_anomaly_rad=2.2)`
-    [/SYNTACTICAL]
-
-    Args:
-        period_days: [ARGS_BRIEF] Orbital period in days. [/ARGS_BRIEF]
-                     [ARGS_DETAILED] A finite period greater than 0.5 days. [/ARGS_DETAILED]
-                     [ARGS_SYNTACTICAL] A positive number. [/ARGS_SYNTACTICAL]
-                     [ARGS_EXAMPLES] `23.5` [/ARGS_EXAMPLES]
-        semi_amplitude_ms: [ARGS_BRIEF] RV semi-amplitude in m/s. [/ARGS_BRIEF]
-                           [ARGS_DETAILED] A finite, non-negative fitted stellar velocity amplitude. [/ARGS_DETAILED]
-                           [ARGS_SYNTACTICAL] A non-negative number. [/ARGS_SYNTACTICAL]
-                           [ARGS_EXAMPLES] `4.2` [/ARGS_EXAMPLES]
-        eccentricity: [ARGS_BRIEF] Orbital eccentricity. [/ARGS_BRIEF]
-                      [ARGS_DETAILED] A finite value from zero through 0.8. [/ARGS_DETAILED]
-                      [ARGS_SYNTACTICAL] A number in `[0, 0.8]`. [/ARGS_SYNTACTICAL]
-                      [ARGS_EXAMPLES] `0.1` [/ARGS_EXAMPLES]
-        omega_rad: [ARGS_BRIEF] Argument of periapsis in radians. [/ARGS_BRIEF]
-                   [ARGS_DETAILED] A finite angle normalized modulo two pi. [/ARGS_DETAILED]
-                   [ARGS_SYNTACTICAL] A number in radians. [/ARGS_SYNTACTICAL]
-                   [ARGS_EXAMPLES] `1.2` [/ARGS_EXAMPLES]
-        mean_anomaly_rad: [ARGS_BRIEF] Mean anomaly at the reference epoch. [/ARGS_BRIEF]
-                          [ARGS_DETAILED] A finite phase angle used to form mean longitude. [/ARGS_DETAILED]
-                          [ARGS_SYNTACTICAL] A number in radians. [/ARGS_SYNTACTICAL]
-                          [ARGS_EXAMPLES] `2.2` [/ARGS_EXAMPLES]
-
-    Returns:
-        str: [RETURNS_BRIEF] A JSON planet object. [/RETURNS_BRIEF]
-             [RETURNS_DETAILED] Native period, minimum mass, eccentricity,
-             periapsis, and mean-longitude fields ready for submission. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] `{"P_days": 23.5, "m_sin_i_mjup": 0.1,
-             "e": 0.1, "omega_rad": 1.2, "l_rad": 3.4}` [/RETURNS_EXAMPLES]
-
-    [RAISES] Exceptions:
-        ValueError:
-            [ERROR_WHEN] If a numeric parameter is non-finite or out of range. [/ERROR_WHEN]
-            [ERROR_DETAILS] Invalid orbital values cannot be converted safely. [/ERROR_DETAILS]
-            [ERROR_RECOVERY] Correct the fitted units or bounds and retry. [/ERROR_RECOVERY]
-        RuntimeError:
-            [ERROR_WHEN] If the stellar mass was not configured. [/ERROR_WHEN]
-            [ERROR_DETAILS] Corral setup did not inject the public stellar mass. [/ERROR_DETAILS]
-            [ERROR_RECOVERY] Start a configured Stargazer trial before calling the tool. [/ERROR_RECOVERY]
-    [/RAISES]
-
-    [LIMITATIONS] This approximation assumes planet mass is small compared
-    with stellar mass and reports minimum mass rather than true mass. [/LIMITATIONS]
-    """
-    values = {
-        "period_days": period_days,
-        "semi_amplitude_ms": semi_amplitude_ms,
-        "star_mass_sun": star_mass_sun,
-        "eccentricity": eccentricity,
-        "omega_rad": omega_rad,
-        "mean_anomaly_rad": mean_anomaly_rad,
-    }
-    try:
-        numeric = {name: float(value) for name, value in values.items()}
-    except (TypeError, ValueError) as exc:
-        raise ValueError("All fitted parameters must be numeric") from exc
-    if not all(np.isfinite(value) for value in numeric.values()):
-        raise ValueError("All fitted parameters must be finite")
-    if numeric["period_days"] <= 0.5:
-        raise ValueError("period_days must be greater than 0.5")
-    if numeric["semi_amplitude_ms"] < 0.0:
-        raise ValueError("semi_amplitude_ms must be non-negative")
-    if not 0.0 <= numeric["eccentricity"] <= 0.8:
-        raise ValueError("eccentricity must be between 0 and 0.8")
-    if numeric["star_mass_sun"] <= 0.0:
-        raise RuntimeError("The trial stellar mass is not configured")
-
-    omega = numeric["omega_rad"] % (2.0 * np.pi)
-    result = {
-        "P_days": numeric["period_days"],
-        "m_sin_i_mjup": mass_from_semi_amplitude(
-            numeric["semi_amplitude_ms"],
-            numeric["period_days"],
-            numeric["eccentricity"],
-            numeric["star_mass_sun"],
-        ),
-        "e": numeric["eccentricity"],
-        "omega_rad": omega,
-        "l_rad": (omega + numeric["mean_anomaly_rad"]) % (2.0 * np.pi),
-    }
-    return json.dumps(result, allow_nan=False)
-
-
-@tool(hidden_args=["benchmark_task", "evaluation_session"], trusted=True)
-def evaluate_candidate(
-    planets: list[CandidatePlanet],
-    benchmark_task: Any,
-    evaluation_session: Any,
-    noise_jitter_ms: float = 0.0,
-) -> str:
-    """[BRIEF] Evaluate a candidate planetary system and return diagnostic feedback. [/BRIEF]
-
-    [DETAILED] Forward-models a proposed set of Keplerian planets and checks
-    statistical fit, residual quality, physical parameter recovery, and planet
-    count against evaluator-only truth. This iterative call does not finish the
-    Corral task. Valid calls consume the task's diagnostic-evaluation budget.
-    [/DETAILED]
-
-    [PROCEDURAL] Call after fitting a plausible system. Use the returned
-    criterion-level diagnostics to revise the candidate. Once satisfied,
-    repeat the best candidate as the final task answer. [/PROCEDURAL]
-
-    [WORKFLOW_INTEGRATION]
-    1. [PREREQUISITE] Estimate one or more Keplerian planet models from the RV data. [/PREREQUISITE]
-    2. [CURRENT] Submit native Stargazer parameters for evaluator feedback. [/CURRENT]
-    3. [FOLLOW_UP] Refine failed criteria or return the best candidate as final JSON. [/FOLLOW_UP]
-    [/WORKFLOW_INTEGRATION]
-
-    [CONTEXTUAL] The interactive tool uses exactly the native fields
-    `P_days`, `m_sin_i_mjup`, `e`, `omega_rad`, and `l_rad`. Use the
-    separate `planet_from_fit` tool to convert semi-amplitude to mass. Hidden
-    truth and planet assignments are never included in the tool result. [/CONTEXTUAL]
-
-    [SYNTACTICAL] Usage example:
-    `evaluate_candidate(planets=[{"P_days": 23.5,
-    "m_sin_i_mjup": 0.12, "e": 0.1, "omega_rad": 1.2,
-    "l_rad": 3.4}], noise_jitter_ms=0.2)`
-    [/SYNTACTICAL]
-
-    Args:
-        planets: [ARGS_BRIEF] Candidate Keplerian planets. [/ARGS_BRIEF]
-                 [ARGS_DETAILED] A list of typed planet objects using the five
-                 native Stargazer fields. [/ARGS_DETAILED]
-                 [ARGS_SYNTACTICAL] A JSON array of planet objects. [/ARGS_SYNTACTICAL]
-                 [ARGS_EXAMPLES] `[{"P_days": 10.0, "m_sin_i_mjup": 0.2,
-                 "e": 0.0, "omega_rad": 0.0, "l_rad": 1.0}]` [/ARGS_EXAMPLES]
-        noise_jitter_ms: [ARGS_BRIEF] Additional white-noise jitter in m/s. [/ARGS_BRIEF]
-                         [ARGS_DETAILED] A finite, non-negative scalar added in
-                         quadrature to measurement uncertainties. [/ARGS_DETAILED]
-                         [ARGS_SYNTACTICAL] A non-negative number. [/ARGS_SYNTACTICAL]
-                         [ARGS_EXAMPLES] `0.0`, `0.5` [/ARGS_EXAMPLES]
-    Returns:
-        str: [RETURNS_BRIEF] JSON evaluator feedback. [/RETURNS_BRIEF]
-             [RETURNS_DETAILED] Reports whether the candidate was accepted,
-             remaining evaluations, overall success, and redacted diagnostics
-             for all four criteria. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] `{"accepted": true, "success": false,
-             "remaining_evaluations": 2, "criteria": {...}}` [/RETURNS_EXAMPLES]
-
-    [RAISES] Exceptions:
-        RuntimeError:
-            [ERROR_WHEN] If hidden task or evaluation state is not configured. [/ERROR_WHEN]
-            [ERROR_DETAILS] The tool cannot evaluate without trial-specific hidden inputs. [/ERROR_DETAILS]
-            [ERROR_RECOVERY] Start a configured Stargazer trial before calling the tool. [/ERROR_RECOVERY]
-    [/RAISES]
-
-    [LIMITATIONS] Feedback is intentionally redacted and does not reveal true
-    planet parameters. Invalid candidates do not consume budget; accepted
-    candidates do. A successful tool call still requires a final Corral answer.
-    [/LIMITATIONS]
-    """
-    if not isinstance(benchmark_task, StargazerTask):
-        raise RuntimeError("The hidden Stargazer task is not configured")
-    if not isinstance(evaluation_session, dict):
-        raise RuntimeError("The evaluation session is not configured")
-
-    evaluations = evaluation_session.setdefault("evaluations", [])
-    maximum = int(evaluation_session.get("max_evaluations", 1))
-    remaining = max(0, maximum - len(evaluations))
-    if evaluation_session.get("locked", False):
-        return json.dumps(
-            {
-                "accepted": False,
-                "error": (
-                    "A candidate already passed all gates. Return that candidate "
-                    "as the final answer; further diagnostic evaluations are locked."
-                ),
-                "evaluation_number": len(evaluations),
-                "remaining_evaluations": remaining,
-            },
-            indent=2,
-        )
-    if not remaining:
-        return json.dumps(
-            {
-                "accepted": False,
-                "error": "Diagnostic evaluation budget exhausted",
-                "evaluation_number": len(evaluations),
-                "remaining_evaluations": 0,
-            },
-            indent=2,
-        )
-
-    planet_payloads = [
-        (
-            planet
-            if isinstance(planet, CandidatePlanet)
-            else CandidatePlanet.model_validate(planet)
-        ).model_dump()
-        for planet in planets
-    ]
-    candidate = CandidateSubmission(
-        planets=planet_payloads,
-        noise_jitter_ms=noise_jitter_ms,
+        with redirect_stdout(output):
+            exec(cleaned, execution_namespace)
+    except ModuleNotFoundError as exc:
+        if exc.name in PRELOADED_VARS:
+            name = exc.name
+            result = (
+                f"ModuleNotFoundError: No module named '{name}'\n\n"
+                f"HINT: `{name}` is a PRE-LOADED VARIABLE, not a module.\n"
+                f"Do NOT import it. Just use it directly:\n"
+                f"  CORRECT: print({name})\n"
+                f"  WRONG:   from {name} import {name}"
+            )
+        else:
+            result = _format_execution_error(exc, cleaned)
+    except Exception as exc:
+        result = _format_execution_error(exc, cleaned)
+    finally:
+        namespace.update(execution_namespace)
+    if result is None:
+        result = output.getvalue()
+        if output.truncated:
+            result += "...(output truncated)"
+    elif len(result) > 5000:
+        result = result[:5000] + "...(output truncated)"
+    return (
+        result
+        or "No output. You likely forgot to print the result. Please use `print(...)` to see any output."
     )
+
+
+class StargazerTool(Tool):
+    """Original tool schema dispatched through the trusted Corral environment."""
+
+    def execute(self, **_kwargs: Any) -> Any:
+        raise RuntimeError("Stargazer tools must execute through StargazerEnvironment")
+
+
+# The pinned implementation uses this fallback because no guide file is shipped.
+STARGAZER_SUBMISSION_GUIDE = (
+    "Stargazer Submission Guide\\n"
+    "1) Preferred fields: P_days, m_sin_i_mjup, e, omega_rad, l_rad\\n"
+    "2) Reference epoch: t_ref = times_days[0]\\n"
+    "3) Convert M0 to l_rad via l_rad = (Omega_rad + omega_rad + M0) mod 2pi\\n"
+    "4) Avoid mixing phase aliases; if using l_rad, treat it as canonical\\n"
+    "5) Before submit: verify converted action rv_model residual RMS is near sigma\\n"
+)
+PRELOADED_VARS = {
+    "times_days",
+    "rvs_ms",
+    "sigmas_ms",
+    "np",
+    "baselines",
+    "history",
+    "star_mass_sun",
+    "t_ref_days",
+    "stargazer_planet_from_fit",
+    "STARGAZER_SUBMISSION_GUIDE",
+}
+REQUIRED_OBS_KEYS = ("times_days", "rvs_ms", "sigmas_ms")
+
+
+def make_planet_from_fit(star_mass_sun):
+    def stargazer_planet_from_fit(
+        P_days: float,
+        K_ms: float,
+        e: float = 0.0,
+        omega_rad: float = 0.0,
+        M0_rad: float = 0.0,
+        inc_rad: float = float(np.pi / 2.0),
+        Omega_rad: float = 0.0,
+        m_sin_i_mjup: float | None = None,
+    ) -> dict[str, float]:
+        """Convert fitted Keplerian params into canonical Stargazer planet fields."""
+        P_days_f = float(P_days)
+        K_ms_f = float(max(0.0, K_ms))
+        e_f = float(np.clip(e, 0.0, 0.8))
+        omega_f = float(omega_rad % (2.0 * np.pi))
+        M0_f = float(M0_rad % (2.0 * np.pi))
+        inc_f = float(np.clip(inc_rad, 0.0, np.pi))
+        Omega_f = float(Omega_rad % (2.0 * np.pi))
+        l_rad = float((Omega_f + omega_f + M0_f) % (2.0 * np.pi))
+
+        if m_sin_i_mjup is None:
+            P_years = P_days_f / 365.25
+            denom = (
+                28.4329
+                * (star_mass_sun ** (-2.0 / 3.0))
+                * (P_years ** (-1.0 / 3.0))
+                / np.sqrt(max(1e-12, 1.0 - e_f * e_f))
+            )
+            msi = float(np.clip(K_ms_f / denom, 1e-3, 30.0))
+        else:
+            msi = float(np.clip(m_sin_i_mjup, 1e-3, 30.0))
+
+        return {
+            "P_days": P_days_f,
+            "m_sin_i_mjup": msi,
+            "e": e_f,
+            "inc_rad": inc_f,
+            "Omega_rad": Omega_f,
+            "omega_rad": omega_f,
+            "l_rad": l_rad,
+        }
+
+    return stargazer_planet_from_fit
+
+
+def _validate_observation(observation: dict[str, Any], fn_name: str) -> None:
+    if not isinstance(observation, dict):
+        raise TypeError(
+            f"{fn_name} expects a dict observation with keys {REQUIRED_OBS_KEYS}, "
+            f"got {type(observation).__name__}"
+        )
+    missing = [k for k in REQUIRED_OBS_KEYS if k not in observation]
+    if missing:
+        raise KeyError(f"{fn_name} missing required keys: {missing}")
+
+
+def baseline_null_model(observation: dict[str, Any]) -> dict[str, Any]:
+    _validate_observation(observation, "baseline_null_model")
+    np.array(
+        observation["times_days"], dtype=float
+    )  # Validate the original input contract.
+    y = np.array(observation["rvs_ms"], dtype=float)
+    s_arr = np.array(observation["sigmas_ms"], dtype=float)
+    if y.size == 0:
+        raise ValueError("Empty observations")
+    if np.any(~np.isfinite(s_arr)) or np.any(s_arr <= 0):
+        raise ValueError("All per-point uncertainties must be positive and finite")
+    w = 1.0 / (s_arr**2)
+    mu = float(np.sum(w * y) / np.sum(w))
+    rv_model = np.full_like(y, mu)
+    return {"rv_model": rv_model.tolist(), "planets": []}
+
+
+def baseline_one_sine(observation: dict[str, Any]) -> dict[str, Any]:
+    _validate_observation(observation, "baseline_one_sine")
+    t = np.array(observation["times_days"], dtype=float)
+    y = np.array(observation["rvs_ms"], dtype=float)
+    s = np.array(observation["sigmas_ms"], dtype=float)
+    if y.size == 0:
+        raise ValueError("Empty observations")
+    if np.any(~np.isfinite(s)) or np.any(s <= 0):
+        raise ValueError("All per-point uncertainties must be positive and finite")
+
+    weights = 1.0 / (s**2 + 1e-6)
+    y_mean = float(np.average(y, weights=weights))
+    y0 = y - y_mean
+    freqs = np.linspace(1 / 300.0, 1 / 2.0, 2000)
+    best = None
+    for f in freqs:
+        omega = 2 * np.pi * f
+        X = np.vstack([np.sin(omega * t), np.cos(omega * t), np.ones_like(t)]).T
+        WX = X * weights[:, None]
+        beta = np.linalg.pinv(X.T @ WX) @ (X.T @ (weights * y0))
+        model = X @ beta + y_mean
+        rss = np.sum(((y - model) / s) ** 2)
+        if best is None or rss < best[0]:
+            best = (rss, f, model, beta)
+    rv_model = best[2]
+    P_days = 1.0 / best[1]
+    beta_best = best[3]
+    amp = float(np.hypot(beta_best[0], beta_best[1]))
+    omega = 2.0 * np.pi * best[1]
+    # Model is y = gamma + A*sin(w t) + B*cos(w t).
+    # Convert to y = gamma + K*cos(M), where M = M0 + w*(t-t_ref), e=0.
+    # Using sin(wt+phi) form, M0 = phi - pi/2 + w*t_ref.
+    phase_sine = float(np.arctan2(beta_best[1], beta_best[0]))
+    t_ref = float(t[0])
+    M0 = float((phase_sine - np.pi / 2.0 + omega * t_ref) % (2.0 * np.pi))
+    rv_offset_ms = float(y_mean + beta_best[2])
+    resid = y - rv_model
+    rms_ms = float(np.sqrt(np.mean(resid**2)))
+    wrms_ms = float(np.sqrt(np.average(resid**2, weights=weights)))
+    P_years = P_days / 365.25
+    m_sin_i_estimate = amp / (28.4329 * (P_years ** (-1.0 / 3.0)))
+    m_sin_i_estimate = float(np.clip(m_sin_i_estimate, 0.001, 10.0))
+    guess = {
+        "P_days": float(P_days),
+        "m_sin_i_mjup": m_sin_i_estimate,
+        "e": 0.0,
+        "inc_rad": float(np.pi / 2),
+        "Omega_rad": 0.0,
+        "omega_rad": 0.0,
+        "l_rad": M0,
+    }
+    return {
+        "rv_model": rv_model.tolist(),
+        "planets": [guess],
+        "period_days": float(P_days),
+        "semi_amplitude_ms": amp,
+        "phase_rad": M0,
+        "rv_offset_ms": rv_offset_ms,
+        "rms_ms": rms_ms,
+        "wrms_ms": wrms_ms,
+    }
+
+
+baselines = types.ModuleType("baselines")
+baselines.baseline_null_model = baseline_null_model
+baselines.baseline_one_sine = baseline_one_sine
+
+
+def sanitize_input(query: str) -> str:
+    """Sanitize input to the Python REPL."""
+    query = re.sub(r"^(\s|`)*(?i:python)?\s*", "", query)
+    query = re.sub(r"(\s|`)*$", "", query)
+
+    result = []
+    i = 0
+    in_string = False
+    string_char = None
+
+    while i < len(query):
+        if not in_string:
+            if query[i] in "\"'":
+                in_string = True
+                string_char = query[i]
+                result.append(query[i])
+            elif i < len(query) - 1 and query[i : i + 2] == "\\n":
+                result.append("\n")
+                i += 1
+            else:
+                result.append(query[i])
+        else:
+            if query[i] == "\\" and i + 1 < len(query):
+                result.append(query[i : i + 2])
+                i += 1
+            elif query[i] == string_char:
+                in_string = False
+                result.append(query[i])
+            else:
+                result.append(query[i])
+        i += 1
+
+    return "".join(result)
+
+
+def wrap_last_line_with_print(code: str) -> str:
+    """If last line of code is a single word then wrap it in print."""
+    lines = code.strip().split("\n")
+    last_line = lines[-1].strip()
+    if re.match(r"^[^\s,()]+$", last_line):
+        lines[-1] = f"print({last_line})"
+    return "\n".join(lines)
+
+
+def detect_shadowing_callable_conflict(code: str, namespace: dict) -> str | None:
+    """Detect assigning to a callable name and then calling it in the same snippet."""
     try:
-        result = evaluate_submission(benchmark_task, candidate)
-    except (SubmissionError, ValueError, TypeError, OverflowError) as exc:
-        return json.dumps(
-            {
-                "accepted": False,
-                "error": str(exc),
-                "evaluation_number": len(evaluations),
-                "remaining_evaluations": maximum - len(evaluations),
-            },
-            indent=2,
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+
+    callable_names = {k for k, v in namespace.items() if callable(v)}
+    assigned_names = set()
+    called_names = set()
+    defined_functions = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            defined_functions.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assigned_names.add(target.id)
+        elif isinstance(node, ast.AnnAssign | ast.AugAssign) and isinstance(
+            node.target, ast.Name
+        ):
+            assigned_names.add(node.target.id)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            called_names.add(node.func.id)
+            if (
+                node.func.id in {"least_squares", "minimize", "root", "curve_fit"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+            ):
+                callback_name = node.args[0].id
+                if callback_name in namespace and not callable(
+                    namespace[callback_name]
+                ):
+                    return (
+                        f"Invalid optimizer callback: `{callback_name}` is not callable. "
+                        f"It may have been overwritten by a variable. Rename that variable "
+                        f"(e.g., `{callback_name}_arr`) or redefine `def {callback_name}(...):`."
+                    )
+
+    conflict_names = sorted(
+        name
+        for name in assigned_names & called_names
+        if name in callable_names or name in defined_functions
+    )
+    if not conflict_names:
+        invalid_calls = sorted(
+            name
+            for name in called_names
+            if name not in defined_functions
+            and name in namespace
+            and not callable(namespace[name])
+        )
+        if not invalid_calls:
+            return None
+        bad_name = invalid_calls[0]
+        return (
+            f"Invalid call detected: `{bad_name}` is not callable in the current session. "
+            f"It may have been overwritten by a variable. Rename the variable (e.g., `{bad_name}_arr`) "
+            f"or redefine `def {bad_name}(...):` before calling it."
         )
 
-    public_result = result.agent_feedback()
-    record = {
-        "candidate": candidate.canonical_payload(),
-        "feedback": public_result,
-    }
-    evaluations.append(record)
-    if result.success:
-        evaluation_session["locked"] = True
-    feedback = {
-        "accepted": True,
-        "evaluation_number": len(evaluations),
-        "remaining_evaluations": maximum - len(evaluations),
-        **public_result,
-    }
-    if result.success:
-        feedback["message"] = (
-            "Candidate passed all gates. Return these exact arguments as the final "
-            "answer; further diagnostic evaluations are locked."
-        )
-    return json.dumps(feedback, indent=2, allow_nan=False)
+    conflict = conflict_names[0]
+    return (
+        f"Name shadowing detected: `{conflict}` is assigned and called in the same code block. "
+        f"Use a different variable name like `{conflict}_arr` or `{conflict}_vec`."
+    )
 
 
 def create_tools() -> dict[str, Tool]:
-    """Return the tool pool used by all Stargazer task definitions."""
+    """Original two-tool interface, dispatched by the Corral environment."""
+    definitions = [
+        {
+            "type": "function",
+            "function": {
+                "name": "PythonREPL",
+                "description": "A Python REPL. Use this to execute python code. Input should be a valid python command. If you want to see the output of a value, you should print it out with `print(...)`. You cannot use matplotlib. No plotting is allowed.\nPackages you can import: np, times_days, rvs_ms, sigmas_ms, baselines, history, star_mass_sun, t_ref_days, stargazer_planet_from_fit, STARGAZER_SUBMISSION_GUIDE.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_code": {
+                            "type": "string",
+                            "description": "A valid python command.",
+                        }
+                    },
+                    "required": ["input_code"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "submit_action",
+                "description": "Submit a candidate RV model to the environment. Preferred protocol: Stargazer-native planet fields (P_days, m_sin_i_mjup, e, omega_rad, l_rad). Provide up to 7 planets with P_days > 0.5 and eccentricity between 0 and 0.8. This task currently expects submission_mode='params_and_model'. The environment will evaluate your submission and return a reward with detailed metrics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "planets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "P_days": {
+                                        "type": "number",
+                                        "description": "Stargazer planet format: orbital period in days (alternative to period_days).",
+                                    },
+                                    "period_days": {
+                                        "type": "number",
+                                        "description": "Orbital period in days (must be > 0.5)",
+                                    },
+                                    "m_sin_i_mjup": {
+                                        "type": "number",
+                                        "description": "Stargazer planet format: minimum mass in Jupiter masses (optional; if provided, K is approximated assuming M_star=1Msun).",
+                                    },
+                                    "semi_amplitude_ms": {
+                                        "type": "number",
+                                        "description": "Semi-amplitude K in m/s (must be >= 0)",
+                                    },
+                                    "phase_deg": {
+                                        "type": "number",
+                                        "description": "Phase in degrees (optional, provide either phase_deg or phase_rad)",
+                                    },
+                                    "phase_rad": {
+                                        "type": "number",
+                                        "description": "Phase in radians (optional, provide either phase_deg or phase_rad)",
+                                    },
+                                    "phase": {
+                                        "type": "number",
+                                        "description": "Phase alias (optional). Interpreted as radians if |phase|<=2π, else degrees if |phase|<=360.",
+                                    },
+                                    "phase_frac": {
+                                        "type": "number",
+                                        "description": "Phase as fraction of an orbit in [0,1) (optional). Converted to radians via 2π*phase_frac.",
+                                    },
+                                    "l_rad": {
+                                        "type": "number",
+                                        "description": "Stargazer planet format: mean longitude at t_ref=times_days[0] in radians.",
+                                    },
+                                    "eccentricity": {
+                                        "type": "number",
+                                        "description": "Eccentricity (between 0 and 0.8)",
+                                    },
+                                    "e": {
+                                        "type": "number",
+                                        "description": "Stargazer planet format: eccentricity (alias for eccentricity).",
+                                    },
+                                    "omega_rad": {
+                                        "type": "number",
+                                        "description": "Stargazer planet format: argument of periapsis in radians (optional; matching uses l_rad).",
+                                    },
+                                    "inc_rad": {
+                                        "type": "number",
+                                        "description": "Inclination in radians for REBOUND forward model (optional; default pi/2).",
+                                    },
+                                    "Omega_rad": {
+                                        "type": "number",
+                                        "description": "Longitude of ascending node in radians for REBOUND forward model (optional; default 0).",
+                                    },
+                                },
+                                "description": "Recommended: use Stargazer native fields (P_days, m_sin_i_mjup, e, omega_rad, l_rad). Legacy aliases are accepted.",
+                            },
+                            "description": "List of planet hypotheses, sorted by confidence (most confident first).",
+                        },
+                        "rv_offset_ms": {
+                            "type": "number",
+                            "description": "Constant RV offset in m/s (optional, will be estimated if not provided).",
+                        },
+                        "noise_jitter_ms": {
+                            "type": "number",
+                            "description": "Optional white-noise jitter term in m/s.",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "Brief rationale for this submission (optional but recommended).",
+                        },
+                    },
+                    "required": ["planets"],
+                },
+            },
+        },
+    ]
     return {
-        python_repl.name: python_repl,
-        planet_from_fit.name: planet_from_fit,
-        evaluate_candidate.name: evaluate_candidate,
+        entry["function"]["name"]: StargazerTool(
+            name=entry["function"]["name"],
+            description=entry["function"]["description"],
+            params_json_schema=entry["function"]["parameters"],
+            trusted=True,
+        )
+        for entry in definitions
     }

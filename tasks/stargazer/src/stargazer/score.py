@@ -1,10 +1,7 @@
-"""Four-criterion Stargazer scoring and candidate diagnostics.
+"""Stargazer candidate evaluation and committed-trajectory scoring.
 
-Candidate systems are forward-modelled and must simultaneously clear the
-published statistical-fit, residual-quality, physical-match, and planet-count
-criteria.  The public Corral score is binary; the same evaluator also powers an
-iterative tool that returns criterion-level diagnostics without revealing the
-ground truth.
+The reference audit uses the same action builder and evaluator as live
+submit_action calls. Corral's final answer only closes the execution.
 """
 
 from __future__ import annotations
@@ -12,11 +9,10 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
-from pydantic import ValidationError
 from scipy.optimize import linear_sum_assignment
 
 from stargazer.models import (
@@ -26,9 +22,10 @@ from stargazer.models import (
     mass_from_semi_amplitude,
     semi_amplitude_ms,
     simulate_keplerian_rv,
+    simulate_submission_rv,
 )
 
-_JSON_FENCE = re.compile(r"^``(?:json)?\s*(.*?)\s*``$", re.IGNORECASE | re.DOTALL)
+_JSON_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)
 
 
 class SubmissionError(ValueError):
@@ -65,49 +62,16 @@ class EvaluationResult:
     gamma_per_instrument_ms: dict[str, float]
     matched_pairs: tuple[tuple[int, int, float], ...]
 
+    metrics: dict[str, Any] = field(default_factory=dict)
+    success_details: dict[str, Any] = field(default_factory=dict)
+    semantic_check: dict[str, Any] = field(default_factory=dict)
+    comparison: dict[str, Any] = field(default_factory=dict)
+    reward: float = 0.0
+
     @property
     def score(self) -> float:
         """Corral's binary benchmark score."""
         return 1.0 if self.success else 0.0
-
-    def agent_feedback(self) -> dict[str, Any]:
-        """Return detailed feedback with evaluator-only truth removed."""
-        return {
-            "success": self.success,
-            "criteria": {
-                "statistical_fit": {
-                    "passed": self.ok_delta_bic,
-                    "delta_bic": self.delta_bic,
-                    "delta_bic_per_point": self.delta_bic_per_point,
-                    "minimum_delta_bic_per_point": (
-                        self.criteria.minimum_delta_bic_per_point
-                    ),
-                },
-                "residual_quality": {
-                    "passed": self.ok_rms,
-                    "rms_ms": self.rms_ms,
-                    "mae_ms": self.mae_ms,
-                    "maximum_rms_ms": self.maximum_rms_ms,
-                },
-                "parameter_recovery": {
-                    "passed": self.ok_match,
-                    "match_score": self.match_score,
-                    "minimum_match_score": self.criteria.minimum_match_score,
-                },
-                "planet_count": {"passed": self.ok_count},
-            },
-            "gamma_per_instrument_ms": self.gamma_per_instrument_ms,
-        }
-
-
-def _finite_float(value: Any, *, name: str) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as exc:
-        raise SubmissionError(f"{name} must be numeric") from exc
-    if not math.isfinite(result):
-        raise SubmissionError(f"{name} must be finite")
-    return result
 
 
 def parse_submission(
@@ -133,162 +97,446 @@ def parse_submission(
     return parsed
 
 
-def _first_present(payload: dict[str, Any], names: tuple[str, ...]) -> Any:
-    for name in names:
-        if name in payload:
-            return payload[name]
-    return None
+class SemanticSubmissionError(SubmissionError):
+    """A phase/parameter protocol rejection, before consuming an attempt."""
+
+    def __init__(self, check: dict[str, Any]):
+        super().__init__(json.dumps(check["errors"]))
+        self.check = check
 
 
-def _canonical_planet_payload(raw_planet: dict[str, Any], index: int) -> dict[str, Any]:
-    """Translate documented legacy aliases to the canonical planet fields."""
-    prefix = f"planets[{index}]"
-    allowed_fields = {
-        "P_days",
+def _coerce_float(value: Any, *, name: str, default: float | None = None) -> float:
+    """Best-effort conversion of LLM-provided values into finite floats.
+
+    LLMs sometimes emit JSON nulls (parsed as Python None). Treat those as "missing"
+    when a default is provided.
+    """
+    if value is None:
+        if default is None:
+            raise SubmissionError(f"`{name}` must be a real number, got null.")
+        return float(default)
+    try:
+        out = float(value)
+    except (TypeError, ValueError) as exc:
+        raise SubmissionError(
+            f"`{name}` must be a real number, got {value!r}."
+        ) from exc
+    if not np.isfinite(out):
+        raise SubmissionError(f"`{name}` must be finite, got {out}.")
+    return out
+
+
+def canonicalize_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a plan in-place to avoid conflicting aliases."""
+    if not isinstance(plan, dict):
+        return plan
+    planets_desc = plan.get("planets", [])
+    if not isinstance(planets_desc, list):
+        return plan
+    cleaned = []
+    for desc in planets_desc:
+        if not isinstance(desc, dict):
+            cleaned.append(desc)
+            continue
+        out = dict(desc)
+        if "P_days" not in out and "period_days" in out:
+            out["P_days"] = out["period_days"]
+        if "e" not in out and "eccentricity" in out:
+            out["e"] = out["eccentricity"]
+        if "P_days" in out and "period_days" in out:
+            out.pop("period_days", None)
+        if "e" in out and "eccentricity" in out:
+            out.pop("eccentricity", None)
+        # Prefer Stargazer-native mass parameterization when both are present.
+        if "m_sin_i_mjup" in out:
+            out.pop("semi_amplitude_ms", None)
+            out.pop("K_ms", None)
+        if "l_rad" in out:
+            for k in (
+                "phase_rad",
+                "phase_deg",
+                "phase",
+                "phase_frac",
+                "T0_days",
+                "T_peri",
+            ):
+                out.pop(k, None)
+        cleaned.append(out)
+    plan = dict(plan)
+    plan["planets"] = cleaned
+    return plan
+
+
+def _parse_phase_to_l_rad(
+    desc: dict[str, Any],
+    omega_rad: float,
+    Omega_rad: float,
+    period: float,
+    t0: float,
+) -> float:
+    """Parse various phase representations and convert to l_rad (mean longitude).
+
+    Canonical rule:
+    1. If explicit `l_rad` is present, always use it.
+    2. Otherwise infer from legacy phase fields using this order:
+       phase_frac, phase_rad/phase_deg/phase, T0_days/T_peri.
+
+    This keeps parser behavior consistent with semantic validation and scoring:
+    when `l_rad` is provided, legacy aliases are treated as non-canonical hints.
+
+    Legacy priority (when `l_rad` is absent):
+    1. phase_frac (common agent output, interpreted as time-of-periastron fraction)
+    2. phase_rad / phase_deg / phase (interpreted as mean anomaly M0)
+    3. T0_days / T_peri (time of periastron)
+    4. Default to 0.0
+    """
+
+    def _get_float(key: str) -> float | None:
+        if key in desc:
+            return _coerce_float(desc.get(key), name=key, default=None)
+        return None
+
+    # Collect all phase-related values
+    l_rad_val = _get_float("l_rad")
+    phase_frac_val = _get_float("phase_frac")
+    phase_rad_val = _get_float("phase_rad")
+    phase_deg_val = _get_float("phase_deg")
+    phase_val = _get_float("phase")
+    t0_days_val = _get_float("T0_days") or _get_float("T_peri")
+
+    # Helper: convert phase_frac to l_rad
+    # Agent convention: tp = t0 + phase_frac * P (time of periastron)
+    # At t=t0, M = -2π * phase_frac, so l = Omega + omega + M
+    def l_from_phase_frac(pf: float) -> float:
+        M0 = (-2.0 * np.pi * pf) % (2.0 * np.pi)
+        return (Omega_rad + omega_rad + M0) % (2.0 * np.pi)
+
+    # Helper: convert M0 (mean anomaly) to l_rad
+    def l_from_M0(M0: float) -> float:
+        return (Omega_rad + omega_rad + M0) % (2.0 * np.pi)
+
+    # Helper: convert time of periastron to l_rad
+    def l_from_T0(T0: float) -> float:
+        n = 2.0 * np.pi / period
+        M0 = (-n * (T0 - t0)) % (2.0 * np.pi)
+        return (Omega_rad + omega_rad + M0) % (2.0 * np.pi)
+
+    # Canonical rule: explicit l_rad wins over any legacy field.
+    if l_rad_val is not None:
+        return l_rad_val % (2.0 * np.pi)
+
+    candidates = []
+
+    # No explicit l_rad: fall back to legacy fields.
+    if phase_frac_val is not None and abs(phase_frac_val) > 1e-9:
+        candidates.append(("phase_frac", l_from_phase_frac(phase_frac_val)))
+
+    # Check phase_rad (as M0)
+    if phase_rad_val is not None and abs(phase_rad_val) > 1e-9:
+        candidates.append(("phase_rad", l_from_M0(phase_rad_val)))
+
+    # Check phase_deg (as M0)
+    if phase_deg_val is not None and abs(phase_deg_val) > 1e-9:
+        M0_deg = float(np.deg2rad(phase_deg_val))
+        candidates.append(("phase_deg", l_from_M0(M0_deg)))
+
+    # Check generic phase (heuristic for radians vs degrees)
+    if phase_val is not None and abs(phase_val) > 1e-9:
+        if abs(phase_val) <= 2.0 * np.pi + 1e-6:
+            M0_phase = phase_val
+        elif abs(phase_val) <= 360.0 + 1e-6:
+            M0_phase = float(np.deg2rad(phase_val))
+        else:
+            M0_phase = phase_val
+        candidates.append(("phase", l_from_M0(M0_phase)))
+
+    # Check time of periastron
+    if t0_days_val is not None:
+        candidates.append(("T0_days", l_from_T0(t0_days_val)))
+
+    # If we found non-zero candidates, use the first one (highest priority)
+    if candidates:
+        return candidates[0][1]
+
+    # Fallback: check for zero-valued fields (in case agent explicitly set them to 0)
+    if l_rad_val is not None:
+        return l_rad_val % (2.0 * np.pi)
+    if phase_frac_val is not None:
+        return l_from_phase_frac(phase_frac_val)
+    if phase_rad_val is not None:
+        return l_from_M0(phase_rad_val)
+    if phase_deg_val is not None:
+        return l_from_M0(float(np.deg2rad(phase_deg_val)))
+    if phase_val is not None:
+        if abs(phase_val) <= 2.0 * np.pi + 1e-6:
+            return l_from_M0(phase_val)
+        elif abs(phase_val) <= 360.0 + 1e-6:
+            return l_from_M0(float(np.deg2rad(phase_val)))
+        else:
+            return l_from_M0(phase_val)
+
+    # Default
+    return 0.0
+
+
+def validate_submission_semantics(
+    plan: dict[str, Any],
+    observation: dict[str, Any],
+    *,
+    phase_conflict_tol_rad: float = 0.35,
+) -> dict[str, Any]:
+    """Validate protocol-level parameter semantics before submission.
+
+    Focuses on:
+    - phase semantic consistency (`l_rad` vs `phase_*`/`T0_days`)
+    - reference epoch usage (`t_ref = times_days[0]`)
+    - legacy alias usage visibility
+    """
+
+    def _ang_diff(a: float, b: float) -> float:
+        d = (a - b + np.pi) % (2.0 * np.pi) - np.pi
+        return float(abs(d))
+
+    def _try_float(desc: dict[str, Any], key: str) -> float | None:
+        if key not in desc:
+            return None
+        try:
+            return _coerce_float(desc.get(key), name=key, default=None)
+        except SubmissionError:
+            return None
+
+    times = np.asarray(observation.get("times_days", []), dtype=float)
+    t_ref = float(times[0]) if times.size else 0.0
+    planets_desc = plan.get("planets", [])
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "t_ref_days": t_ref,
+        "errors": [],
+        "warnings": [],
+        "per_planet": [],
+    }
+
+    if not isinstance(planets_desc, list):
+        out["ok"] = False
+        out["errors"].append("`planets` must be a list.")
+        return out
+
+    legacy_keys = {
         "period_days",
-        "m_sin_i_mjup",
         "semi_amplitude_ms",
-        "K_ms",
-        "e",
         "eccentricity",
-        "omega_rad",
-        "l_rad",
-        "mean_longitude_rad",
         "phase_rad",
         "phase_deg",
-        "inc_rad",
-        "Omega_rad",
-    }
-    unexpected = sorted(set(raw_planet) - allowed_fields)
-    if unexpected:
-        raise SubmissionError(
-            f"{prefix} contains unsupported fields: {', '.join(unexpected)}"
-        )
-
-    period = _finite_float(
-        _first_present(raw_planet, ("P_days", "period_days")),
-        name=f"{prefix}.P_days",
-    )
-    if period <= 0.5:
-        raise SubmissionError(f"{prefix}.P_days must be greater than 0.5")
-
-    raw_eccentricity = _first_present(raw_planet, ("e", "eccentricity"))
-    eccentricity = _finite_float(
-        0.0 if raw_eccentricity is None else raw_eccentricity,
-        name=f"{prefix}.e",
-    )
-    if not 0.0 <= eccentricity <= 0.8:
-        raise SubmissionError(f"{prefix}.e must be between 0 and 0.8")
-
-    omega = _finite_float(
-        raw_planet.get("omega_rad", 0.0), name=f"{prefix}.omega_rad"
-    ) % (2.0 * np.pi)
-    ascending_node = _finite_float(
-        raw_planet.get("Omega_rad", 0.0), name=f"{prefix}.Omega_rad"
-    ) % (2.0 * np.pi)
-    inclination = _finite_float(
-        raw_planet.get("inc_rad", math.pi / 2.0),
-        name=f"{prefix}.inc_rad",
-    )
-
-    longitude_value = _first_present(raw_planet, ("l_rad", "mean_longitude_rad"))
-    if longitude_value is not None:
-        mean_longitude = _finite_float(longitude_value, name=f"{prefix}.l_rad")
-    elif "phase_rad" in raw_planet:
-        mean_anomaly = _finite_float(
-            raw_planet["phase_rad"], name=f"{prefix}.phase_rad"
-        )
-        mean_longitude = ascending_node + omega + mean_anomaly
-    elif "phase_deg" in raw_planet:
-        mean_anomaly = math.radians(
-            _finite_float(raw_planet["phase_deg"], name=f"{prefix}.phase_deg")
-        )
-        mean_longitude = ascending_node + omega + mean_anomaly
-    else:
-        mean_longitude = ascending_node + omega
-
-    raw_mass = raw_planet.get("m_sin_i_mjup")
-    raw_amplitude = _first_present(raw_planet, ("semi_amplitude_ms", "K_ms"))
-    if raw_mass is None and raw_amplitude is None:
-        raise SubmissionError(f"{prefix} needs `m_sin_i_mjup` or `semi_amplitude_ms`")
-
-    return {
-        "P_days": period,
-        "m_sin_i_mjup": raw_mass,
-        "semi_amplitude_ms": raw_amplitude,
-        "e": eccentricity,
-        "omega_rad": omega,
-        "l_rad": mean_longitude % (2.0 * np.pi),
-        "inc_rad": inclination,
-        "Omega_rad": ascending_node,
+        "phase",
+        "phase_frac",
+        "K_ms",
+        "T0_days",
+        "T_peri",
     }
 
+    for i, desc in enumerate(planets_desc):
+        if not isinstance(desc, dict):
+            out["ok"] = False
+            out["errors"].append(f"planet[{i}] must be an object.")
+            continue
 
-def normalize_submission(
-    submission: str | dict[str, Any] | CandidateSubmission, task: StargazerTask
-) -> CandidateSubmission:
-    """Parse compatibility inputs into the shared canonical submission model."""
-    payload = parse_submission(submission)
-    unexpected = sorted(set(payload) - {"planets", "noise_jitter_ms", "noise"})
-    if unexpected:
-        raise SubmissionError(
-            f"Submission contains unsupported fields: {', '.join(unexpected)}"
-        )
-    raw_planets = payload.get("planets")
-    if not isinstance(raw_planets, list):
-        raise SubmissionError("`planets` must be a list")
-    if len(raw_planets) > task.max_planets:
-        raise SubmissionError(
-            f"At most {task.max_planets} planets may be submitted for this task"
-        )
+        period = _try_float(desc, "period_days")
+        if period is None:
+            period = _try_float(desc, "P_days")
+        omega = _try_float(desc, "omega_rad")
+        omega = float(omega) if omega is not None else 0.0
+        Omega = _try_float(desc, "Omega_rad")
+        Omega = float(Omega) if Omega is not None else 0.0
 
-    planets: list[dict[str, Any]] = []
-    for index, raw_planet in enumerate(raw_planets):
-        if not isinstance(raw_planet, dict):
-            raise SubmissionError(f"planets[{index}] must be an object")
-        canonical = _canonical_planet_payload(raw_planet, index)
-        raw_mass = canonical.pop("m_sin_i_mjup")
-        raw_amplitude = canonical.pop("semi_amplitude_ms")
-        if raw_mass is not None:
-            mass = _finite_float(raw_mass, name=f"planets[{index}].m_sin_i_mjup")
-            if mass < 0.0:
-                raise SubmissionError(
-                    f"planets[{index}].m_sin_i_mjup must be non-negative"
-                )
-        else:
-            amplitude = _finite_float(
-                raw_amplitude, name=f"planets[{index}].semi_amplitude_ms"
+        if period is None or period <= 0.5:
+            out["ok"] = False
+            out["errors"].append(
+                f"planet[{i}] invalid period; expected `P_days` > 0.5."
             )
-            if amplitude < 0.0:
-                raise SubmissionError(
-                    f"planets[{index}].semi_amplitude_ms must be non-negative"
+            continue
+
+        candidates: dict[str, float] = {}
+        l_direct = _try_float(desc, "l_rad")
+        if l_direct is not None:
+            candidates["l_rad"] = float(l_direct % (2.0 * np.pi))
+
+        phase_rad = _try_float(desc, "phase_rad")
+        if phase_rad is not None:
+            candidates["phase_rad(M0)"] = float(
+                (Omega + omega + phase_rad) % (2.0 * np.pi)
+            )
+
+        phase_deg = _try_float(desc, "phase_deg")
+        if phase_deg is not None:
+            candidates["phase_deg(M0)"] = float(
+                (Omega + omega + np.deg2rad(phase_deg)) % (2.0 * np.pi)
+            )
+
+        phase = _try_float(desc, "phase")
+        if phase is not None:
+            if abs(phase) <= 2.0 * np.pi + 1e-6:
+                phase_as_rad = phase
+            elif abs(phase) <= 360.0 + 1e-6:
+                phase_as_rad = float(np.deg2rad(phase))
+            else:
+                phase_as_rad = phase
+            candidates["phase(alias M0)"] = float(
+                (Omega + omega + phase_as_rad) % (2.0 * np.pi)
+            )
+
+        phase_frac = _try_float(desc, "phase_frac")
+        if phase_frac is not None:
+            M0 = (-2.0 * np.pi * phase_frac) % (2.0 * np.pi)
+            candidates["phase_frac(tp)"] = float((Omega + omega + M0) % (2.0 * np.pi))
+
+        T0 = _try_float(desc, "T0_days")
+        if T0 is None:
+            T0 = _try_float(desc, "T_peri")
+        if T0 is not None:
+            n = 2.0 * np.pi / float(period)
+            M0 = (-n * (T0 - t_ref)) % (2.0 * np.pi)
+            candidates["T0_days(tp)"] = float((Omega + omega + M0) % (2.0 * np.pi))
+
+        planet_info: dict[str, Any] = {
+            "planet_idx": i,
+            "t_ref_days": t_ref,
+            "candidate_l_rad": candidates,
+            "resolved_l_rad": float(
+                _parse_phase_to_l_rad(desc, omega, Omega, float(period), t_ref)
+            ),
+        }
+
+        keys = list(candidates.keys())
+        if len(keys) >= 2:
+            max_diff = 0.0
+            worst_pair = None
+            for a_idx in range(len(keys)):
+                for b_idx in range(a_idx + 1, len(keys)):
+                    ka, kb = keys[a_idx], keys[b_idx]
+                    d = _ang_diff(candidates[ka], candidates[kb])
+                    if d > max_diff:
+                        max_diff = d
+                        worst_pair = (ka, kb, d)
+            planet_info["max_phase_disagreement_rad"] = max_diff
+            if max_diff > phase_conflict_tol_rad and worst_pair is not None:
+                # If explicit l_rad is provided, treat it as canonical and do not hard-fail.
+                # Many agents keep legacy phase_* fields as placeholders (often 0.0).
+                if "l_rad" in candidates:
+                    out["warnings"].append(
+                        f"planet[{i}] phase fields disagree ({worst_pair[0]} vs {worst_pair[1]}, Δ={worst_pair[2]:.3f} rad), "
+                        "but `l_rad` is present and treated as canonical."
+                    )
+                else:
+                    out["ok"] = False
+                    out["errors"].append(
+                        f"planet[{i}] phase semantics conflict: {worst_pair[0]} vs {worst_pair[1]} differ by {worst_pair[2]:.3f} rad. "
+                        "Use a single convention or make them consistent."
+                    )
+
+        used_legacy = sorted(k for k in desc if k in legacy_keys)
+        if used_legacy:
+            out["warnings"].append(
+                f"planet[{i}] used legacy aliases {used_legacy}; prefer Stargazer native keys "
+                f"(P_days, m_sin_i_mjup, e, omega_rad, l_rad)."
+            )
+        if not any(
+            k in desc
+            for k in (
+                "l_rad",
+                "phase_rad",
+                "phase_deg",
+                "phase",
+                "phase_frac",
+                "T0_days",
+                "T_peri",
+            )
+        ):
+            out["warnings"].append(
+                f"planet[{i}] has no phase field; defaulting to l_rad=0 at t_ref={t_ref}."
+            )
+
+        out["per_planet"].append(planet_info)
+
+    return out
+
+
+def normalize_submission(submission, task: StargazerTask) -> CandidateSubmission:
+    """Canonicalize the original aliases, clamp parameters, and infer omitted jitter."""
+    plan = canonicalize_plan(parse_submission(submission))
+    check = validate_submission_semantics(plan, task.public_observation())
+    if not check["ok"]:
+        raise SemanticSubmissionError(check)
+    planets = []
+    for raw in plan["planets"][: task.max_planets]:
+        period = _coerce_float(raw.get("P_days"), name="period_days/P_days")
+        eccentricity = float(
+            np.clip(
+                _coerce_float(raw.get("e"), name="eccentricity/e", default=0), 0, 0.8
+            )
+        )
+        omega = _coerce_float(raw.get("omega_rad"), name="omega_rad", default=0)
+        node = float(
+            _coerce_float(raw.get("Omega_rad"), name="Omega_rad", default=0)
+            % (2 * np.pi)
+        )
+        inclination = float(
+            np.clip(
+                _coerce_float(raw.get("inc_rad"), name="inc_rad", default=np.pi / 2),
+                0,
+                np.pi,
+            )
+        )
+        mass = _coerce_float(raw.get("m_sin_i_mjup"), name="m_sin_i_mjup", default=0)
+        if mass <= 0:
+            amplitude = float(
+                np.clip(
+                    _coerce_float(
+                        raw.get("semi_amplitude_ms", raw.get("K_ms")),
+                        name="semi_amplitude_ms/K_ms",
+                        default=0,
+                    ),
+                    0,
+                    200,
                 )
+            )
             mass = mass_from_semi_amplitude(
-                amplitude,
-                canonical["P_days"],
-                canonical["e"],
-                task.star_mass_sun,
+                amplitude, period, eccentricity, task.star_mass_sun
             )
-        canonical["m_sin_i_mjup"] = mass
-        planets.append(canonical)
-
-    noise = payload.get("noise", {})
-    if noise is None:
-        noise = {}
-    if not isinstance(noise, dict):
-        raise SubmissionError("`noise` must be an object")
-    raw_jitter = payload.get("noise_jitter_ms", noise.get("sigma_jitter_ms", 0.0))
-    jitter = _finite_float(raw_jitter, name="noise_jitter_ms")
-    if jitter < 0.0:
-        raise SubmissionError("noise_jitter_ms must be non-negative")
-    try:
-        return CandidateSubmission.model_validate(
-            {"planets": planets, "noise_jitter_ms": jitter}
+        planets.append(
+            {
+                "P_days": period,
+                "m_sin_i_mjup": float(np.clip(mass, 0.001, 30)),
+                "e": eccentricity,
+                "inc_rad": inclination,
+                "Omega_rad": node,
+                "omega_rad": omega % (2 * np.pi),
+                "l_rad": _parse_phase_to_l_rad(
+                    raw, omega, node, period, task.observations.times_days[0]
+                ),
+            }
         )
-    except ValidationError as exc:
-        raise SubmissionError(
-            f"Submission does not match the canonical schema: {exc}"
-        ) from exc
+    observations = task.observations
+    observed = np.asarray(observations.rvs_ms)
+    weights = 1 / np.maximum(np.asarray(observations.sigmas_ms) ** 2, 1e-6)
+    offset = _coerce_float(
+        plan.get("rv_offset_ms"),
+        name="rv_offset_ms",
+        default=float(np.average(observed, weights=weights)),
+    )
+    # The original builder uses REBOUND for omitted-jitter residuals, even
+    # though evaluation fits analytic RV-only curves and instrument offsets.
+    candidate = CandidateSubmission(planets=planets)
+    if plan.get("noise_jitter_ms") is None:
+        model = np.full_like(observed, offset)
+        if planets:
+            model += simulate_submission_rv(
+                task, tuple(planet.to_planet_params() for planet in candidate.planets)
+            )
+        jitter = float(np.sqrt(np.average((observed - model) ** 2, weights=weights)))
+    else:
+        jitter = _coerce_float(plan["noise_jitter_ms"], name="noise_jitter_ms")
+    return candidate.model_copy(update={"noise_jitter_ms": max(0.1, jitter)})
 
 
 def _log_likelihood(
@@ -370,11 +618,11 @@ def _planet_components(
         (guess.l_rad - guess.Omega_rad) - (truth.l_rad - truth.Omega_rad) + np.pi
     ) % (2.0 * np.pi) - np.pi
     return {
-        "rv_curve": curve_rms / truth_amplitude,
-        "dlogP": abs(math.log(guess.P_days / truth.P_days)),
-        "dlogK": abs(math.log(guess_amplitude / truth_amplitude)),
+        "dlogP": abs(np.log(guess.P_days / truth.P_days)),
+        "dlogK": abs(np.log(guess_amplitude / truth_amplitude)),
         "de": abs(guess.e - truth.e),
         "dphase": abs(float(phase_delta)),
+        "rv_curve": curve_rms / truth_amplitude,
     }
 
 
@@ -422,6 +670,15 @@ def _match_planets(
     return base_score + count_penalty, pairs
 
 
+def _hint(task: StargazerTask, key: str, default: float, minimum: float) -> float:
+    hints = task.metadata.get("hints", {})
+    try:
+        value = float(hints.get(key))
+        return value if np.isfinite(value) and value >= minimum else default
+    except (AttributeError, TypeError, ValueError):
+        return default
+
+
 def evaluate_submission(
     task: StargazerTask,
     submission: str | dict[str, Any] | CandidateSubmission,
@@ -459,11 +716,88 @@ def evaluate_submission(
     count_difference = len(candidate_planets) - len(task.truth_planets)
 
     maximum_rms = thresholds.maximum_rms_factor * float(np.median(uncertainties))
+    maximum_rms = _hint(task, "max_rms_ms", maximum_rms, np.nextafter(0.0, 1.0))
+    thresholds = replace(
+        thresholds,
+        minimum_match_score=_hint(
+            task, "target_match_score", thresholds.minimum_match_score, 0.0
+        ),
+    )
     ok_delta_bic = delta_bic_per_point > thresholds.minimum_delta_bic_per_point
     ok_rms = rms <= maximum_rms
     ok_match = match_score >= thresholds.minimum_match_score
     ok_count = not thresholds.require_count_match or count_difference == 0
     success = ok_delta_bic and ok_rms and ok_match and ok_count
+    assignment = {
+        "pairs": [list(pair) for pair in pairs],
+        "unmatched_truth": [
+            i
+            for i in range(len(task.truth_planets))
+            if i not in {pair[0] for pair in pairs}
+        ],
+        "unmatched_guess": [
+            i
+            for i in range(len(candidate_planets))
+            if i not in {pair[1] for pair in pairs}
+        ],
+    }
+    components = {
+        "likelihood": likelihood / observed.size,
+        "delta_bic": delta_bic_per_point,
+        "neg_rms": -rms,
+        "match": match_score,
+        "count": -abs(count_difference),
+    }
+    reward = sum(
+        weight * components[key]
+        for key, weight in {
+            "likelihood": 1.0,
+            "delta_bic": 0.3,
+            "neg_rms": 0.1,
+            "match": 1.0,
+            "count": 0.2,
+        }.items()
+    )
+    details = {
+        "median_sigma_ms": float(np.median(uncertainties)),
+        "delta_bic_per_point": delta_bic_per_point,
+        "rms_ms": rms,
+        "ok_delta_bic": bool(ok_delta_bic),
+        "ok_rms": bool(ok_rms),
+        "min_delta_bic_per_point": thresholds.minimum_delta_bic_per_point,
+        "max_rms_ms": maximum_rms,
+        "match_score": match_score,
+        "count_term": float(-abs(count_difference)),
+        "ok_match": bool(ok_match),
+        "ok_count": bool(ok_count),
+        "min_match_score": thresholds.minimum_match_score,
+        "require_count_match": thresholds.require_count_match,
+    }
+    comparison = {
+        "submitted_planets": [
+            {
+                "P_days": p.P_days,
+                "m_sin_i_mjup": p.m_sin_i_mjup,
+                "e": p.e,
+                "l_rad": p.l_rad,
+                "K_ms": semi_amplitude_ms(
+                    p.m_sin_i_mjup, p.P_days, p.e, task.star_mass_sun
+                ),
+            }
+            for p in candidate_planets
+        ],
+        "matched_pairs": [
+            {
+                "guess_idx": gi,
+                "distance": distance,
+                "components": _planet_components(
+                    task.truth_planets[ti], candidate_planets[gi], task, times
+                ),
+            }
+            for ti, gi, distance in pairs
+        ],
+        "unmatched_guess": assignment["unmatched_guess"],
+    }
     return EvaluationResult(
         success=success,
         delta_bic=float(delta_bic),
@@ -480,19 +814,102 @@ def evaluate_submission(
         criteria=thresholds,
         gamma_per_instrument_ms=offsets,
         matched_pairs=pairs,
+        reward=float(reward),
+        success_details=details,
+        comparison=comparison,
+        semantic_check=validate_submission_semantics(
+            canonicalize_plan(parse_submission(submission)), task.public_observation()
+        ),
+        metrics={
+            "rv_model_source": "rv_only_keplerian_from_planets",
+            "gamma_per_instrument_ms": offsets,
+            "ll": likelihood,
+            "bic": bic,
+            "delta_bic": float(delta_bic),
+            "residuals": {"rms": rms, "mae": mae},
+            "bic_null": float(delta_bic + bic),
+            "matching": {"score": match_score, "assignment": assignment},
+            "components": components,
+            "mode": "params_and_model",
+        },
     )
+
+
+def submit_candidate(
+    task: StargazerTask, payload: dict[str, Any], session: dict[str, Any]
+) -> str:
+    """Apply one original submission action to Corral's committed session state."""
+    reward, done, success, details, metrics = 0.0, False, False, {}, {}
+    try:
+        result = evaluate_submission(task, payload)
+    except SemanticSubmissionError as exc:
+        output = "Plan rejected by semantic validator:\n" + json.dumps(
+            {
+                "errors": exc.check["errors"],
+                "t_ref_days": exc.check["t_ref_days"],
+                "hint": "Use Stargazer-native keys and ensure phase semantics are consistent.",
+            },
+            indent=2,
+        )
+    except SubmissionError as exc:
+        output = f"Plan rejected: {exc}"
+    else:
+        session["steps"] += 1
+        reward, success = result.reward, bool(result.success)
+        done = success or session["steps"] >= session["max_submissions"]
+        details, metrics = result.success_details, result.metrics
+        output = json.dumps(
+            {
+                "reward": reward,
+                "done": done,
+                "success": success,
+                "success_details": {
+                    k: v for k, v in details.items() if k != "count_term"
+                },
+                "semantic_check": result.semantic_check,
+                "components": {
+                    k: v for k, v in metrics["components"].items() if k != "count"
+                },
+                "residuals": metrics["residuals"],
+                "matching": metrics["matching"],
+                "comparison": result.comparison,
+            },
+            indent=2,
+        )
+    session["done"] = done
+    session["force_submit"] = False
+    session["history"].append(
+        {
+            "step": len(session["history"]) + 1,
+            "reward": reward,
+            "done": done,
+            "success": success,
+            "success_details": details,
+            "metrics": metrics,
+        }
+    )
+    return output
 
 
 def make_stargazer_scorer(
     task: StargazerTask, criteria: EvaluationCriteria | None = None
 ):
-    """Bind hidden task truth into Corral's one-argument scoring contract."""
+    """Standalone candidate scorer used by the reference audit."""
 
     def score_stargazer_submission(answer: str) -> float:
-        """Return one only when all four Stargazer criteria pass."""
         try:
             return evaluate_submission(task, answer, criteria).score
         except (SubmissionError, ValueError, TypeError, OverflowError):
             return 0.0
 
     return score_stargazer_submission
+
+
+def score_execution(state) -> float:
+    """Score committed Stargazer submissions; Corral's final text only closes the run."""
+    session = state.environment.values.get("hidden_arguments", {}).get(  # noqa: PD011 - EnvironmentState mapping, not pandas
+        "submission_session", {}
+    )
+    return float(
+        any(entry.get("success", False) for entry in session.get("history", []))
+    )

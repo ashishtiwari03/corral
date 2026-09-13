@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -54,3 +55,30 @@ def exact_submission(simple_task: StargazerTask) -> dict:
 @pytest.fixture
 def exact_submission_json(exact_submission: dict) -> str:
     return json.dumps(exact_submission)
+
+
+@pytest.fixture(scope="session")
+def protocol_reference():
+    """Public test dataset outputs captured from the pinned original implementation."""
+    return json.loads(
+        (Path(__file__).parent / "fixtures/protocol_reference.json").read_text()
+    )
+
+
+@pytest.fixture
+def assert_protocol_equal():
+    def compare(actual, expected):
+        if isinstance(expected, dict):
+            assert actual.keys() == expected.keys()
+            for key in expected:
+                compare(actual[key], expected[key])
+        elif isinstance(expected, list):
+            assert len(actual) == len(expected)
+            for left, right in zip(actual, expected, strict=True):
+                compare(left, right)
+        elif isinstance(expected, float):
+            assert actual == pytest.approx(expected, rel=1e-10, abs=1e-10)
+        else:
+            assert actual == expected
+
+    return compare
