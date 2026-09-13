@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_1 - Task_10",
+    "description": "Evaluate the in-plane mechanical stiffness of graphene using the MACE-MP-0 interatomic potential. Construct a primitive graphene unit cell containing two carbon atoms using ASE's graphene builder with lattice parameter a = 2.46 \u00c5 and 15 \u00c5 of vacuum along the z-axis. Attach the MACE-MP-0 calculator and perform a constrained geometric relaxation of the atomic positions and unit cell. Allow the in-plane cell components to relax while keeping the out-of-plane cell dimension and cell components fixed, using ASE's ExpCellFilter with the mask [True, True, False, False, False, True]. Optimize with BFGS until the maximum force is below 0.005 eV/\u00c5. After relaxation, calculate the equilibrium in-plane cell area as A_0 = |a_1 \u00d7 a_2|. Generate 11 biaxially strained configurations by scaling both relaxed in-plane lattice vectors by factors from 0.98 to 1.02 in uniform increments of 0.004. Scale the atomic coordinates proportionally in the xy-plane while keeping the 15 \u00c5 z-direction vacuum unchanged. Do not perform further relaxation of the strained configurations. For each strained configuration, calculate the total potential energy with MACE. Fit the resulting energy-area data to E(A) = aA\u00b2 + bA + c. Calculate the 2D in-plane stiffness as K_2D = 2aA_0. Convert the resulting value from eV/\u00c5\u00b2 to N/m using 1 eV/\u00c5\u00b2 = 16.0217662 N/m, and return K_2D as a single floating-point value in N/m. Use ASE, MACE, and the BFGS optimizer.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical",
+    "submission_format": "numerical value without units (eg. 206.38)",
+    "initial_input": {},
+    "scoring_params": {
+      "target": 206.38,
+      "tolerance": 0
+    },
+    "id": "level_1_task_10",
+    "uuid": "2a1e85a4-9645-42b7-a3d8-e5f8f3c7b2a6"
+  }
+]

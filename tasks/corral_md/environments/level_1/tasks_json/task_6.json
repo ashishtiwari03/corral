@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_1 - Task_6",
+    "description": "Construct a bulk conventional face-centered cubic (FCC) unit cell of Copper (Cu) with a lattice parameter a = 3.615 \u00c5, and expand it into a 3 \u00d7 3 \u00d7 3 supercell. Construct a separate bulk conventional FCC unit cell of Nickel (Ni) with a lattice parameter a = 3.52 \u00c5. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator and attach it to both structures. Perform a geometry optimization (e.g., using BFGS) on both the pure Cu supercell and the pure Ni unit cell until the maximum atomic force is below 0.00005 eV/\u00c5, and calculate their respective energies per atom. Next, identify the Cu atom closest to the geometric center of the Cu supercell and replace it with a Ni atom. Relax this defective supercell using the same optimization criteria. Calculate the impurity substitution energy using E_sub = E_defected - E_pure_Cu + E_Cu_bulk_per_atom - E_Ni_bulk_per_atom, where E_defected is the relaxed total energy of the Ni-substituted Cu supercell, E_pure_Cu is the relaxed total energy of the pure Cu 3 \u00d7 3 \u00d7 3 supercell, and E_Cu_bulk_per_atom and E_Ni_bulk_per_atom are the relaxed energies per atom of the corresponding bulk Cu and Ni unit cells. Return the impurity substitution energy as a floating-point value in eV units. USE ASE FOR THIS SIMULATION, DO NOT USE LAMMPS.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical",
+    "submission_format": "numerical value without units (eg. 0.1250)",
+    "initial_input": {},
+    "scoring_params": {
+      "target": 0.1250,
+      "tolerance": 0.005
+    },
+    "id": "level_1_task_6",
+    "uuid": "c3e85f41-096b-4e12-b901-2a4b8cd9a77d"
+  }
+]

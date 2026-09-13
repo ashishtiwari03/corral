@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_1 - Task_7",
+    "description": "Construct a bulk rutile Titanium Dioxide (TiO\u2082) crystal structure with lattice parameters a = 4.594 \u00c5 and c = 2.959 \u00c5 and internal oxygen parameter u = 0.305. Expand the structure into a 2 \u00d7 2 \u00d7 2 supercell. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator. Calculate the total potential energy of the TiO\u2082 supercell using the MACE calculator and determine the energy per TiO\u2082 formula unit. Next, construct separate isolated Titanium (Ti) and Oxygen (O) atoms, each centered in a cubic cell with side length 10 \u00c5 and with periodic boundary conditions disabled in all directions. Calculate the potential energy of each isolated atom using the same MACE calculator. Calculate the cohesive energy per TiO\u2082 formula unit using the bulk energy per formula unit and the isolated Ti and O atomic energies. Return the cohesive energy as a float value in eV/formula unit. Do not perform any structural optimization or relaxation.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical",
+    "submission_format": "numerical value without units (eg. 19.84)",
+    "initial_input": {},
+    "scoring_params": {
+      "target": 19.84324121,
+      "tolerance": 0.01
+    },
+    "id": "level_1_task_7",
+    "uuid": "4a2e519d-7f89-41c3-a3d2-3c8e9a2b1f45"
+  }
+]

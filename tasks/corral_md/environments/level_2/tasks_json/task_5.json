@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Level_2 - Task_5",
+    "description": "Evaluate the linear coupling between lattice strain and the optical phonon frequency of bulk Silicon using a machine learning regression model. Start with a primitive diamond unit cell of Silicon (a = 5.43 \u00c5). The MACE-MP-0 foundation model, loaded from the local path ./models/2023-12-03-mace-128-L1_epoch-199.model, should be used as the ASE-compatible calculator to describe interatomic interactions. Generate a dataset of 25 distinct deformed crystal structures by systematically applying combinations of isotropic lattice-parameter scaling (scaling the baseline lattice parameter by the fractions: -0.02, -0.01, 0.0, 0.01, 0.02) and a subsequent uniaxial strain along the z-axis (scaling the cell's c-vector by the fractions: -0.02, -0.01, 0.0, 0.01, 0.02). For each of the 25 configurations, compute the \u0393-point phonons using finite-displacement methods and extract the maximum positive vibrational frequency (which corresponds to the highest optical mode) in eV. Construct a feature matrix of shape (25, 2) where the first column is the isotropic lattice-strain fraction and the second column is the uniaxial strain fraction. Construct a target vector containing the 25 extracted frequencies. Train a linear regression model on this complete dataset to predict the frequency from the strain components. Return a Python tuple of the two learned coefficients in the exact order: [isotropic lattice-strain coefficient, uniaxial-strain coefficient].",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical_array",
+    "submission_format": "Python list or tuple of two numerical values (eg. [-0.2672, -0.1108])",
+    "initial_input": {
+    },
+    "scoring_params": {
+      "target": [-0.2672, -0.1108],
+      "tolerance": 0.01
+    },
+    "id": "level_2_task_5",
+    "uuid": "8f3b6c2d-9e1f-4b7a-a4c5-3d8e9f2a1b7c"
+  }
+]

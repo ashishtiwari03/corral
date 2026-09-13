@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_1 - Task_4",
+    "description": "Construct an initial state consisting of a 3 \u00d7 3 \u00d7 1 periodic Graphene sheet with a 10 \u00c5 vacuum layer. Place a Lithium (Li) adatom positioned vertically at z = max(z_carbon) + 1.8 \u00c5 and horizontally at the center of the cell (x = cell[0, 0] \u00d7 0.5, y = cell[1, 1] \u00d7 0.5) directly above a hollow site. Create a final state by displacing this Li adatom by the vector cell[0] / 3.0 from its initial position, with no change in its z coordinate, to reach the adjacent hollow site. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator. Generate a linear interpolation of exactly 5 images (including endpoints) for a Nudged Elastic Band (NEB) path. Calculate the single-point potential energy of all 5 images using the MACE calculator without performing any structural optimization or relaxation. Return the resulting unrelaxed activation barrier (defined as the maximum energy across the path minus the initial state energy) as a float value in eV units.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical",
+    "submission_format": "numerical value without units (eg. 0.5049)",
+    "initial_input": {},
+    "scoring_params": {
+      "target": 0.5049,
+      "tolerance": 0.005
+    },
+    "id": "level_1_task_4",
+    "uuid": "b84f3e6a-7d12-4a5c-912b-3a2c5b6e8f1d"
+  }
+]

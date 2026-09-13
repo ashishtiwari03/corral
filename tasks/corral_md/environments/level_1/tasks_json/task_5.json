@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_1 - Task_5",
+    "description": "Construct a Platinum (Pt) (111) surface slab with a 2 \u00d7 2 surface cell, 4 atomic layers, and a 10 \u00c5 vacuum layer. Constrain the bottom 2 atomic layers of the slab so they are fixed during optimization. Add a Carbon Monoxide (CO) molecule oriented with the Carbon atom directly above a surface Pt atom (at the atop site), with its initial z-coordinate 1.8 \u00c5 above the z-coordinate of the top-layer Pt atoms. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator. Perform geometry optimization using a quasi-Newton optimizer (e.g., BFGS) until the maximum force is below 0.05 eV/\u00c5 for three configurations: the combined slab-CO system (with bottom slab layers constrained), the clean reference slab (with bottom slab layers constrained), and an isolated reference CO molecule centered in a simulation box providing 5 \u00c5 of vacuum padding on all sides.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_numerical",
+    "submission_format": "numerical value without units (eg. -1.7855)",
+    "initial_input": {},
+    "scoring_params": {
+      "target": -1.7855,
+      "tolerance": 0.01
+    },
+    "id": "level_1_task_5",
+    "uuid": "4f9d8a3e-1b2c-4e5f-a6b7-8c9d0e1f2a3b"
+  }
+]

@@ -1,7 +1,7 @@
 [
   {
-    "name": "Aluminum Surface Energy - Level 2",
-    "description": "Calculate the surface energy of Aluminum for the surface whose normal is along the given direction by removing periodic boundary conditions in the given direction and computing the energy difference per unit area between the bulk and surface configurations. Use the Embedded Atom Method (EAM) potential and the following simulation parameters. The simulation should replicate the unit cell 5 times in each of the x, y, and z directions. Return the surface energy in eV/\u00c5\u00b2 units.",
+    "name": "Level_2 - Task_2",
+    "description": "Determine the glass transition temperature (Tg) of sodium silicate by quenching a molten configuration using molecular dynamics simulations. Start from the given pre-equilibrated molten sodium silicate structure. Use the provided Buckingham + Coulomb (BKS-type) potential with long-range electrostatics (PPPM) to define interatomic interactions. The potential file already contains the required pair_style, pair_coeff, and kspace_style commands and should be included directly. Perform the cooling and equilibration under zero external isotropic pressure control using NPT ensemble. Cool the system from 4000 K down to 300 K with a cooling rate of 10 K/ps and a pressure damping factor of 10000, then equilibrate the glass formed at 300 K for an additional 100 ps with a pressure damping factor of 5000. Estimate the glass transition temperature Tg by constructing the density\u2013temperature curve and fitting two linear regimes corresponding to the high-temperature (supercooled liquid) and low-temperature (glassy) regions. Do not look the data beyond 2600 K as then the density becomes noisy. Extract Tg as the intersection point of the two fitted lines, and report the result in Kelvin (K).",
     "tools": [
       "get_potential_metadata",
       "get_structure_from_mp_text",
@@ -14,20 +14,16 @@
     "scoring_function": "check_numerical",
     "submission_format": "numerical value without units (eg. 56.00)",
     "initial_input": {
-      "units": "metal",
-      "materials_project_id": "mp-134",
-      "direction": [
-        0,
-        0,
-        1
-      ],
-      "atom_style": "atomic"
+      "path to molten state": "/structures/melt/liq4000.dat",
+      "atom style": "charge",
+      "units": "real",
+      "pbc": "true"
     },
     "scoring_params": {
-      "target": 0.0589,
-      "tolerance": 0.02
+      "target": 1576.88,
+      "tolerance": 0.08
     },
-    "id": "aluminum_surface_energy_2",
-    "uuid": "459a5c8a-31fa-4242-9080-729c534e7625"
+    "id": "level_2_task_2",
+    "uuid": "07801519-d189-4c82-bdc4-59e3954110a9"
   }
 ]

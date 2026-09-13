@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Level_2 - Task_3",
+    "description": "Fine-tune the MACE-MP-0 foundation model for the diatomic Ag\u2082 system using a uniformly sampled interatomic-distance grid spanning 0.6\u20135.0 \u00c5 with a spacing of 0.1 \u00c5. Identify an appropriate pretrained MACE-based oracle for generating reliable energy and force pseudo-labels in this regime. Use the selected oracle to generate energy and force proxy labels for the Ag\u2082 configurations. Use these pseudo-labels to fine-tune another MACE-MP foundation model which is appropriate for this system. Next, load the fine-tuned checkpoint as an ASE-compatible atomic calculator, construct the conventional cubic FCC unit cell containing 4 Ag atoms and expand it into a 3 \u00d7 3 \u00d7 3 supercell containing 108 atoms. Run a molecular dynamics (MD) simulation using a Langevin thermostat at 300 K using a 1.0 fs timestep for 5000 steps (logging every 100 steps). Return the absolute path to the trajectory file.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_trajectory_temperature",
+    "submission_format": "string representing the absolute path to the output file (eg. '/path/to/trajectory.traj')",
+    "initial_input": {},
+    "scoring_params": {
+      "target": 300.0,
+      "tolerance": 15.0
+    },
+    "id": "level_2_task_3",
+    "uuid": "a82b49d3-6e1c-4b55-87d2-7c3a9f1b4a6e"
+  }
+]

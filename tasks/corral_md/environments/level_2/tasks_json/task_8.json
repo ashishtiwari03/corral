@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Level_2 - Task_8",
+    "description": "Train a Ridge regression model using Smooth Overlap of Atomic Positions (SOAP) descriptors to predict the MACE potential energy of perturbed Silicon structures. Start with a conventional cubic unit cell of diamond Silicon using a lattice parameter of a = 5.43 \u00c5 and expand it into a 2 \u00d7 2 \u00d7 2 supercell. Load the MACE-MP-0 foundation model from the local path ./models/2023-12-03-mace-128-L1_epoch-199.model as an ASE-compatible calculator. Generate a dataset of 100 perturbed configurations. For each configuration i, where i ranges from 0 to 99, copy the base supercell and apply random atomic displacements drawn from a normal distribution with a standard deviation of 0.01 + 0.001 \u00d7 i \u00c5. Evaluate the total potential energy of each configuration using the MACE calculator. Compute SOAP descriptors for all 100 configurations using the dscribe library with species=['Si'], r_cut=5.0 \u00c5, n_max=6, l_max=6, periodic=True via DSCRIBE api, and average='inner', using n_jobs=1. Use configurations 0\u201379 as the training set and configurations 80\u201399 as the held-out test set. Train a Ridge regression model with Scikit-learn api with alpha=1e-3 using the SOAP descriptors and corresponding MACE potential energies. Save the trained Ridge regression model in pickle format and return the absolute path to the saved model's pickle file.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "check_r2",
+    "submission_format": "string representing the absolute path to the output file (eg. '/path/to/trained_model.pkl')",
+    "initial_input": {
+    },
+    "scoring_params": {
+      "target": 0.887232,
+      "tolerance": 0.029
+    },
+    "id": "level_2_task_8",
+    "uuid": "e45a2c91-8b3d-4e76-a19f-3d8c5b2a9e10"
+  }
+]

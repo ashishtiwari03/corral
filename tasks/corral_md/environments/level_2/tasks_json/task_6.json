@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Level_2 - Task_6",
+    "description": "Evaluate the finite-temperature Vibrational Density of States (VDOS) of bulk Aluminum at 300 K by computing the Fourier transform of atomic velocities from a molecular dynamics trajectory. Start with a primitive face-centered cubic (FCC) unit cell of Aluminum (a = 4.05 \u00c5) and replicate it into a 4 \u00d7 4 \u00d7 4 supercell. Use the MACE-MP-0 foundation model as the ASE-compatible calculator. Initialize the atomic velocities to match a temperature of 300 K following a Maxwell-Boltzmann distribution, and remove any center-of-mass momentum. Equilibrate the system in the NVT ensemble using a Langevin thermostat for 2,000 steps at 300 K, with a friction coefficient of 0.01 fs\u207b\u00b9 and a timestep of 1.0 fs. Then switch to the NVE ensemble using a velocity Verlet integration scheme and run exactly 4,096 production steps with a timestep of 1.0 fs. During the NVE production run, record the velocities of all atoms after each MD step, producing exactly 4,096 velocity frames. For each atom and Cartesian component, compute the discrete Fourier transform of its velocity time series and calculate the power spectrum as the squared magnitude of the transform. Sum the power spectra over all atoms and Cartesian components to obtain the unnormalized VDOS. Construct the corresponding frequency axis in THz using the 4,096-frame sampling interval of 1.0 fs. Set the zero-frequency (DC) VDOS component to zero. Save the resulting VDOS to a CSV file named vdos.csv containing exactly two columns: frequency_thz and vdos. Include all frequency bins in the file. Return the absolute path to the generated vdos.csv file.",
+    "tools": [
+      "get_structure_from_mp_text",
+      "run_python_script",
+      "get_nth_run_log",
+      "keyword_log_extractor",
+      "visualisation_tool"
+    ],
+    "scoring_function": "cosine_similarity",
+    "submission_format": "string representing the absolute path to the output file (eg. '/path/to/vdos.csv')",
+    "initial_input": {
+    },
+    "scoring_params": {
+      "target": "./ground_truths/task_6_vdos.csv",
+      "tolerance": 0.95
+    },
+    "id": "level_2_task_6",
+    "uuid": "b23c8a9e-f417-48a5-b1a7-578f7e2c9081"
+  }
+]
