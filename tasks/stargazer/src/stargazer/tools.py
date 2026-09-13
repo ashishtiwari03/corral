@@ -26,13 +26,13 @@ import scipy
 from scipy import optimize, signal
 
 from corral.core.tool import Tool, tool
-from stargazer.evaluator import SubmissionError, evaluate_submission
 from stargazer.models import (
     CandidatePlanet,
     CandidateSubmission,
     StargazerTask,
     mass_from_semi_amplitude,
 )
+from stargazer.score import SubmissionError, evaluate_submission
 
 try:
     import resource
@@ -609,7 +609,7 @@ def _apply_worker_resource_limits() -> None:
         if soft == resource.RLIM_INFINITY or soft > limit:
             resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
     except (OSError, ValueError):
-        # Windows lacks ``resource``; some macOS/container policies reject
+        # Windows lacks `resource`; some macOS/container policies reject
         # RLIMIT_AS changes. The process timeout remains independently killable.
         return
 
@@ -744,9 +744,9 @@ def python_repl(code: str, analysis_session: Any) -> str:
     """[BRIEF] Execute scientific Python in a persistent RV-analysis session. [/BRIEF]
 
     [DETAILED] Runs Python against the current trial's preloaded radial-velocity
-    arrays. The namespace contains ``times_days``, ``rvs_ms``, ``sigmas_ms``,
-    ``instruments``, NumPy as ``np``, SciPy helpers, ``star_mass_sun``, and
-    ``t_ref_days``. Variables and functions persist between calls in the same
+    arrays. The namespace contains `times_days`, `rvs_ms`, `sigmas_ms`,
+    `instruments`, NumPy as `np`, SciPy helpers, `star_mass_sun`, and
+    `t_ref_days`. Variables and functions persist between calls in the same
     trial. [/DETAILED]
 
     [PROCEDURAL] Use this tool for numerical exploration, period searches,
@@ -756,7 +756,7 @@ def python_repl(code: str, analysis_session: Any) -> str:
     [WORKFLOW_INTEGRATION]
     1. [PREREQUISITE] Inspect the preloaded measurements and uncertainties. [/PREREQUISITE]
     2. [CURRENT] Execute one bounded analysis or fitting step and retain useful variables. [/CURRENT]
-    3. [FOLLOW_UP] Refine the model or pass fitted planet parameters to ``evaluate_candidate``. [/FOLLOW_UP]
+    3. [FOLLOW_UP] Refine the model or pass fitted planet parameters to `evaluate_candidate`. [/FOLLOW_UP]
     [/WORKFLOW_INTEGRATION]
 
     [CONTEXTUAL] The session uses an isolated namespace per Corral trial.
@@ -765,9 +765,9 @@ def python_repl(code: str, analysis_session: Any) -> str:
     [/CONTEXTUAL]
 
     [SYNTACTICAL] Usage examples:
-    - ``python_repl("print(len(times_days), np.median(sigmas_ms))")``
-    - ``python_repl("from scipy.signal import lombscargle")``
-    - ``python_repl("candidate_periods[:5]")``
+    - `python_repl("print(len(times_days), np.median(sigmas_ms))")`
+    - `python_repl("from scipy.signal import lombscargle")`
+    - `python_repl("candidate_periods[:5]")`
     [/SYNTACTICAL]
 
     Args:
@@ -775,15 +775,15 @@ def python_repl(code: str, analysis_session: Any) -> str:
               [ARGS_DETAILED] One or more Python statements or an expression
               evaluated in the persistent trial namespace. [/ARGS_DETAILED]
               [ARGS_SYNTACTICAL] A valid Python source string. [/ARGS_SYNTACTICAL]
-              [ARGS_EXAMPLES] ``"print(np.std(rvs_ms))"``,
-              ``"best_period = 12.3"`` [/ARGS_EXAMPLES]
+              [ARGS_EXAMPLES] `"print(np.std(rvs_ms))"`,
+              `"best_period = 12.3"` [/ARGS_EXAMPLES]
 
     Returns:
         str: [RETURNS_BRIEF] Captured analysis output. [/RETURNS_BRIEF]
              [RETURNS_DETAILED] Printed text, the representation of the final
              expression, a traceback, or a no-output confirmation. Long output
              is truncated. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] ``"120 0.94\n"``, ``"array([1., 2.])\n"`` [/RETURNS_EXAMPLES]
+             [RETURNS_EXAMPLES] `"120 0.94\n"`, `"array([1., 2.])\n"` [/RETURNS_EXAMPLES]
 
     [RAISES] Exceptions:
         RuntimeError:
@@ -823,7 +823,7 @@ def planet_from_fit(
 
     [DETAILED] Converts period, velocity semi-amplitude, eccentricity,
     argument of periapsis, and mean anomaly into the minimum-mass and mean
-    longitude representation accepted by ``evaluate_candidate``. The current
+    longitude representation accepted by `evaluate_candidate`. The current
     task's stellar mass is injected privately by Corral. [/DETAILED]
 
     [PROCEDURAL] Use this after fitting a Keplerian semi-amplitude in the
@@ -833,45 +833,45 @@ def planet_from_fit(
     [WORKFLOW_INTEGRATION]
     1. [PREREQUISITE] Fit a period, semi-amplitude, eccentricity, and phase. [/PREREQUISITE]
     2. [CURRENT] Convert those values to native submission parameters. [/CURRENT]
-    3. [FOLLOW_UP] Pass the returned object to ``evaluate_candidate``. [/FOLLOW_UP]
+    3. [FOLLOW_UP] Pass the returned object to `evaluate_candidate`. [/FOLLOW_UP]
     [/WORKFLOW_INTEGRATION]
 
     [CONTEXTUAL] Angles use radians at the public reference epoch. Mean
-    longitude is ``omega_rad + mean_anomaly_rad`` modulo one orbit. [/CONTEXTUAL]
+    longitude is `omega_rad + mean_anomaly_rad` modulo one orbit. [/CONTEXTUAL]
 
     [SYNTACTICAL] Usage example:
-    ``planet_from_fit(period_days=23.5, semi_amplitude_ms=4.2,
-    eccentricity=0.1, omega_rad=1.2, mean_anomaly_rad=2.2)``
+    `planet_from_fit(period_days=23.5, semi_amplitude_ms=4.2,
+    eccentricity=0.1, omega_rad=1.2, mean_anomaly_rad=2.2)`
     [/SYNTACTICAL]
 
     Args:
         period_days: [ARGS_BRIEF] Orbital period in days. [/ARGS_BRIEF]
                      [ARGS_DETAILED] A finite period greater than 0.5 days. [/ARGS_DETAILED]
                      [ARGS_SYNTACTICAL] A positive number. [/ARGS_SYNTACTICAL]
-                     [ARGS_EXAMPLES] ``23.5`` [/ARGS_EXAMPLES]
+                     [ARGS_EXAMPLES] `23.5` [/ARGS_EXAMPLES]
         semi_amplitude_ms: [ARGS_BRIEF] RV semi-amplitude in m/s. [/ARGS_BRIEF]
                            [ARGS_DETAILED] A finite, non-negative fitted stellar velocity amplitude. [/ARGS_DETAILED]
                            [ARGS_SYNTACTICAL] A non-negative number. [/ARGS_SYNTACTICAL]
-                           [ARGS_EXAMPLES] ``4.2`` [/ARGS_EXAMPLES]
+                           [ARGS_EXAMPLES] `4.2` [/ARGS_EXAMPLES]
         eccentricity: [ARGS_BRIEF] Orbital eccentricity. [/ARGS_BRIEF]
                       [ARGS_DETAILED] A finite value from zero through 0.8. [/ARGS_DETAILED]
-                      [ARGS_SYNTACTICAL] A number in ``[0, 0.8]``. [/ARGS_SYNTACTICAL]
-                      [ARGS_EXAMPLES] ``0.1`` [/ARGS_EXAMPLES]
+                      [ARGS_SYNTACTICAL] A number in `[0, 0.8]`. [/ARGS_SYNTACTICAL]
+                      [ARGS_EXAMPLES] `0.1` [/ARGS_EXAMPLES]
         omega_rad: [ARGS_BRIEF] Argument of periapsis in radians. [/ARGS_BRIEF]
                    [ARGS_DETAILED] A finite angle normalized modulo two pi. [/ARGS_DETAILED]
                    [ARGS_SYNTACTICAL] A number in radians. [/ARGS_SYNTACTICAL]
-                   [ARGS_EXAMPLES] ``1.2`` [/ARGS_EXAMPLES]
+                   [ARGS_EXAMPLES] `1.2` [/ARGS_EXAMPLES]
         mean_anomaly_rad: [ARGS_BRIEF] Mean anomaly at the reference epoch. [/ARGS_BRIEF]
                           [ARGS_DETAILED] A finite phase angle used to form mean longitude. [/ARGS_DETAILED]
                           [ARGS_SYNTACTICAL] A number in radians. [/ARGS_SYNTACTICAL]
-                          [ARGS_EXAMPLES] ``2.2`` [/ARGS_EXAMPLES]
+                          [ARGS_EXAMPLES] `2.2` [/ARGS_EXAMPLES]
 
     Returns:
         str: [RETURNS_BRIEF] A JSON planet object. [/RETURNS_BRIEF]
              [RETURNS_DETAILED] Native period, minimum mass, eccentricity,
              periapsis, and mean-longitude fields ready for submission. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] ``{"P_days": 23.5, "m_sin_i_mjup": 0.1,
-             "e": 0.1, "omega_rad": 1.2, "l_rad": 3.4}`` [/RETURNS_EXAMPLES]
+             [RETURNS_EXAMPLES] `{"P_days": 23.5, "m_sin_i_mjup": 0.1,
+             "e": 0.1, "omega_rad": 1.2, "l_rad": 3.4}` [/RETURNS_EXAMPLES]
 
     [RAISES] Exceptions:
         ValueError:
@@ -952,14 +952,14 @@ def evaluate_candidate(
     [/WORKFLOW_INTEGRATION]
 
     [CONTEXTUAL] The interactive tool uses exactly the native fields
-    ``P_days``, ``m_sin_i_mjup``, ``e``, ``omega_rad``, and ``l_rad``. Use the
-    separate ``planet_from_fit`` tool to convert semi-amplitude to mass. Hidden
+    `P_days`, `m_sin_i_mjup`, `e`, `omega_rad`, and `l_rad`. Use the
+    separate `planet_from_fit` tool to convert semi-amplitude to mass. Hidden
     truth and planet assignments are never included in the tool result. [/CONTEXTUAL]
 
     [SYNTACTICAL] Usage example:
-    ``evaluate_candidate(planets=[{"P_days": 23.5,
+    `evaluate_candidate(planets=[{"P_days": 23.5,
     "m_sin_i_mjup": 0.12, "e": 0.1, "omega_rad": 1.2,
-    "l_rad": 3.4}], noise_jitter_ms=0.2)``
+    "l_rad": 3.4}], noise_jitter_ms=0.2)`
     [/SYNTACTICAL]
 
     Args:
@@ -967,20 +967,20 @@ def evaluate_candidate(
                  [ARGS_DETAILED] A list of typed planet objects using the five
                  native Stargazer fields. [/ARGS_DETAILED]
                  [ARGS_SYNTACTICAL] A JSON array of planet objects. [/ARGS_SYNTACTICAL]
-                 [ARGS_EXAMPLES] ``[{"P_days": 10.0, "m_sin_i_mjup": 0.2,
-                 "e": 0.0, "omega_rad": 0.0, "l_rad": 1.0}]`` [/ARGS_EXAMPLES]
+                 [ARGS_EXAMPLES] `[{"P_days": 10.0, "m_sin_i_mjup": 0.2,
+                 "e": 0.0, "omega_rad": 0.0, "l_rad": 1.0}]` [/ARGS_EXAMPLES]
         noise_jitter_ms: [ARGS_BRIEF] Additional white-noise jitter in m/s. [/ARGS_BRIEF]
                          [ARGS_DETAILED] A finite, non-negative scalar added in
                          quadrature to measurement uncertainties. [/ARGS_DETAILED]
                          [ARGS_SYNTACTICAL] A non-negative number. [/ARGS_SYNTACTICAL]
-                         [ARGS_EXAMPLES] ``0.0``, ``0.5`` [/ARGS_EXAMPLES]
+                         [ARGS_EXAMPLES] `0.0`, `0.5` [/ARGS_EXAMPLES]
     Returns:
         str: [RETURNS_BRIEF] JSON evaluator feedback. [/RETURNS_BRIEF]
              [RETURNS_DETAILED] Reports whether the candidate was accepted,
              remaining evaluations, overall success, and redacted diagnostics
              for all four criteria. [/RETURNS_DETAILED]
-             [RETURNS_EXAMPLES] ``{"accepted": true, "success": false,
-             "remaining_evaluations": 2, "criteria": {...}}`` [/RETURNS_EXAMPLES]
+             [RETURNS_EXAMPLES] `{"accepted": true, "success": false,
+             "remaining_evaluations": 2, "criteria": {...}}` [/RETURNS_EXAMPLES]
 
     [RAISES] Exceptions:
         RuntimeError:

@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 import pytest
-from stargazer.evaluator import evaluate_submission
 from stargazer.models import semi_amplitude_ms
+from stargazer.score import evaluate_submission
 from stargazer.tools import (
     create_analysis_session,
     evaluate_candidate,

@@ -14,8 +14,8 @@ from stargazer.env import (
     _task_prompt,
     create_environments,
 )
-from stargazer.evaluator import make_stargazer_scorer
 from stargazer.models import load_task
+from stargazer.score import make_stargazer_scorer
 from stargazer.tools import create_tools
 
 from corral.agents.session import AgentSession

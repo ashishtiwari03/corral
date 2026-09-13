@@ -8,13 +8,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from stargazer.evaluator import (
+from stargazer.models import CandidateSubmission, StargazerTask, load_task
+from stargazer.score import (
     EvaluationResult,
     SubmissionError,
     evaluate_submission,
     make_stargazer_scorer,
 )
-from stargazer.models import CandidateSubmission, StargazerTask, load_task
 
 TASK_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = TASK_ROOT / "data"

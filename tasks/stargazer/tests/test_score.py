@@ -5,17 +5,17 @@ from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
-from stargazer.evaluator import (
-    SubmissionError,
-    evaluate_submission,
-    make_stargazer_scorer,
-    normalize_submission,
-)
 from stargazer.models import (
     CandidateSubmission,
     Observations,
     PlanetParams,
     simulate_keplerian_rv,
+)
+from stargazer.score import (
+    SubmissionError,
+    evaluate_submission,
+    make_stargazer_scorer,
+    normalize_submission,
 )
 
 

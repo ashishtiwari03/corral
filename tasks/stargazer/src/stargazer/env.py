@@ -15,8 +15,8 @@ from corral.core.task import EnvironmentSetup, TaskDefinition
 from corral.core.transition import ToolExecutionResult
 from corral.runtime import permissions
 from stargazer.docker import execute_analysis
-from stargazer.evaluator import make_stargazer_scorer
 from stargazer.models import load_task
+from stargazer.score import make_stargazer_scorer
 from stargazer.tools import create_analysis_session, create_tools
 
 if TYPE_CHECKING:
@@ -78,28 +78,15 @@ def _task_matches_selector(task_file: Path, selector: dict[str, Any]) -> bool:
 
 def _task_prompt(env: Environment, _state: ExecutionState) -> str:
     task = env.current_task
-    benchmark_task = task.scoring_inputs["benchmark_task"]
-    summary = benchmark_task.public_summary()
     maximum = int(task.scoring_inputs["max_evaluations"])
-    return f"""Task: {task.name}
-
-Infer the Keplerian planetary system that produced the observed stellar
+    return f"""Infer the Keplerian planetary system that produced the observed stellar
 radial-velocity time series.
 
-Public dataset metadata:
-- Task ID: {summary["task_id"]}
-- Published difficulty: {summary["level_difficulty"]}
-- Source: {summary["source"]}
-- Observations: {summary["num_observations"]}
-- Time span: {summary["observation_span_days"]:.6g} days
-- Median uncertainty: {summary["median_uncertainty_ms"]:.6g} m/s
-- Stellar mass: {summary["star_mass_solar"]:.6g} solar masses
-- Instruments: {", ".join(summary["instrument_labels"])}
-- Reference epoch t_ref: {summary["reference_epoch_days"]:.12g} days
-
-The persistent `python_repl` preloads `times_days` (days), `rvs_ms` (m/s),
-`sigmas_ms` (m/s), `instruments` (labels), `star_mass_sun` (solar masses), and
-`t_ref_days`. Orbital angles are in radians. `l_rad` is mean longitude at
+The persistent `python_repl` preloads `times_days` (observation times in days),
+`rvs_ms` (stellar radial velocities in m/s), `sigmas_ms` (measurement uncertainties
+in m/s), `instruments` (instrument labels), and `star_mass_sun` (stellar mass in
+solar masses). `t_ref_days` is the reference epoch in days, equal to the first
+observation time. Orbital angles are in radians. `l_rad` is mean longitude at
 `t_ref_days`.
 
 At most {maximum} valid diagnostic evaluations are available through
@@ -137,7 +124,7 @@ class StargazerEnvironment(Environment):
     """Restore disposable sessions from Corral's committed execution state.
 
     Evaluation history and the Python checkpoint live in the hidden arguments
-    of ``ExecutionState.environment``. No live session is kept on the environment,
+    of `ExecutionState.environment`. No live session is kept on the environment,
     so a restored execution or fork receives exactly its own committed state.
     """
 

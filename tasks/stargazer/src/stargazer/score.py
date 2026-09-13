@@ -1,4 +1,4 @@
-"""Four-criterion Stargazer evaluator.
+"""Four-criterion Stargazer scoring and candidate diagnostics.
 
 Candidate systems are forward-modelled and must simultaneously clear the
 published statistical-fit, residual-quality, physical-match, and planet-count
@@ -28,7 +28,7 @@ from stargazer.models import (
     simulate_keplerian_rv,
 )
 
-_JSON_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)
+_JSON_FENCE = re.compile(r"^``(?:json)?\s*(.*?)\s*``$", re.IGNORECASE | re.DOTALL)
 
 
 class SubmissionError(ValueError):

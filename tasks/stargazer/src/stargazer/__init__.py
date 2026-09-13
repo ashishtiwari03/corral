@@ -1,6 +1,5 @@
 """Stargazer radial-velocity benchmark environment for Corral."""
 
-from stargazer.evaluator import EvaluationCriteria, evaluate_submission
 from stargazer.models import (
     CandidatePlanet,
     CandidateSubmission,
@@ -8,6 +7,7 @@ from stargazer.models import (
     StargazerTask,
     load_task,
 )
+from stargazer.score import EvaluationCriteria, evaluate_submission
 
 __all__ = [
     "CandidatePlanet",

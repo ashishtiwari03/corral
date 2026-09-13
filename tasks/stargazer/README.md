@@ -155,8 +155,9 @@ diagnostic tool or task prompt.
 ## Evaluation
 
 Both `evaluate_candidate` and the final scorer call the same
-`evaluate_submission()` implementation. A final answer scores `1.0` only when
-all four gates pass:
+`evaluate_submission()` implementation in [`score.py`](src/stargazer/score.py).
+`make_stargazer_scorer()` binds it to Corral's final-answer scoring contract.
+A final answer scores `1.0` only when all four gates pass:
 
 1. BIC improvement over a per-instrument constant model is greater than zero
    per observation;

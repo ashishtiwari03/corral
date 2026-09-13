@@ -200,8 +200,8 @@ def simulate_keplerian_rv(
 ) -> np.ndarray:
     """Forward-model a non-interacting multi-planet RV signal.
 
-    ``l_rad`` is mean longitude at ``times_days[0]``.  In the RV-only
-    convention ``Omega_rad`` is zero, but retaining it here also supports raw
+    `l_rad` is mean longitude at `times_days[0]`.  In the RV-only
+    convention `Omega_rad` is zero, but retaining it here also supports raw
     released task records before compatibility conversion.
     """
     times = np.asarray(times_days, dtype=float)
