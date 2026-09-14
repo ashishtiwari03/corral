@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_2 - Task_9",
-    "description": "Evaluate the predictive performance of a classical Ridge regression model trained on a finite-temperature molecular-dynamics trajectory of bulk copper. Construct bulk FCC Cu using a conventional cubic unit cell with lattice constant a=3.615 \u00c5 and replicate it 2 \u00d7 2 \u00d7 2. Use the MACE-MP-0 interatomic potential to evaluate the system with ASE. Perform molecular dynamics using a Langevin thermostat at 800 K with a timestep of 1 fs and a friction coefficient of 0.01 fs\u207b\u00b9 for exactly 1000 MD steps. Sample the atomic configuration and instantaneous total potential energy every 10 MD steps, giving a chronological dataset of exactly 100 configurations. Represent each configuration using SOAP descriptors via DScribe API with Cu as the only chemical species, r_cut=5.0 \u00c5, n_max=6, l_max=6, periodic boundary conditions enabled, and average='inner'. Use one CPU job for SOAP descriptor generation. Train a Ridge regression model via scikit-learn API with alpha=1e-4, using the first 80 configurations as the training set and the final 20 configurations as the test set. The target is the MACE total potential energy of each configuration. Save the trained Ridge regression model in pickle format and return the absolute path to the saved model's pickle file.",
+    "description": "Generate a finite-temperature molecular dynamics trajectory of bulk Copper and train a Ridge regression model (\u03b1 = 1e-4) on Smooth Overlap of Atomic Positions (SOAP) descriptors to predict instantaneous potential energies. Start with a conventional face-centered cubic (FCC) unit cell of Copper (a = 3.615 \u00c5) expanded into a 2 \u00d7 2 \u00d7 2 supercell. Use the MACE-MP-0 foundation model as the calculator. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at 800 K with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9 for 1,000 steps. Sample the atomic configuration and instantaneous total potential energy every 10 steps to yield a chronological dataset of 100 configurations. Compute SOAP descriptors for all configurations using the dscribe library with species=['Cu'], r_cut=5.0 \u00c5, n_max=6, l_max=6, periodic=True, and average='inner'. Chronologically partition the data, using the first 80 configurations for training and the remaining 20 for testing. Save the trained model to a pickle file and return the absolute path to this file.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -13,8 +13,9 @@
     "submission_format": "string representing the absolute path to the output file (eg. '/path/to/trained_model.pkl')",
     "initial_input": {},
     "scoring_params": {
-      "target": 0.994540,
-      "tolerance": 0.0052
+      "hidden_test_path" : "../../ground_truth/level_2/task_9/",
+      "target": 0.996587,
+      "tolerance": 0.001902
     },
     "id": "level_2_task_9",
     "uuid": "f9a2d3c1-b75e-41d8-8c1a-8e2b9c7d4a6f"

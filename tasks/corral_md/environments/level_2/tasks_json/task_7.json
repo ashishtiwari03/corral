@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_2 - Task_7",
-    "description": "Evaluate the volumetric thermal expansion of bulk Aluminum (Al) between 300 K and 500 K using molecular dynamics and linear regression. Use the MACE-MP-0 foundation model, loaded from the local path ./models/2023-12-03-mace-128-L1_epoch-199.model, as the ASE-compatible calculator to describe the interatomic interactions. Start by generating a bulk conventional face-centered cubic (FCC) unit cell of Aluminum with a lattice parameter a = 4.05 \u00c5, and replicate it into a 3 \u00d7 3 \u00d7 3 supercell. Perform NPT molecular dynamics simulations at three target temperatures: 300 K, 400 K, and 500 K, using an external pressure of 1.01325 bar. For each temperature, equilibrate the system for 5,000 MD steps using an appropriate NPT integrator with a timestep of 1.0 fs, a thermostat time constant of 25 fs, and a barostat factor of 2e6 GPa \u00d7 fs\u00b2. Follow the equilibration with 10,000 production steps under the same NPT conditions. During production, record the instantaneous cell volume every 10 MD steps and calculate the average production-phase volume for each temperature. Using the three average volumes at 300 K, 400 K, and 500 K, perform a linear regression of volume versus temperature to obtain the slope dV/dT. Calculate the volumetric coefficient of thermal expansion as \u03b2 = (1 / V_300) \u00d7 (dV/dT), where V_300 is the average volume at 300 K. Return the resulting coefficient \u03b2 as a floating-point value in K\u207b\u00b9.",
+    "description": "Evaluate the volumetric thermal expansion coefficient (\u03b2) of bulk Aluminum between 300 K and 500 K using molecular dynamics. Use the MACE-MP-0 foundation model as the ASE-compatible calculator. Start with a conventional FCC unit cell of Aluminum (a = 4.05 \u00c5) and replicate it into a 3 \u00d7 3 \u00d7 3 supercell. Conduct molecular dynamics simulations in the isothermal-isobaric (NPT) ensemble at target temperatures of 300 K, 400 K, and 500 K, and an external pressure of 1.01325 bar. For each temperature, equilibrate the system for 5,000 steps, followed by 10,000 production steps. Use an appropriate NPT integrator with a 1.0 fs timestep, a thermostat time constant of 25 fs, and a barostat factor of 2e6 GPa \u00d7 fs\u00b2. Record the instantaneous cell volume every 10 production steps to compute the average volume at each temperature. Use linear regression on the temperature-volume data to extract the volumetric thermal expansion coefficient. Return the resulting coefficient \u03b2 as a floating-point value in K\u207b\u00b9.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -16,7 +16,7 @@
     },
     "scoring_params": {
       "target": 9.56133318e-05,
-      "tolerance": 2.2e-06
+      "tolerance": 4.31e-06
     },
     "id": "level_2_task_7",
     "uuid": "d643a18e-1793-49d7-84bc-7c9b83b9f8d2"

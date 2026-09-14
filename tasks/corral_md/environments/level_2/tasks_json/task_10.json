@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_2 - Task_10",
-    "description": "Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator from the local path ./models/2023-12-03-mace-128-L1_epoch-199.model. Construct a bulk conventional face-centered cubic (FCC) unit cell of Aluminum (Al) with a lattice parameter a = 4.05 \u00c5, and expand it into a 3 \u00d7 3 \u00d7 3 supercell. Initialize atomic velocities for a target temperature of 300 K following a Maxwell-Boltzmann distribution. Set up a Langevin thermostat (NVT) simulation with a friction coefficient of 0.01 fs\u207b\u00b9 and a 1.0 fs timestep. Implement a control loop that increases the target temperature from 300 K to 900 K in increments of 100 K (evaluating 300, 400, 500, 600, 700, 800, and 900 K). For each temperature plateau, run a total of 500 MD steps: use the first 400 steps for thermal equilibration, then use the final 100 steps for production sampling, recording the potential energy at every step. Calculate the average potential energy over these final 100 steps for each temperature plateau. Return a Python dictionary mapping each temperature integer (in K) to its corresponding average potential energy (in eV).",
+    "description": "Simulate a stepped temperature ramp for bulk Aluminum to validate thermostat equipartition. Start with a conventional face-centered cubic (FCC) unit cell of Aluminum (a = 4.05 \u00c5) expanded into a 3 \u00d7 3 \u00d7 3 supercell. Use the MACE-MP-0 foundation model as the calculator. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9. Initialize velocities for 300 K. Sequentially ramp the target temperature from 300 K to 900 K in increments of 100 K. At each temperature plateau, equilibrate the system for 4,000 steps, then run 1,000 production steps. Save the atomic configurations during the production phase of each temperature plateau into an ASE trajectory file. Return a JSON dictionary mapping each temperature integer (in K) to the absolute file path of its corresponding trajectory file.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -9,20 +9,29 @@
       "keyword_log_extractor",
       "visualisation_tool"
     ],
-    "scoring_function": "check_dict",
-    "submission_format": "Python dictionary (eg. {300: -398.81, 400: -397.74})",
+    "scoring_function": "check_trajectory_temperature",
+    "submission_format": "absolute path to json file containing a dictionary mapping each temperature integer (in K) to the absolute file path of its corresponding trajectory file (eg. {'300': '/path/to/300K.traj', '400': '/path/to/400K.traj', ...})",
     "initial_input": {},
-    "scoring_params": {
+  "scoring_params": {
       "target": {
-        "300": -398.8085,
-        "400": -397.7443,
-        "500": -396.3697,
-        "600": -395.1519,
-        "700": -394.2092,
-        "800": -393.1772,
-        "900": -391.1808
+        "300": 300.98,
+        "400": 393.60,
+        "500": 496.31,
+        "600": 605.59,
+        "700": 697.20,
+        "800": 805.34,
+        "900": 894.52
       },
-      "tolerance": 0.55
+      "std": {
+        "300": 9.73,
+        "400": 10.28,
+        "500": 15.46,
+        "600": 8.09,
+        "700": 14.95,
+        "800": 13.10,
+        "900": 17.88
+      },
+      "tolerance_factor": 2.0
     },
     "id": "level_2_task_10",
     "uuid": "7b3d1f8a-2e4c-45b9-91a6-8f2c3d4e5a6b"
