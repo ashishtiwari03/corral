@@ -39,7 +39,13 @@ def test_repl_and_checkpoints_match_original_reference(
     analysis_session, protocol_reference
 ):
     for step in protocol_reference["repl"]:
-        assert analysis_session.execute(step["code"]) == step["output"], step["code"]
+        actual = analysis_session.execute(step["code"])
+        expected = step["output"]
+        if isinstance(expected, float):
+            # Numerical fits can differ in the last digits across platforms.
+            actual = float(actual)
+            expected = pytest.approx(expected, rel=1e-12, abs=1e-12)
+        assert actual == expected, step["code"]
         analysis_session.restore(analysis_session.snapshot())
     assert analysis_session.protocol_acknowledged()
 

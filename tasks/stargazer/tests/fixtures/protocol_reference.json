@@ -161,7 +161,7 @@
     },
     {
       "code": "print(baselines.baseline_one_sine(dict(times_days=times_days, rvs_ms=rvs_ms, sigmas_ms=sigmas_ms))[\"rms_ms\"])",
-      "output": "4.492042968052998\n"
+      "output": 4.492042968052998
     },
     {
       "code": "print(STARGAZER_SUBMISSION_GUIDE)\n_protocol_guide_ack = True\nprint(_protocol_guide_ack)",
