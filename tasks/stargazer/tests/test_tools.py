@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
-from stargazer.tools import AnalysisTimeoutError, create_analysis_session, create_tools
+from stargazer.tools import create_analysis_session, create_tools
 
 
 @pytest.fixture
@@ -21,9 +20,18 @@ def analysis_session(simple_task):
 def test_original_tool_schemas_are_preserved(protocol_reference):
     actual = list(create_tools().values())
     assert [tool.name for tool in actual] == ["PythonREPL", "submit_action"]
-    assert [tool.get_openai_tool_format() for tool in actual] == protocol_reference[
-        "tools"
-    ]
+    formats = [tool.get_openai_tool_format() for tool in actual]
+    # The REPL description now advertises unrestricted Python and no deadline;
+    # its input schema and the entire submission tool remain unchanged.
+    expected_repl = protocol_reference["tools"][0]
+    assert formats[0] == {
+        **expected_repl,
+        "function": {
+            **expected_repl["function"],
+            "description": actual[0].description,
+        },
+    }
+    assert formats[1] == protocol_reference["tools"][1]
     assert all(not tool.hidden_args for tool in actual)
 
 
@@ -93,57 +101,58 @@ fact_callable = factorial_factory()""")
     )
 
 
-def test_function_builtins_stay_restricted_after_restore(analysis_session):
-    analysis_session.execute(
-        'def prohibited():\n    import pathlib\ndef read_file():\n    open("secret")'
+def test_repl_supports_normal_python_and_checkpointed_functions(analysis_session):
+    result = analysis_session.execute("""import pathlib
+import sys
+import types
+import baselines
+from collections import Counter
+from scipy.optimize import minimize
+class FitResult:
+    def __init__(self, value):
+        self.value = value
+fit = FitResult(42)
+def describe():
+    return type(fit).__name__, getattr(fit, "value"), pathlib.Path(".").is_dir()
+print((isinstance(np, types.ModuleType), callable(minimize), describe()))""")
+    assert result.strip() == "(True, True, ('FitResult', 42, True))"
+    analysis_session.restore(analysis_session.snapshot())
+    assert analysis_session.execute("print(describe())").strip() == (
+        "('FitResult', 42, True)"
+    )
+    assert analysis_session.execute("print(np.__name__)").strip() == "numpy"
+    assert analysis_session.execute("print(baselines.__name__)").strip() == "baselines"
+
+
+def test_repl_supports_files_and_subprocesses(analysis_session):
+    result = analysis_session.execute("""from pathlib import Path
+import subprocess
+import sys
+np.save("fit.npy", np.arange(3))
+np.savetxt("fit.txt", np.arange(3))
+with open("note.txt", "w") as note:
+    note.write("fit complete")
+child = subprocess.run([sys.executable, "-c", "print(6 * 7)"], capture_output=True, text=True, check=True)
+print((np.load("fit.npy").tolist(), np.loadtxt("fit.txt").tolist(), Path("note.txt").read_text(), child.stdout.strip()))""")
+    assert result.strip() == ("([0, 1, 2], [0.0, 1.0, 2.0], 'fit complete', '42')")
+
+
+def test_long_analysis_keeps_namespace(analysis_session):
+    # Exceed the former ten-second deadline, then checkpoint and resume.
+    assert (
+        analysis_session.execute(
+            "import time\nretained = 42\ntime.sleep(10.2)\nprint(retained)"
+        ).strip()
+        == "42"
     )
     analysis_session.restore(analysis_session.snapshot())
-    assert "ImportError" in analysis_session.execute("prohibited()")
-    assert "NameError" in analysis_session.execute("read_file()")
+    assert analysis_session.execute("retained").strip() == "42"
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        "stargazer_planet_from_fit.__closure__[0].cell_contents",
-        "np.mean.__globals__",
-        'np.loadtxt("secret")',
-    ],
-)
-def test_repl_blocks_introspection_and_io(analysis_session, payload):
-    assert "UnsafeAnalysisCode" in analysis_session.execute(payload)
-
-
-def test_repl_blocks_task_bank_reads(analysis_session):
-    bank_file = next(
-        (Path(__file__).resolve().parents[1] / "data/synthetic").glob("*.json")
-    )
-    result = analysis_session.execute(
-        f"import json\njson.codecs.open({str(bank_file)!r}).read()"
-    )
-    assert "PermissionError" in result
-    assert "Filesystem access is unavailable" in result
-    assert "truth_planets" not in result
-
-
-def test_repl_proxy_cannot_be_unwrapped(analysis_session):
-    assert "AttributeError" in analysis_session.execute(
-        "np._SafeModuleProxy__wrapped_module"
-    )
-
-
-def test_timeout_resets_worker(simple_task):
-    session = create_analysis_session(
-        **vars(simple_task.observations),
-        star_mass_sun=simple_task.star_mass_sun,
-        execution_timeout_seconds=0.2,
-    )
-    try:
-        session.execute("retained = 42")
-        with pytest.raises(AnalysisTimeoutError):
-            session.execute("while True:\n    retained = 42")
-        assert session.snapshot() is None
-        assert not session.protocol_acknowledged()
-        assert "NameError" in session.execute("retained")
-    finally:
-        session.close()
+def test_worker_exit_resets_session(analysis_session):
+    analysis_session.execute("retained = 42")
+    with pytest.raises(RuntimeError, match="worker stopped unexpectedly"):
+        analysis_session.execute("import os\nos._exit(1)")
+    assert analysis_session.snapshot() is None
+    assert not analysis_session.protocol_acknowledged()
+    assert "NameError" in analysis_session.execute("retained")

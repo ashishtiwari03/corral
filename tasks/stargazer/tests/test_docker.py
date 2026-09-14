@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import tempfile
+import threading
 from dataclasses import asdict
 from types import SimpleNamespace
 
@@ -43,7 +44,7 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
     def run(kind, payload, workspace, **kwargs):
         assert kind == "tool"
         assert workspace == environment.workspace_path
-        assert "cancel" in kwargs
+        assert kwargs["cancel"] is None
         step, arguments = payload
         assert not step.trusted
         assert not step.hidden_args
@@ -126,18 +127,88 @@ def test_docker_repl_persists_functions_arrays_and_blocks_source_reads(
         workspace=docker_workspace,
     )
     assert json.loads(restored["output"]) == [42.0, 3.0, 4.0]
-    blocked = execute_analysis(
-        code="np.loadtxt('/opt/corral/tasks/stargazer/data/synthetic/seed15_diff5.json')",
+    allowed = execute_analysis(
+        code="from pathlib import Path\nnp.save('fit.npy', values)\nprint(np.load('fit.npy').tolist())",
         public_data=data,
         checkpoint=restored["checkpoint"],
         workspace=docker_workspace,
     )
-    assert "unavailable" in blocked["output"]
+    assert json.loads(allowed["output"]) == [40.0, 1.0, 2.0]
+    for code, error in (
+        (
+            "open('/opt/corral/tasks/stargazer/data/synthetic/seed15_diff5.json').read()",
+            "PermissionError",
+        ),
+        (
+            # NumPy reports inaccessible paths as missing files.
+            "np.loadtxt('/opt/corral/tasks/stargazer/data/synthetic/seed15_diff5.json')",
+            "FileNotFoundError",
+        ),
+        ("Path('/corral-state').iterdir().__next__()", "PermissionError"),
+        (
+            "import subprocess\nimport sys\nprint(subprocess.run([sys.executable, '-c', \"open('/opt/corral/tasks/stargazer/data/synthetic/seed15_diff5.json').read()\"], capture_output=True, text=True).stderr)",
+            "PermissionError",
+        ),
+    ):
+        blocked = execute_analysis(
+            code=code,
+            public_data=data,
+            checkpoint=allowed["checkpoint"],
+            workspace=docker_workspace,
+        )
+        assert error in blocked["output"]
+        assert "truth_planets" not in blocked["output"]
+
+
+def test_docker_repl_has_no_execution_deadline(docker_workspace, simple_task):
+    data = {
+        **asdict(simple_task.observations),
+        "star_mass_sun": simple_task.star_mass_sun,
+    }
+    # Exceed the former forty-second deadline, including worker startup.
+    result = execute_analysis(
+        code="import time\nretained = 42\ntime.sleep(40.2)\nprint(retained)",
+        public_data=data,
+        checkpoint=None,
+        workspace=docker_workspace,
+    )
+    assert result["output"].strip() == "42"
+    restored = execute_analysis(
+        code="retained",
+        public_data=data,
+        checkpoint=result["checkpoint"],
+        workspace=docker_workspace,
+    )
+    assert restored["output"].strip() == "42"
+
+
+def test_docker_repl_remains_cancellable(docker_workspace, simple_task):
+    data = {
+        **asdict(simple_task.observations),
+        "star_mass_sun": simple_task.star_mass_sun,
+    }
+    cancelled = threading.Event()
+    timer = threading.Timer(5, cancelled.set)
+    timer.start()
+    try:
+        with pytest.raises(RuntimeError, match="restricted worker cancelled"):
+            execute_analysis(
+                code="import time\nwhile True:\n    time.sleep(1)",
+                public_data=data,
+                checkpoint=None,
+                workspace=docker_workspace,
+                cancel=cancelled,
+            )
+    finally:
+        timer.cancel()
 
 
 def test_docker_checkpoint_decoding_is_unprivileged_and_has_no_credentials(
     docker_workspace,
+    monkeypatch,
 ):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-credential")
+
     class CheckpointProbe:
         def __reduce__(self):
             # A pickle can execute arbitrary code before namespace validation.

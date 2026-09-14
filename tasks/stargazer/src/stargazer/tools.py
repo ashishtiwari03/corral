@@ -10,20 +10,15 @@ import io
 import multiprocessing as mp
 import os
 import re
-import sys
-import sysconfig
 import tempfile
 import threading
 import traceback
 import types
 from contextlib import redirect_stdout, suppress
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import cloudpickle
 import numpy as np
-import scipy  # noqa: F401 - preload numerical extensions before the worker audit hook
-from scipy import optimize, signal  # noqa: F401 - safe lazy-import support
 
 from corral.core.tool import Tool
 
@@ -32,162 +27,26 @@ try:
 except ImportError:  # pragma: no cover - unavailable on Windows
     resource = None  # type: ignore[assignment]
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 _MAX_OUTPUT_CHARS = 5_000 + len("...(output truncated)")
 _MAX_CODE_CHARS = 50_000
-DEFAULT_ANALYSIS_TIMEOUT_SECONDS = 10.0
-_WORKER_START_TIMEOUT_SECONDS = 30.0
 _WORKER_ADDRESS_SPACE_BYTES = 2 * 1024**3
-_ALLOWED_IMPORTS = {
-    "baselines",
-    "celerite2",
-    "rebound",
-    "collections",
-    "functools",
-    "itertools",
-    "json",
-    "math",
-    "numpy",
-    "scipy",
-    "statistics",
-}
-_SAFE_BUILTIN_NAMES = {
-    "ArithmeticError",
-    "print",
-    "AssertionError",
-    "Exception",
-    "IndexError",
-    "KeyError",
-    "RuntimeError",
-    "StopIteration",
-    "TypeError",
-    "ValueError",
-    "ZeroDivisionError",
-    "abs",
-    "all",
-    "any",
-    "bool",
-    "callable",
-    "chr",
-    "complex",
-    "dict",
-    "divmod",
-    "enumerate",
-    "filter",
-    "float",
-    "format",
-    "frozenset",
-    "hex",
-    "int",
-    "isinstance",
-    "iter",
-    "len",
-    "list",
-    "map",
-    "max",
-    "min",
-    "next",
-    "oct",
-    "ord",
-    "pow",
-    "range",
-    "repr",
-    "reversed",
-    "round",
-    "set",
-    "slice",
-    "sorted",
-    "str",
-    "sum",
-    "tuple",
-    "zip",
-}
-_BLOCKED_MODULE_ATTRIBUTES = {
-    "DataSource",
-    "ctypes",
-    "ctypeslib",
-    "distutils",
-    "dump",
-    "dumps",
-    "f2py",
-    "fromfile",
-    "genfromtxt",
-    "io",
-    "load",
-    "load_library",
-    "loads",
-    "loadtxt",
-    "memmap",
-    "open_memmap",
-    "popen",
-    "save",
-    "savetxt",
-    "source",
-    "system",
-    "tofile",
-}
 
 
-class UnsafeAnalysisCode(ValueError):
-    """Raised when REPL code attempts unsupported introspection or I/O."""
-
-
-class AnalysisTimeoutError(TimeoutError):
-    """Raised when an analysis worker exceeds its per-call time budget."""
-
-
-class _SafeModuleProxy:
-    """Expose numerical module attributes while denying I/O escape hatches."""
-
-    __slots__ = ("__wrapped_module",)
-
-    def __init__(self, module: types.ModuleType):
-        object.__setattr__(self, "_SafeModuleProxy__wrapped_module", module)
-
-    def __getattribute__(self, name: str) -> Any:
-        module = object.__getattribute__(self, "_SafeModuleProxy__wrapped_module")
-        if module.__name__ == "json" and name in {"dumps", "loads"}:
-            return getattr(module, name)
-        if name.startswith("_") or name in _BLOCKED_MODULE_ATTRIBUTES:
-            raise AttributeError(f"Module attribute {name!r} is unavailable")
-        value = getattr(module, name)
-        return _safe_module(value)
-
-    def __repr__(self) -> str:
-        module = object.__getattribute__(self, "_SafeModuleProxy__wrapped_module")
-        return f"<restricted module {module.__name__!r}>"
-
-
-_MODULE_PROXIES: dict[str, _SafeModuleProxy] = {}
-
-
-def _safe_module(value: Any) -> Any:
-    if not isinstance(value, types.ModuleType):
-        return value
-    proxy = _MODULE_PROXIES.get(value.__name__)
-    if proxy is None:
-        proxy = _SafeModuleProxy(value)
-        _MODULE_PROXIES[value.__name__] = proxy
-    return proxy
-
-
-def _restore_module_proxy(name: str) -> _SafeModuleProxy:
-    return _safe_module(
-        baselines if name == "baselines" else importlib.import_module(name)
-    )
+def _restore_module_proxy(name: str) -> types.ModuleType:
+    """Restore legacy checkpoints as ordinary modules, without restrictions."""
+    return baselines if name == "baselines" else importlib.import_module(name)
 
 
 def _restore_session_function(
     code: types.CodeType,
     namespace: dict[str, Any],
-    safe_builtins: dict[str, Any],
+    session_builtins: dict[str, Any],
     closure: tuple[types.CellType, ...] | None,
 ) -> types.FunctionType:
-    # FunctionType captures its builtins at construction. Ordinary cloudpickle
-    # restores unrestricted builtins and gives functions a separate globals dict.
-    namespace["__builtins__"] = safe_builtins
+    # Functions must retain their session globals across checkpoints. Upgrade
+    # legacy builtin dictionaries before FunctionType captures their reference.
+    session_builtins.update(_session_builtins())
+    namespace["__builtins__"] = session_builtins
     return types.FunctionType(code, namespace, closure=closure)
 
 
@@ -202,7 +61,7 @@ def _restore_function_state(function: types.FunctionType, state: tuple) -> None:
 
 
 class _SessionPickler(cloudpickle.CloudPickler):
-    """Keep notebook functions attached to the restored, restricted namespace."""
+    """Keep notebook functions attached to the restored session namespace."""
 
     def __init__(self, file: io.BytesIO, namespace: dict[str, Any]):
         super().__init__(file)
@@ -210,9 +69,6 @@ class _SessionPickler(cloudpickle.CloudPickler):
         self.closure_cells: dict[int, types.CellType] = {}
 
     def reducer_override(self, value: Any) -> Any:
-        if isinstance(value, _SafeModuleProxy):
-            module = object.__getattribute__(value, "_SafeModuleProxy__wrapped_module")
-            return _restore_module_proxy, (module.__name__,)
         if (
             isinstance(value, types.FunctionType)
             and value.__globals__.get("__name__") == "__stargazer_session__"
@@ -258,31 +114,17 @@ class _SessionPickler(cloudpickle.CloudPickler):
 
 def _snapshot_namespace(namespace: dict[str, Any]) -> str:
     output = io.BytesIO()
-    # Captured print belongs to a single call, including its output buffer.
-    captured_print = namespace["__builtins__"].pop("print", None)
-    try:
-        # Preserve the legacy module RNG as well as Generator objects in locals.
-        random_state = np.random.get_state()  # noqa: NPY002
-        _SessionPickler(output, namespace).dump((namespace, random_state))
-    finally:
-        if captured_print is not None:
-            namespace["__builtins__"]["print"] = captured_print
+    # Preserve the legacy module RNG as well as Generator objects in locals.
+    random_state = np.random.get_state()  # noqa: NPY002
+    _SessionPickler(output, namespace).dump((namespace, random_state))
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
 class AnalysisSession:
     """Handle for a persistent, public-data-only analysis worker process."""
 
-    def __init__(
-        self,
-        public_data: dict[str, Any],
-        *,
-        execution_timeout_seconds: float = DEFAULT_ANALYSIS_TIMEOUT_SECONDS,
-    ):
-        if execution_timeout_seconds <= 0.0:
-            raise ValueError("execution_timeout_seconds must be positive")
+    def __init__(self, public_data: dict[str, Any]):
         self._public_data = public_data
-        self._execution_timeout_seconds = float(execution_timeout_seconds)
         self._connection: Any = None
         self._process: Any = None
         self._worker_directory: tempfile.TemporaryDirectory[str] | None = None
@@ -336,9 +178,6 @@ class AnalysisSession:
         self._connection = parent_connection
         self._process = process
         self._worker_directory = worker_directory
-        if not parent_connection.poll(_WORKER_START_TIMEOUT_SECONDS):
-            self._stop_worker()
-            raise RuntimeError("The Stargazer analysis worker did not start")
         try:
             ready = parent_connection.recv()
         except EOFError as exc:
@@ -349,9 +188,9 @@ class AnalysisSession:
             raise RuntimeError(f"The Stargazer analysis worker failed: {ready!r}")
 
     def execute(self, code: str, history: list[dict[str, Any]] | None = None) -> str:
-        """Run code in the persistent worker, terminating it on timeout."""
+        """Run code in the persistent worker without a per-call time limit."""
         if len(code) > _MAX_CODE_CHARS:
-            raise UnsafeAnalysisCode(
+            raise ValueError(
                 f"Analysis code is limited to {_MAX_CODE_CHARS:,} characters"
             )
         return str(
@@ -365,7 +204,7 @@ class AnalysisSession:
         return bool(self._request({"command": "protocol_ack"}))
 
     def snapshot(self) -> str | None:
-        """Export JSON-compatible state; a stopped or timed-out worker is empty."""
+        """Export JSON-compatible state; a stopped worker is empty."""
         with self._lock:
             if self._process is None or not self._process.is_alive():
                 return None
@@ -387,22 +226,16 @@ class AnalysisSession:
             assert connection is not None
             try:
                 connection.send(request)
-                if not connection.poll(self._execution_timeout_seconds):
-                    timeout = self._execution_timeout_seconds
-                    self._stop_worker()
-                    raise AnalysisTimeoutError(
-                        f"Analysis exceeded {timeout:g} seconds; "
-                        "the persistent session was reset"
-                    )
                 response = connection.recv()
-            except AnalysisTimeoutError:
-                raise
             except (BrokenPipeError, EOFError, OSError) as exc:
                 self._stop_worker()
                 raise RuntimeError(
                     "The analysis worker stopped unexpectedly; "
                     "the persistent session was reset"
                 ) from exc
+            except BaseException:
+                self._stop_worker()
+                raise
             if isinstance(response, dict) and "error" in response:
                 self._stop_worker()
                 raise RuntimeError(response["error"])
@@ -432,33 +265,25 @@ class AnalysisSession:
             self._stop_worker()
 
 
-def _restricted_import(
+def _session_import(
     name: str,
     globals_: dict[str, Any] | None = None,
     locals_: dict[str, Any] | None = None,
     fromlist: tuple[str, ...] = (),
     level: int = 0,
 ):
-    if name == "baselines":
-        return _safe_module(baselines)
-    root = name.split(".", 1)[0]
-    if root not in _ALLOWED_IMPORTS:
-        if root in PRELOADED_VARS:
-            # A preloaded variable is not an importable module. Preserve the
-            # original REPL's corrective hint for this common agent mistake.
-            raise ModuleNotFoundError(f"No module named '{root}'", name=root)
-        raise ImportError(
-            f"Import of {root!r} is disabled in the Stargazer analysis session"
-        )
-    if any(part in _BLOCKED_MODULE_ATTRIBUTES for part in name.split(".")):
-        raise ImportError(f"Import of {name!r} is disabled in the analysis session")
-    return _safe_module(builtins.__import__(name, globals_, locals_, fromlist, level))
+    """Support the in-memory baseline module alongside normal Python imports."""
+    if name == "baselines" and level == 0:
+        return baselines
+    return builtins.__import__(name, globals_, locals_, fromlist, level)
 
 
-def _safe_builtins() -> dict[str, Any]:
-    values = {name: getattr(builtins, name) for name in _SAFE_BUILTIN_NAMES}
-    values["__import__"] = _restricted_import
-    return values
+# Old checkpoints refer to this import adapter by name.
+_restricted_import = _session_import
+
+
+def _session_builtins() -> dict[str, Any]:
+    return {**vars(builtins), "__import__": _session_import}
 
 
 def create_analysis_session(
@@ -468,7 +293,6 @@ def create_analysis_session(
     sigmas_ms: tuple[float, ...],
     instruments: tuple[str, ...],
     star_mass_sun: float,
-    execution_timeout_seconds: float = DEFAULT_ANALYSIS_TIMEOUT_SECONDS,
 ) -> AnalysisSession:
     """Create a persistent worker containing only public trial data."""
     times = tuple(float(value) for value in times_days)
@@ -489,25 +313,22 @@ def create_analysis_session(
     }
     if len(lengths) != 1:
         raise ValueError("Observation arrays must have equal lengths")
-    return AnalysisSession(
-        public_data,
-        execution_timeout_seconds=execution_timeout_seconds,
-    )
+    return AnalysisSession(public_data)
 
 
 def _create_worker_namespace(public_data: dict[str, Any]) -> dict[str, Any]:
     """Materialize a numerical namespace inside the isolated worker."""
     times = np.asarray(public_data["times_days"], dtype=float).copy()
     return {
-        "__builtins__": _safe_builtins(),
+        "__builtins__": _session_builtins(),
         "__name__": "__stargazer_session__",
-        "np": _safe_module(np),
+        "np": np,
         "times_days": times,
         "rvs_ms": np.asarray(public_data["rvs_ms"], dtype=float).copy(),
         "sigmas_ms": np.asarray(public_data["sigmas_ms"], dtype=float).copy(),
         "star_mass_sun": float(public_data["star_mass_sun"]),
         "t_ref_days": float(times[0]),
-        "baselines": _safe_module(baselines),
+        "baselines": baselines,
         "history": public_data.get("history") or [],
         "stargazer_planet_from_fit": make_planet_from_fit(
             float(public_data["star_mass_sun"])
@@ -515,104 +336,6 @@ def _create_worker_namespace(public_data: dict[str, Any]) -> dict[str, Any]:
         "STARGAZER_SUBMISSION_GUIDE": STARGAZER_SUBMISSION_GUIDE,
         "_protocol_guide_ack": False,
     }
-
-
-def _runtime_read_roots() -> tuple[str, ...]:
-    """Return interpreter/package roots needed for allow-listed lazy imports."""
-    paths = sysconfig.get_paths()
-    roots = {
-        str(Path(path).resolve())
-        for name in ("stdlib", "platstdlib", "purelib", "platlib")
-        if (path := paths.get(name))
-    }
-    roots.add(str(Path(__file__).resolve().parents[1]))
-    return tuple(sorted(roots))
-
-
-def _path_is_within(path: str, roots: tuple[str, ...]) -> bool:
-    resolved = str(Path(path).resolve())
-    for root in roots:
-        try:
-            if os.path.commonpath((resolved, root)) == root:
-                return True
-        except ValueError:
-            continue
-    return False
-
-
-def _install_worker_audit_hook() -> Callable[[], None]:
-    """Deny worker filesystem, network, and process access outside runtime code."""
-    runtime_roots = _runtime_read_roots()
-    enabled = [True]
-    blocked_prefixes = (
-        "ctypes.",
-        "ftplib.",
-        "http.client.",
-        "pty.",
-        "socket.",
-        "subprocess.",
-        "urllib.Request",
-    )
-    blocked_events = {
-        "os.chdir",
-        "os.chmod",
-        "os.chown",
-        "os.exec",
-        "os.fork",
-        "os.kill",
-        "os.posix_spawn",
-        "os.putenv",
-        "os.remove",
-        "os.rename",
-        "os.rmdir",
-        "os.spawn",
-        "os.startfile",
-        "os.system",
-        "os.truncate",
-        "os.unsetenv",
-        "os.utime",
-    }
-
-    def audit(event: str, args: tuple[Any, ...]) -> None:
-        if not enabled[0]:
-            return
-        if event == "open":
-            target = args[0] if args else None
-            mode = args[1] if len(args) > 1 else None
-            flags = args[2] if len(args) > 2 else 0
-            write_flags = (
-                os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
-            )
-            if (
-                isinstance(mode, str)
-                and any(marker in mode for marker in ("w", "a", "x", "+"))
-            ) or (isinstance(flags, int) and flags & write_flags):
-                raise PermissionError("Filesystem writes are unavailable")
-            if isinstance(target, int):
-                return
-            try:
-                path = os.fsdecode(target)
-            except TypeError as exc:
-                raise PermissionError("Filesystem access is unavailable") from exc
-            if path == os.devnull or _path_is_within(path, runtime_roots):
-                return
-            raise PermissionError("Filesystem access is unavailable")
-        if event in {"os.listdir", "os.scandir"}:
-            target = args[0] if args else None
-            if isinstance(target, str | bytes | os.PathLike) and _path_is_within(
-                os.fsdecode(target), runtime_roots
-            ):
-                return
-            raise PermissionError("Directory access is unavailable")
-        if event in blocked_events or event.startswith(blocked_prefixes):
-            raise PermissionError(f"Operation {event!r} is unavailable")
-
-    sys.addaudithook(audit)
-
-    def disable() -> None:
-        enabled[0] = False
-
-    return disable
 
 
 def _apply_worker_resource_limits() -> None:
@@ -628,7 +351,7 @@ def _apply_worker_resource_limits() -> None:
             resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
     except (OSError, ValueError):
         # Windows lacks `resource`; some macOS/container policies reject
-        # RLIMIT_AS changes. The process timeout remains independently killable.
+        # RLIMIT_AS changes. Docker still enforces its configured memory budget.
         return
 
 
@@ -639,15 +362,11 @@ def _analysis_worker(
 ) -> None:
     """Serve persistent executions in a process that never receives task truth."""
 
-    def disable_audit() -> None:
-        pass
-
     try:
         os.chdir(working_directory)
         os.environ.clear()
         namespace = _create_worker_namespace(public_data)
         _apply_worker_resource_limits()
-        disable_audit = _install_worker_audit_hook()
         connection.send({"status": "ready"})
         while True:
             try:
@@ -672,7 +391,8 @@ def _analysis_worker(
                         connection.send({"result": checkpoint})
                     else:
                         # Checkpoints may contain Python objects, so decoding is
-                        # confined to this public-data-only, audited worker.
+                        # confined to this public-data-only worker. Local
+                        # execution is intended for trusted debugging only.
                         namespace, random_state = cloudpickle.loads(
                             base64.b64decode(request["checkpoint"], validate=True)
                         )
@@ -697,23 +417,7 @@ def _analysis_worker(
         with suppress(BaseException):
             connection.send({"status": "error", "error": traceback.format_exc(limit=8)})
     finally:
-        disable_audit()
         connection.close()
-
-
-def _validate_repl_tree(tree: ast.AST) -> None:
-    """Reject introspection and known file/process entry points before exec."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id.startswith("__"):
-            raise UnsafeAnalysisCode("Dunder names are unavailable")
-        if isinstance(node, ast.Attribute) and (
-            node.attr.startswith("__")
-            or node.attr in _BLOCKED_MODULE_ATTRIBUTES - {"dumps", "loads"}
-        ):
-            raise UnsafeAnalysisCode(
-                f"Dunder or I/O attribute {node.attr!r} is unavailable "
-                "in the analysis session"
-            )
 
 
 def _format_execution_error(error: Exception, code: str) -> str:
@@ -732,12 +436,6 @@ def _execute_persistent(code: str, namespace: dict[str, Any]) -> str:
     if "matplotlib" in code:
         return "No plotting is allowed. Code was not executed since it contained 'matplotlib'."
     cleaned = wrap_last_line_with_print(sanitize_input(code))
-    try:
-        tree = ast.parse(cleaned, mode="exec")
-    except SyntaxError:
-        pass  # Let exec format the original syntax error.
-    else:
-        _validate_repl_tree(tree)
     # Stargazer executes each call in merged globals/locals. Functions retain
     # that call's globals, including after Corral checkpoint restoration.
     execution_namespace = dict(namespace)
@@ -756,7 +454,7 @@ def _execute_persistent(code: str, namespace: dict[str, Any]) -> str:
             return len(value)
 
     output = CappedOutput()
-    execution_namespace["__builtins__"]["print"] = builtins.print
+    execution_namespace["__builtins__"].update(_session_builtins())
     result = None
     try:
         with redirect_stdout(output):
@@ -1082,7 +780,7 @@ def create_tools() -> dict[str, Tool]:
             "type": "function",
             "function": {
                 "name": "PythonREPL",
-                "description": "A Python REPL. Use this to execute python code. Input should be a valid python command. If you want to see the output of a value, you should print it out with `print(...)`. You cannot use matplotlib. No plotting is allowed.\nPackages you can import: np, times_days, rvs_ms, sigmas_ms, baselines, history, star_mass_sun, t_ref_days, stargazer_planet_from_fit, STARGAZER_SUBMISSION_GUIDE.",
+                "description": "A persistent Python REPL with no per-call execution timeout. Use print(...) to see results. Normal Python builtins and installed packages are available; file, process, and network access follow the runtime's permissions. You cannot use matplotlib. No plotting is allowed.\nPreloaded variables: np, times_days, rvs_ms, sigmas_ms, baselines, history, star_mass_sun, t_ref_days, stargazer_planet_from_fit, STARGAZER_SUBMISSION_GUIDE.",
                 "parameters": {
                     "type": "object",
                     "properties": {
