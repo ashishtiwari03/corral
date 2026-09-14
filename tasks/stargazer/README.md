@@ -151,8 +151,8 @@ per instrument.
 
 For migration only, the scorer continues to accept the previously supported
 field aliases and nested `noise.sigma_jitter_ms`. New candidates should use the
-flat canonical schema above; aliases are not exposed by the submission tool or
-task prompt.
+flat canonical schema above. The public `submit_action` schema continues to
+expose the legacy aliases for compatibility.
 
 ## Evaluation
 
