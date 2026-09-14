@@ -109,22 +109,24 @@ uv run pytest
 
 Every trial exposes:
 
-- `python_repl`, a persistent per-trial numerical namespace containing NumPy,
-  SciPy, the observation arrays, instrument labels, stellar mass, and the
-  reference epoch;
-- `planet_from_fit`, which converts fitted semi-amplitude and phase values to
-  Stargazer's native planet fields;
-- `evaluate_candidate`, which evaluates canonical candidate arguments and
-  returns redacted four-gate diagnostics without ending or scoring the trial.
+- `PythonREPL`, a persistent per-trial numerical namespace containing the
+  observations, stellar mass, reference epoch, numerical helpers, and the
+  submission history;
+- `stargazer_planet_from_fit`, a helper in that namespace which converts fitted
+  semi-amplitude and phase values to Stargazer's native planet fields;
+- `submit_action`, which evaluates a candidate, returns the Stargazer feedback
+  described below, and commits the result to the trial trajectory.
 
-Valid diagnostic evaluations consume the split allowance. Invalid JSON or
-schema-invalid candidates do not. Once a diagnostic candidate passes all four
-gates, further diagnostic calls are locked and the agent is instructed to
-return that candidate as its final answer. Diagnostic history is never used as
-a scored fallback.
+Valid submissions consume the difficulty-based allowance: five submissions
+for difficulties 5--6 and ten submissions for difficulties 7--10. Invalid JSON,
+schema-invalid candidates, and submissions rejected by the phase-semantic
+validator do not consume that allowance. The Stargazer interaction ends when a
+candidate passes all four gates or the submission allowance is exhausted. A
+successful committed submission determines the scientific score; Corral's
+final-answer action only closes the run and does not submit or rescore another
+planetary system.
 
-The same canonical JSON works unchanged as `evaluate_candidate` arguments and
-as the final answer:
+`submit_action` accepts canonical JSON fields directly:
 
 ```json
 {
@@ -147,17 +149,17 @@ compatibility fields `inc_rad` and `Omega_rad` are accepted but are unnecessary
 for the radial-velocity model. The evaluator fits one constant velocity offset
 per instrument.
 
-For migration only, the final scorer continues to accept the previously
-supported field aliases and nested `noise.sigma_jitter_ms`. New candidates
-should use the flat canonical schema above; aliases are not exposed by the
-diagnostic tool or task prompt.
+For migration only, the scorer continues to accept the previously supported
+field aliases and nested `noise.sigma_jitter_ms`. New candidates should use the
+flat canonical schema above; aliases are not exposed by the submission tool or
+task prompt.
 
 ## Evaluation
 
-Both `evaluate_candidate` and the final scorer call the same
+Both live `submit_action` calls and the reference audit call the same
 `evaluate_submission()` implementation in [`score.py`](src/stargazer/score.py).
-`make_stargazer_scorer()` binds it to Corral's final-answer scoring contract.
-A final answer scores `1.0` only when all four gates pass:
+Corral scores the committed submission trajectory: a trial scores `1.0` when
+at least one submitted candidate passes all four gates:
 
 1. BIC improvement over a per-instrument constant model is greater than zero
    per observation;
@@ -165,10 +167,33 @@ A final answer scores `1.0` only when all four gates pass:
 3. aggregate Hungarian-assigned physical match score is at least 0.8;
 4. recovered planet count equals the hidden reference count.
 
-Diagnostic feedback reports BIC and BIC per observation, residual RMS and MAE
-with the RMS threshold, aggregate match score with its threshold, count
-pass/fail, and remaining evaluations. It does not reveal hidden parameters,
-truth indices, assignments, signed errors, or the true planet count.
+### Intentional evaluator feedback
+
+Stargazer is an iterative model-fitting benchmark with evaluator feedback, not
+a blind one-shot recovery task. Every valid `submit_action` reports BIC and BIC
+per observation, residual RMS and MAE with the RMS threshold, aggregate match
+score with its threshold, count pass/fail, and whether the interaction is done.
+
+The feedback intentionally also contains:
+
+- Hungarian assignment triples of `[truth_index, guess_index, distance]`;
+- the indices of unmatched reference and submitted planets;
+- for each accepted match, absolute error components for log-period,
+  log-amplitude, eccentricity, phase, and the sampled RV curve.
+
+Consequently, an agent can infer the hidden reference planet count from the
+assignment and unmatched-reference lists. This information and the unsigned
+distance components are deliberate optimization signals inherited from the
+Stargazer interaction protocol. They are part of the benchmark task definition,
+not an accidental disclosure. The feedback does not return the reference
+orbital parameter values or signed parameter errors.
+
+The aggregate physical match score deliberately averages the accepted matched
+pairs. Assignments beyond the released distance cutoff are omitted from that
+average; planet-count agreement remains a separate required gate. Requiring
+strict recovery of every weak component made the benchmark collapse to an
+all-zero regime in the original evaluation, eliminating useful discrimination
+between agents.
 
 ## Task-bank audit
 
