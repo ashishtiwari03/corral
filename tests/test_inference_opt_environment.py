@@ -6,11 +6,11 @@ from inference_opt.env import create_environments
 from inference_opt.policy import PolicyError, validate_policy
 
 
-def test_inference_opt_has_ten_tasks_per_level(tmp_path, monkeypatch):
+def test_inference_opt_has_twelve_tasks_per_level(tmp_path, monkeypatch):
     monkeypatch.setenv("CORRAL_INFERENCE_DATA_DIR", str(tmp_path / "data"))
     for level in (1, 2):
         environments = create_environments(level=level, work_dir=str(tmp_path / "work"))
-        assert len(environments) == 10
+        assert len(environments) == 12
         model_counts = {
             len(environment.current_task.initial_input["models"])
             for environment in environments.values()

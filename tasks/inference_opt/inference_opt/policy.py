@@ -132,7 +132,7 @@ class LegacyPolicy:
         self._fn = fn
         self.manifest = PolicyManifest(name=getattr(fn, "__name__", "legacy"))
 
-    def setup(self, ctx: SetupContext) -> None:  # noqa: ARG002 - contract shape
+    def setup(self, ctx: SetupContext) -> None:
         """Legacy policies have no setup phase."""
 
     def solve(self, question: Question, ctx: SolveContext) -> Any:

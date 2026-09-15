@@ -1,12 +1,11 @@
 """Reading the frozen question set.
 
-The question set is built once, out of band, by ``scripts/build_pool.py`` →
-``scripts/calibrate_student.py`` → ``scripts/freeze_dataset.py`` and committed. This
-module is the only reader.
+The question set is fixed: it was assembled once and committed, and this module is
+the only reader. See the README for the selection protocol.
 
 Layout, under ``inference_opt/data/frozen/<version>/``::
 
-    manifest.json          provenance, seed, filter counts, content_fingerprint
+    manifest.json          provenance, seed, selection counts, content_fingerprint
     items.parquet          canonical typed table, no targets
     public/<bench>.jsonl   what the eval host and the agent may see: NO targets
     private/labels.jsonl   {item_id, split, target, answer_format}
@@ -16,8 +15,8 @@ that imports policy code is given a temporary copy of the public records only, a
 never the path to ``private/``. Only ``trusted`` controller-side tools read labels.
 
 ``item_id`` is ``"{benchmark}:{inspect_sample_id}"`` and is used verbatim as the
-inspect ``Sample.id``, so every item joins back to its IRT parameters. Do not mint
-new identifiers.
+inspect ``Sample.id``, so an item can always be traced back to its source dataset.
+Do not mint new identifiers.
 """
 
 from __future__ import annotations
@@ -37,9 +36,11 @@ if TYPE_CHECKING:
 __all__ = [
     "BENCHMARKS",
     "DATASET_VERSION",
+    "DatasetError",
     "FrozenItem",
     "Split",
     "data_root",
+    "iter_questions",
     "load_items",
     "load_manifest",
     "load_targets",
@@ -119,8 +120,9 @@ class FrozenItem:
     options: tuple[str, ...] | None = None
     category: str | None = None
     subcategory: str | None = None
-    difficulty: float | None = None
-    discrimination: float | None = None
+    #: Accuracy of the reference model cohort on this item when the set was
+    #: assembled. Between 0.2 and 0.8 by construction; lower means harder.
+    reference_accuracy: float | None = None
     question_hash: str | None = None
 
     @property
@@ -145,8 +147,7 @@ class FrozenItem:
             options=tuple(str(option) for option in options) if options else None,
             category=record.get("category"),
             subcategory=record.get("subcategory"),
-            difficulty=record.get("difficulty"),
-            discrimination=record.get("discrimination"),
+            reference_accuracy=record.get("reference_accuracy"),
             question_hash=record.get("question_hash"),
         )
 

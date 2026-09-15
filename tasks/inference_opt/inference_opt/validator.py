@@ -18,7 +18,7 @@ scoring (refuses to run).
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 __all__ = [
@@ -129,8 +129,8 @@ class ValidationReport:
         return {
             "ok": self.ok,
             "files_checked": list(self.files_checked),
-            "errors": [finding.__dict__ for finding in self.errors],
-            "warnings": [finding.__dict__ for finding in self.warnings],
+            "errors": [asdict(finding) for finding in self.errors],
+            "warnings": [asdict(finding) for finding in self.warnings],
         }
 
 
@@ -170,7 +170,7 @@ class _Checker(ast.NodeVisitor):
         )
 
     def _check_module(self, node: ast.AST, module: str) -> None:
-        root = module.split(".")[0]
+        root = module.split(".", maxsplit=1)[0]
         if root in self.local_modules or root in ALLOWED_IMPORTS:
             return
         self._error(

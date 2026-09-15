@@ -1,5 +1,11 @@
-"""Inference-time optimization environment for frozen student LLMs."""
+"""Inference-time optimization environment for frozen student LLMs.
 
-from inference_opt.policy import PolicyError, validate_policy
+A teacher agent writes a Python policy that improves a frozen student model at test
+time - prompting, sampling, verification, memory - and is scored on the improvement
+over that student's measured zero-shot baseline on a held-out split.
+"""
 
-__all__ = ["PolicyError", "validate_policy"]
+from inference_opt.api import BudgetExhausted
+from inference_opt.policy import PolicyError, discover_policy, validate_policy
+
+__all__ = ["BudgetExhausted", "PolicyError", "discover_policy", "validate_policy"]
