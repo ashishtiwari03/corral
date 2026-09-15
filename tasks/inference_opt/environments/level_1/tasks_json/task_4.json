@@ -1,0 +1,50 @@
+{
+  "description": "Build and submit an inference-time policy that improves the frozen student model_b on MMLU-Pro multiple-choice questions across 14 subjects. Do not modify model weights; change only what happens around the model at test time.",
+  "id": "mmlu_pro_b",
+  "initial_input": {
+    "base_urls": {},
+    "baseline_items": {},
+    "baselines": {
+      "model_b": 0
+    },
+    "baselines_train": {
+      "model_b": 0
+    },
+    "benchmark": "mmlu_pro",
+    "budget": {
+      "max_debug_runs": 10,
+      "max_experiments": 20,
+      "max_probe_calls": 40,
+      "max_reveals": 4,
+      "max_student_calls": 1200,
+      "reveal_batch": 5
+    },
+    "final_max_calls_per_question": 12,
+    "final_max_student_calls": 240,
+    "final_setup_calls": 0,
+    "joint": false,
+    "max_calls_per_question": 8,
+    "model_specs": {},
+    "models": [
+      "model_b"
+    ],
+    "n_test": 30,
+    "n_train": 30,
+    "scale": 1,
+    "setup_calls": 20
+  },
+  "name": "Improve mmlu_pro on model_b",
+  "submission_format": "The literal string 'submission.json' - stage it with submit_policy first.",
+  "tools": [
+    "get_baseline",
+    "reveal_train_questions",
+    "query_student",
+    "dry_run_policy",
+    "evaluate_candidate",
+    "inspect_failures",
+    "compare_runs",
+    "get_budget",
+    "submit_policy"
+  ],
+  "uuid": "9c2c0479-6e12-51f6-b675-31c7a496ada2"
+}

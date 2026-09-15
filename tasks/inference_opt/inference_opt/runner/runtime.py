@@ -1,7 +1,6 @@
 """Per-run state for the eval host: metering, memory, and the student client.
 
-Everything a policy can touch is built here and deliberately narrow. The runtime
-meters every request and the controller records the resulting run artifacts.
+Everything a policy can use is built here. The runtime meters every request and the controller records the resulting run artifacts.
 """
 
 from __future__ import annotations
@@ -36,9 +35,7 @@ __all__ = ["QuestionMeter", "RunRuntime", "SharedMemory", "StudentClientImpl"]
 class SharedMemory(Memory):
     """Cross-question state. Mutating it requires ``memory="shared"``.
 
-    Guarded by a re-entrant lock even though shared memory forces sequential
-    execution, because a policy may still use ``batch()`` concurrently inside one
-    question.
+    Guarded by a re-entrant lock even though shared memory forces sequential execution, because a policy may still use ``batch()`` concurrently inside one question.
     """
 
     def __init__(self, *, enabled: bool) -> None:
@@ -49,9 +46,7 @@ class SharedMemory(Memory):
     def _require(self) -> None:
         if not self._enabled:
             raise RuntimeError(
-                "this policy declared memory='none', so cross-question memory is "
-                "read-only. Set MANIFEST['memory'] = 'shared' to enable it; note "
-                "that this also forces sequential execution."
+                """this policy declared memory='none', so cross-question memory is  read-only. Set MANIFEST['memory'] = 'shared' to enable it; note that this also forces sequential execution."""
             )
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -118,9 +113,7 @@ class QuestionMeter:
 def _as_messages(prompt: Any, system: str | None) -> list[Any]:
     """Accept a bare string or a list of ``{"role", "content"}`` dicts.
 
-    Policies write plain dicts because that is the shape every chat API uses and
-    the import allowlist gives them nothing else; inspect needs its own typed
-    message objects, so the conversion happens here.
+    Policies write plain dicts because that is the shape every chat API uses and the import allowlist gives them nothing else; inspect needs its own typed message objects, so the conversion happens here.
     """
     from inspect_ai.model import (
         ChatMessageAssistant,
@@ -157,10 +150,7 @@ def _as_messages(prompt: Any, system: str | None) -> list[Any]:
 class StudentClientImpl:
     """The only model access a policy has.
 
-    Synchronous by design — a code-writing model gets sync right far more often
-    than async — and bridged onto the event loop with ``anyio.from_thread.run``,
-    which preserves the contextvars inspect uses to attribute a model call to the
-    sample that made it.
+    Synchronous by design — a code-writing model gets sync right far more often than async — and bridged onto the event loop with ``anyio.from_thread.run``, which preserves the contextvars inspect uses to attribute a model call to the sample that made it.
     """
 
     def __init__(
@@ -175,8 +165,6 @@ class StudentClientImpl:
         self._meter = meter
         self._max_tokens_cap = max_tokens_cap
         self._in_thread = in_thread
-
-    # -- plumbing ---------------------------------------------------------
 
     def _run(self, fn: Any, *args: Any) -> Any:
         if self._in_thread:
@@ -233,11 +221,7 @@ class StudentClientImpl:
         component: str | None = None,
         **_ignored: Any,
     ) -> list[str]:
-        """Draw ``n`` completions. Charged as ``n`` calls, not one.
-
-        ``num_choices=n`` is one HTTP request but ``n`` generations of compute, so
-        billing it as a single call would make self-consistency free.
-        """
+        """Draw ``n`` completions. Charged as ``n`` calls, not one. ``num_choices=n`` is one HTTP request but ``n`` generations of compute, so billing it as a single call would make self-consistency free."""
         count = max(1, int(n))
         self._meter.reserve(count)
         config = self._config(
@@ -245,9 +229,7 @@ class StudentClientImpl:
         )
         output = self._generate(_as_messages(prompt, system), config)
         self._meter.record(_output_tokens(output), component)
-        completions = [
-            (choice.message.text or "") for choice in (output.choices or [])
-        ]
+        completions = [(choice.message.text or "") for choice in (output.choices or [])]
         if not completions:
             completions = [output.completion or ""]
         # Do not issue unmetered fallback requests when a server ignores
@@ -475,13 +457,19 @@ class _TaggingClient:
     def _tag(self, component: str | None) -> str | None:
         return component or self._holder.get("current")
 
-    def generate(self, prompt: Any, *, component: str | None = None, **kwargs: Any) -> str:
+    def generate(
+        self, prompt: Any, *, component: str | None = None, **kwargs: Any
+    ) -> str:
         return self._inner.generate(prompt, component=self._tag(component), **kwargs)
 
-    def sample(self, prompt: Any, *, component: str | None = None, **kwargs: Any) -> list[str]:
+    def sample(
+        self, prompt: Any, *, component: str | None = None, **kwargs: Any
+    ) -> list[str]:
         return self._inner.sample(prompt, component=self._tag(component), **kwargs)
 
-    def batch(self, prompts: Any, *, component: str | None = None, **kwargs: Any) -> list[str]:
+    def batch(
+        self, prompts: Any, *, component: str | None = None, **kwargs: Any
+    ) -> list[str]:
         return self._inner.batch(prompts, component=self._tag(component), **kwargs)
 
     @property

@@ -1,0 +1,53 @@
+{
+  "description": "Build one shared inference-time policy that improves the frozen students model_c and model_d on MMLU-Pro multiple-choice questions across 14 subjects. You are scored on the smaller of the two improvements, so the policy must help both models, not trade one off against the other.",
+  "id": "mmlu_pro_cd",
+  "initial_input": {
+    "base_urls": {},
+    "baseline_items": {},
+    "baselines": {
+      "model_c": 0,
+      "model_d": 0
+    },
+    "baselines_train": {
+      "model_c": 0,
+      "model_d": 0
+    },
+    "benchmark": "mmlu_pro",
+    "budget": {
+      "max_debug_runs": 10,
+      "max_experiments": 20,
+      "max_probe_calls": 40,
+      "max_reveals": 4,
+      "max_student_calls": 1200,
+      "reveal_batch": 5
+    },
+    "final_max_calls_per_question": 12,
+    "final_max_student_calls": 240,
+    "final_setup_calls": 0,
+    "joint": true,
+    "max_calls_per_question": 8,
+    "model_specs": {},
+    "models": [
+      "model_c",
+      "model_d"
+    ],
+    "n_test": 30,
+    "n_train": 30,
+    "scale": 1,
+    "setup_calls": 20
+  },
+  "name": "Joint mmlu_pro improvement on model_c and model_d",
+  "submission_format": "The literal string 'submission.json' - stage it with submit_policy first.",
+  "tools": [
+    "get_baseline",
+    "reveal_train_questions",
+    "query_student",
+    "dry_run_policy",
+    "evaluate_candidate",
+    "inspect_failures",
+    "compare_runs",
+    "get_budget",
+    "submit_policy"
+  ],
+  "uuid": "2bcbb580-d4e4-5c46-ae72-8cb227cf42e1"
+}

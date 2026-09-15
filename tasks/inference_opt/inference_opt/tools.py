@@ -43,7 +43,11 @@ def _compact(payload: dict[str, Any], summary: str, ledger: StateLedger) -> str:
 
 def _resolve(work_dir: str, policy_path: str) -> Path:
     root = Path(work_dir)
-    candidate = (root / policy_path).resolve() if not Path(policy_path).is_absolute() else Path(policy_path)
+    candidate = (
+        (root / policy_path).resolve()
+        if not Path(policy_path).is_absolute()
+        else Path(policy_path)
+    )
     # Keep the agent inside its workspace.
     if not candidate.is_relative_to(root.resolve()):
         raise ValueError(f"policy path must be inside the workspace: {policy_path}")
@@ -55,14 +59,20 @@ def _run_dir(work_dir: str, run_id: str) -> Path:
 
 
 def _stage_submission(
-    work_dir: str, policy_dir: Path, manifest: dict[str, Any],
-    train: dict[str, Any] | None, selected_by: str, rationale: str = "",
+    work_dir: str,
+    policy_dir: Path,
+    manifest: dict[str, Any],
+    train: dict[str, Any] | None,
+    selected_by: str,
+    rationale: str = "",
 ) -> Path:
     """Write the submission bundle the scorer looks for first."""
     root = Path(work_dir)
     bundle = {
         "schema": 1,
-        "policy_dir": str(policy_dir.relative_to(root)) if policy_dir.is_relative_to(root) else str(policy_dir),
+        "policy_dir": str(policy_dir.relative_to(root))
+        if policy_dir.is_relative_to(root)
+        else str(policy_dir),
         "entry": "policy.py",
         "manifest": manifest,
         "train": train or {},
@@ -111,8 +121,13 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         return StateLedger(inference_state or {}, spec)
 
     def _spec_for(
-        work_dir: str, run_id: str, policy_dir: Path, questions: Path,
-        model: str, total_calls: int, split: str,
+        work_dir: str,
+        run_id: str,
+        policy_dir: Path,
+        questions: Path,
+        model: str,
+        total_calls: int,
+        split: str,
     ) -> RunSpec:
         return RunSpec(
             run_id=run_id,
@@ -163,8 +178,10 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def reveal_train_questions(
-        count: int = 5, strategy: str = "failures", work_dir: str = "",
-        inference_state: Any = None
+        count: int = 5,
+        strategy: str = "failures",
+        work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Unlock a few labelled training questions, with the student's answers.
 
@@ -360,7 +377,11 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
                 "error": row["error"],
                 "log": row["log"],
                 "correct": next(
-                    (i.correct for i in (outcome.items if outcome else []) if i.item_id == row["item_id"]),
+                    (
+                        i.correct
+                        for i in (outcome.items if outcome else [])
+                        if i.item_id == row["item_id"]
+                    ),
                     None,
                 ),
             }
@@ -368,8 +389,11 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         ]
         ledger.record_run(
             RunRecord(
-                run_id=run_id, kind="dry_run", policy_dir=policy_path,
-                n_items=n_items, calls_used=summary.calls_used,
+                run_id=run_id,
+                kind="dry_run",
+                policy_dir=policy_path,
+                n_items=n_items,
+                calls_used=summary.calls_used,
                 error=summary.error[:300],
             )
         )
@@ -394,7 +418,9 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def evaluate_candidate(
-        policy_path: str = "policy", note: str = "", work_dir: str = "",
+        policy_path: str = "policy",
+        note: str = "",
+        work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
         """Score a policy on the full training split and record the result.
@@ -433,7 +459,9 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             predictions = (
                 [
                     json.loads(line)
-                    for line in predictions_path.read_text(encoding="utf-8").splitlines()
+                    for line in predictions_path.read_text(
+                        encoding="utf-8"
+                    ).splitlines()
                     if line.strip()
                 ]
                 if predictions_path.is_file()
@@ -442,7 +470,9 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             outcome = read_outcomes(run_spec.log_dir, predictions)
             accuracy = outcome.n_correct / n_items if n_items else 0.0
             baseline_value = float(
-                (config.get("baselines_train") or config.get("baselines") or {}).get(model, 0.0)
+                (config.get("baselines_train") or config.get("baselines") or {}).get(
+                    model, 0.0
+                )
             )
             delta = accuracy - baseline_value
             deltas.append(delta)
@@ -460,9 +490,12 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
         worst = min(deltas) if deltas else 0.0
         record = RunRecord(
-            run_id=run_id, kind="experiment", policy_dir=policy_path,
+            run_id=run_id,
+            kind="experiment",
+            policy_dir=policy_path,
             score=round(sum(deltas) / len(deltas), 4) if deltas else 0.0,
-            delta=round(worst, 4), n_items=n_items,
+            delta=round(worst, 4),
+            n_items=n_items,
             calls_used=sum(r["calls_used"] for r in results.values()),
             note=note[:200],
         )
@@ -471,28 +504,36 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             try:
                 loaded = discover_policy(policy_dir)
                 _stage_submission(
-                    work_dir, policy_dir,
-                    {"name": loaded.manifest.name}, record.__dict__, "auto",
+                    work_dir,
+                    policy_dir,
+                    {"name": loaded.manifest.name},
+                    record.__dict__,
+                    "auto",
                 )
             except PolicyError:
                 pass
 
         verdicts = "; ".join(
-            f"{model}: {value['delta']:+.3f}"
-            for model, value in results.items()
+            f"{model}: {value['delta']:+.3f}" for model, value in results.items()
         )
         return _compact(
-            {"run_id": run_id, "results": results,
-             "artifacts": str(out.relative_to(Path(work_dir))),
-             "staged_as_best": ledger.best_run_id == run_id},
+            {
+                "run_id": run_id,
+                "results": results,
+                "artifacts": str(out.relative_to(Path(work_dir))),
+                "staged_as_best": ledger.best_run_id == run_id,
+            },
             f"Experiment {run_id} on {n_items} train questions - {verdicts}",
             ledger,
         )
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def inspect_failures(
-        run_id: str = "last", only: str = "wrong", limit: int = 5,
-        work_dir: str = "", inference_state: Any = None
+        run_id: str = "last",
+        only: str = "wrong",
+        limit: int = 5,
+        work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Look at what happened on individual questions in an earlier run.
 
@@ -604,7 +645,9 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def submit_policy(
-        policy_path: str = "policy", rationale: str = "", work_dir: str = "",
+        policy_path: str = "policy",
+        rationale: str = "",
+        work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
         """Validate a policy and stage it as your final answer.
@@ -629,13 +672,16 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
         best = ledger.best_run()
         _stage_submission(
-            work_dir, policy_dir,
+            work_dir,
+            policy_dir,
             {
                 "name": loaded.manifest.name,
                 "execution": loaded.manifest.effective_execution,
                 "memory": loaded.manifest.memory,
             },
-            best, "agent", rationale,
+            best,
+            "agent",
+            rationale,
         )
         return _compact(
             {

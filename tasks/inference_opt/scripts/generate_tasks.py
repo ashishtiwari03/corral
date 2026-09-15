@@ -121,13 +121,12 @@ def main() -> None:
         ]
         target = ROOT / "environments" / f"level_{level}" / "tasks_json"
         target.mkdir(parents=True, exist_ok=True)
-        path = target / "tasks.json"
-        # One object per line: readable in a terminal, and diffs stay per-task.
-        body = "[\n" + ",\n".join(
-            "  " + json.dumps(task, sort_keys=True) for task in tasks
-        ) + "\n]\n"
-        path.write_text(body, encoding="utf-8")
-        print(f"level {level}: wrote {len(tasks)} tasks to {path.relative_to(ROOT)}")
+        for old in target.glob("tasks.json"):
+            old.unlink()
+        for index, task in enumerate(tasks, start=1):
+            path = target / f"task_{index}.json"
+            path.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"level {level}: wrote {len(tasks)} task files to {target.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

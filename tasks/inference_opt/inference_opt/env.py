@@ -117,7 +117,10 @@ def _seed_workspace(root: Path) -> None:
 
     for name, body in (
         ("notes.md", "# Notes\n\nWhat I have learned about this student so far.\n"),
-        ("TODO.md", "# TODO\n\n- [ ] Read guide/policy_api.md\n- [ ] Dry-run the starter policy\n"),
+        (
+            "TODO.md",
+            "# TODO\n\n- [ ] Read guide/policy_api.md\n- [ ] Dry-run the starter policy\n",
+        ),
     ):
         path = root / name
         if not path.exists():
@@ -197,8 +200,13 @@ def create_environments(
 
     name = f"inference_opt_level_{level}"
     started = perf_counter()
-    event("INFO", "environment.started", subsystem="runtime",
-          benchmark="inference_opt", operation="create")
+    event(
+        "INFO",
+        "environment.started",
+        subsystem="runtime",
+        benchmark="inference_opt",
+        operation="create",
+    )
     try:
         tasks = load_tasks_from_json(source, work_dir)
         # Built one at a time rather than through `build_environments`, because
@@ -220,16 +228,28 @@ def create_environments(
             for task_id, task in tasks.items()
         }
     except Exception as exc:
-        event("ERROR", "environment.failed", subsystem="runtime",
-              benchmark="inference_opt", operation="create", status="failed",
-              duration_ms=round((perf_counter() - started) * 1000, 3),
-              **exception_fields(exc))
+        event(
+            "ERROR",
+            "environment.failed",
+            subsystem="runtime",
+            benchmark="inference_opt",
+            operation="create",
+            status="failed",
+            duration_ms=round((perf_counter() - started) * 1000, 3),
+            **exception_fields(exc),
+        )
         raise
 
-    event("INFO", "environment.completed", subsystem="runtime",
-          benchmark="inference_opt", operation="create", status="completed",
-          duration_ms=round((perf_counter() - started) * 1000, 3),
-          environment_count=len(environments))
+    event(
+        "INFO",
+        "environment.completed",
+        subsystem="runtime",
+        benchmark="inference_opt",
+        operation="create",
+        status="completed",
+        duration_ms=round((perf_counter() - started) * 1000, 3),
+        environment_count=len(environments),
+    )
     return environments
 
 

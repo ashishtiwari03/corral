@@ -1,16 +1,12 @@
 """The contract between the harness and a teacher-written inference policy.
 
-A policy is duck-typed: it imports nothing from this module. These types exist so
-the harness, tests and generated documentation agree on one shape.
+A policy is duck-typed: it imports nothing from this module. These types exist so the harness, tests and generated documentation agree on one shape.
 
 A policy supplies, in ``policy.py``:
 
-* a ``Policy`` class with ``solve(question, ctx)`` and optionally ``setup(ctx)``, or
-* a module-level ``solve(question, model_client, context)`` (the legacy form), which
-  :func:`inference_opt.policy.discover_policy` wraps automatically.
+A ``Policy`` class with ``solve(question, ctx)`` and optionally ``setup(ctx)``, or a module-level ``solve(question, model_client, context)`` (the legacy form), which :func:`inference_opt.policy.discover_policy` wraps automatically.
 
-Optionally a module- or class-level ``MANIFEST`` dict declares how the policy wants
-to be run; see :class:`PolicyManifest`.
+Optionally a module- or class-level ``MANIFEST`` dict declares how the policy wants to be run; see :class:`PolicyManifest`.
 """
 
 from __future__ import annotations
@@ -62,13 +58,9 @@ MemoryMode = Literal["none", "shared"]
 class BudgetExhausted(RuntimeError):
     """Raised by :meth:`StudentClient.generate` when no student calls remain.
 
-    Derives from ``RuntimeError`` so a policy written defensively as
-    ``except Exception: return fallback`` still produces an answer, and so the
-    scaffold's original ``RuntimeError("... budget exhausted")`` contract holds.
+    Derives from ``RuntimeError`` so a policy written defensively as ``except Exception: return fallback`` still produces an answer, and so the scaffold's original ``RuntimeError("... budget exhausted")`` contract holds.
 
-    Remaining questions in a run are still attempted after this is raised; every
-    further call raises immediately. A policy that catches it and returns a cheap
-    guess scores better than one that does not, which is the intended incentive.
+    Remaining questions in a run are still attempted after this is raised; every further call raises immediately. A policy that catches it and returns a cheap guess scores better than one that does not, which is the intended incentive.
     """
 
 

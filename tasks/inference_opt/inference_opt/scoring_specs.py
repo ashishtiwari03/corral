@@ -6,15 +6,10 @@ of thought ending in ``\\boxed{42}``. inspect's scorers expect a canonical shape
 ``state.choices``, and ``match(numeric=True)`` looks for a value at the end of the
 completion.
 
-So this module does exactly one thing: it extracts the intended answer and rewrites
-it as ``ANSWER: <value>``, which is the form inspect's own machinery understands.
-Grading itself is then done by inspect's battle-tested scorers rather than by
-anything hand-rolled here, because a silently wrong grader shows up as "the agent
-improved nothing" and costs days of blaming the agent.
+So this module extracts the intended answer and rewrites it as ``ANSWER: <value>``, which is the form inspect's own machinery understands.
+Grading itself is then done by inspect's battle-tested scorers rather than by anything hand-rolled here, because a silently wrong grader shows up as "the agent improved nothing" and costs days of blaming the agent.
 
-The one place a custom scorer is unavoidable is chembench's free numeric items,
-whose upstream scorer is tolerance-based — exact string match would understate
-every model including the baseline.
+The one place a custom scorer is unavoidable is chembench's free numeric items, whose upstream scorer is tolerance-based — exact string match would understate every model including the baseline.
 """
 
 from __future__ import annotations
@@ -178,13 +173,20 @@ def extract_mcq_letters(
         lowered = text.strip().lower()
         for index, option in enumerate(choices):
             option_text = option.strip().lower()
-            if option_text and (lowered == option_text or lowered.endswith(option_text)):
+            if option_text and (
+                lowered == option_text or lowered.endswith(option_text)
+            ):
                 return [_LETTERS[index]]
     return []
 
 
-def canonical_completion(raw: object, *, answer_format: str, n_choices: int = 0,
-                         choices: tuple[str, ...] | None = None) -> str:
+def canonical_completion(
+    raw: object,
+    *,
+    answer_format: str,
+    n_choices: int = 0,
+    choices: tuple[str, ...] | None = None,
+) -> str:
     """Rewrite a policy's answer as ``ANSWER: <value>`` for inspect to grade.
 
     Returns ``ANSWER: NOANSWER`` when nothing answer-shaped was found, which scores

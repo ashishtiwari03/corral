@@ -1,11 +1,4 @@
-"""Starter policy: a single zero-shot call, which is exactly the baseline.
-
-It runs end to end, so you can `dry_run_policy('policy')` right now and watch the
-whole loop before changing anything. As written it will score ~0.0 improvement,
-because it is the baseline. Everything interesting is what you do instead.
-
-See `guide/policy_api.md` for the full contract.
-"""
+"""Starter policy: a single zero-shot call."""
 
 MANIFEST = {
     "name": "starter-zero-shot",

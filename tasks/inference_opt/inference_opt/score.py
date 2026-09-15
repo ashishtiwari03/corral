@@ -1,16 +1,7 @@
 """Final scoring: run the submitted policy on the held-out test split.
 
-The score is the **improvement over a measured zero-shot baseline**, clamped to
-``[0, 1]``. Raw delta, not headroom-normalised: dividing by ``1 - baseline`` would
-multiply a weak model's deltas by more than a strong one's, so at level 2 the
-``min`` across two models would turn on which model had less headroom rather than
-which one the policy actually helped.
-
-The outcome taxonomy matters as much as the number. The previous implementation
-caught every exception and returned ``0.0``, which reported a config typo, a missing
-data file and a refused vLLM connection identically to "the agent's policy was bad".
-Here an infrastructure fault **raises**, so a broken run is never recorded as an
-agent score.
+The score is the **improvement over a measured zero-shot baseline**, clamped to ``[0, 1]``.
+Raw delta, not headroom-normalised: dividing by ``1 - baseline`` would multiply a weak model's deltas by more than a strong one's, so at level 2 the ``min`` across two models would turn on which model had less headroom rather than which one the policy actually helped.
 """
 
 from __future__ import annotations
@@ -102,7 +93,9 @@ def resolve_submission(answer: str, work_dir: Path) -> tuple[Path | None, list[s
         root = candidate.parent
     if root is None:
         root = work_dir
-        notes.append(f"submission path {answer!r} did not resolve; using workspace root")
+        notes.append(
+            f"submission path {answer!r} did not resolve; using workspace root"
+        )
 
     # 2. The staged submission bundle.
     staged = root / "submission.json"
@@ -111,7 +104,9 @@ def resolve_submission(answer: str, work_dir: Path) -> tuple[Path | None, list[s
     if staged.is_file():
         try:
             bundle = json.loads(staged.read_text(encoding="utf-8"))
-            policy_dir = (staged.parent / str(bundle.get("policy_dir", "policy"))).resolve()
+            policy_dir = (
+                staged.parent / str(bundle.get("policy_dir", "policy"))
+            ).resolve()
             if (policy_dir / "policy.py").is_file():
                 notes.append(f"using staged submission from {staged.name}")
                 return policy_dir, notes
@@ -193,7 +188,9 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
             n_items = _write_test_questions(benchmark, questions)
             report.n_test_items = n_items
 
-            runner = SubprocessRunner(timeout_s=int(config.get("score_timeout_s", 3600)))
+            runner = SubprocessRunner(
+                timeout_s=int(config.get("score_timeout_s", 3600))
+            )
             deltas: dict[str, float] = {}
 
             for model in models:
@@ -207,7 +204,9 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
                     # The test allowance is per model, so a policy cannot starve one
                     # model to buy compute for the other and game the level-2 `min`.
                     total_calls=int(config["final_max_student_calls"]),
-                    max_calls_per_question=int(config.get("final_max_calls_per_question", 12)),
+                    max_calls_per_question=int(
+                        config.get("final_max_calls_per_question", 12)
+                    ),
                     setup_calls=int(config.get("final_setup_calls", 0)),
                     benchmark=benchmark,
                     split="test",
@@ -289,7 +288,9 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
         # Level 2 scores the weaker of the two improvements, so a policy has to help
         # both models rather than trading one off against the other.
         raw = min(deltas.values()) if config.get("joint") else deltas[models[0]]
-        scaled = float(config.get("scale", 1.0)) * raw + float(config.get("offset", 0.0))
+        scaled = float(config.get("scale", 1.0)) * raw + float(
+            config.get("offset", 0.0)
+        )
         report.score = max(0.0, min(1.0, scaled))
         report.per_model["_aggregate"] = {
             "raw_delta": round(raw, 4),

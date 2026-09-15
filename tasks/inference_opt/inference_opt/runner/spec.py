@@ -1,13 +1,11 @@
-"""The controller → eval-host interface.
+"""The controller  -  eval-host interface.
 
-One JSON file in, three artifacts out. Deliberately boring: the two processes share
-no Python objects, because the eval host imports policy code and the controller
-holds the labels, and keeping that boundary crossable only by serialisable data is
-what makes the separation real.
+The two processes share no Python objects, because the eval host imports policy code and the controller holds the labels.
+Keeping that boundary crossable only by serialisable data is what makes the separation real.
 
-Note what is *absent* from :class:`RunSpec`: any path to the gold answers. The host
-is handed a temporary JSONL of public records that the controller wrote, and nothing
-else. A policy running in that process has nothing to read even if it tries.
+Note what is *absent* from :class:`RunSpec`: any path to the gold answers.
+The host is handed a temporary JSONL of public records that the controller wrote, and nothing else.
+A policy running in that process has nothing to read even if it tries.
 """
 
 from __future__ import annotations

@@ -1,7 +1,6 @@
 """Reading the frozen question set.
 
-The question set is fixed: it was assembled once and committed, and this module is
-the only reader. See the README for the selection protocol.
+The question set is fixed: it was assembled once and committed (from benchmark platform), and this module is the only reader. See the README for the selection protocol.
 
 Layout, under ``inference_opt/data/frozen/<version>/``::
 
@@ -10,13 +9,9 @@ Layout, under ``inference_opt/data/frozen/<version>/``::
     public/<bench>.jsonl   what the eval host and the agent may see: NO targets
     private/labels.jsonl   {item_id, split, target, answer_format}
 
-The public/private split is a real boundary, not decoration: the eval host process
-that imports policy code is given a temporary copy of the public records only, and
-never the path to ``private/``. Only ``trusted`` controller-side tools read labels.
+The eval host process that imports policy code is given a temporary copy of the public records only, and never the path to ``private/``. Only ``trusted`` controller-side tools read labels.
 
-``item_id`` is ``"{benchmark}:{inspect_sample_id}"`` and is used verbatim as the
-inspect ``Sample.id``, so an item can always be traced back to its source dataset.
-Do not mint new identifiers.
+``item_id`` is ``"{benchmark}:{inspect_sample_id}"`` and is used verbatim as the inspect ``Sample.id``, so an item can always be traced back to its source dataset.
 """
 
 from __future__ import annotations

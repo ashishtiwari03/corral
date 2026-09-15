@@ -1,7 +1,6 @@
 """Measuring the zero-shot baseline every score is relative to.
 
-Every score in this environment is an improvement over the baseline, so the
-baseline *is* the benchmark and its definition has to be pinned exactly:
+Every score in this environment is an improvement over the baseline, so the baseline is the benchmark.
 
 * exactly **one** chat completion per question, never retried on a valid response;
 * ``temperature=0.0``, ``seed=0``;
@@ -141,8 +140,11 @@ def measure_baseline(
     items = datasets.load_items(benchmark, split)  # type: ignore[arg-type]
     targets = datasets.load_targets(benchmark, split)  # type: ignore[arg-type]
     result = BaselineResult(
-        benchmark=benchmark, model=model, split=split,
-        n=len(items), chance=_chance_level(items),
+        benchmark=benchmark,
+        model=model,
+        split=split,
+        n=len(items),
+        chance=_chance_level(items),
     )
 
     with tempfile.TemporaryDirectory(prefix="inference-opt-baseline-") as scratch:
@@ -155,8 +157,11 @@ def measure_baseline(
         datasets.write_jsonl(
             questions,
             [
-                {**datasets.public_record(item), "target": targets.get(item.item_id, ""),
-                 "index": index}
+                {
+                    **datasets.public_record(item),
+                    "target": targets.get(item.item_id, ""),
+                    "index": index,
+                }
                 for index, item in enumerate(items)
             ],
         )
@@ -186,7 +191,6 @@ def measure_baseline(
         result.per_topic = outcome.by_category()
 
     return result
-
 
 
 def load_measured(path: Path) -> dict[str, Any]:

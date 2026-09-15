@@ -1,13 +1,9 @@
 """A minimal student client for the *controller* side.
 
-Used only by the ``query_student`` tool, so the teacher agent can probe the student
-by hand without writing a policy. It speaks plain OpenAI-compatible HTTP rather than
-going through inspect, because a Corral tool runs in a privilege-dropped worker
-where the lighter dependency is worth having.
+Used only by the ``query_student`` tool, so the teacher agent can probe the student by hand without writing a policy.
+It speaks plain OpenAI-compatible HTTP rather than going through inspect, because a Corral tool runs in a privilege-dropped worker where the lighter dependency is worth having.
 
-Policies never see this class. They get
-:class:`inference_opt.runner.runtime.StudentClientImpl`, which is metered against
-the run allocator and routed through inspect so every call lands in the eval log.
+Policies never see this class. They get :class:`inference_opt.runner.runtime.StudentClientImpl`, which is metered against the run allocator and routed through inspect so every call lands in the eval log.
 """
 
 from __future__ import annotations

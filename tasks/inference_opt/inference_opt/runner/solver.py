@@ -1,15 +1,11 @@
 """The inspect solver that delegates to a teacher-written policy.
 
-inspect normally owns the prompting: a solver calls ``generate`` and the model
-answers. Here the *policy* owns all prompting, so this solver never calls
-``generate`` at all. It is a pure adapter — hand the policy a
-:class:`~inference_opt.api.Question` and a metered client, take back an answer, and
-write that answer into ``state.output`` in the canonical form inspect's scorers
-expect.
+Inspect normally owns the prompting: a solver calls ``generate`` and the model answers.
+Here the *policy* owns all prompting, so this solver never calls ``generate`` at all.
+It is a pure adapter — hand the policy a :class:`~inference_opt.api.Question` and a metered client, take back an answer, and write that answer into ``state.output`` in the canonical form inspect's scorers expect.
 
-That last step is what makes ``choice()`` work: it grades from the correctness flags
-on ``state.choices``, which the ``multiple_choice`` solver would normally set. Since
-we replaced that solver, we set them ourselves from the policy's answer.
+That last step is what makes ``choice()`` work: it grades from the correctness flags on ``state.choices``, which the ``multiple_choice`` solver would normally set.
+Since we replaced that solver, we set them ourselves from the policy's answer.
 """
 
 from __future__ import annotations
@@ -42,8 +38,7 @@ __all__ = ["policy_solver", "question_from_state", "unwrap_answer"]
 def question_from_state(state: TaskState) -> Question:
     """Rebuild the policy-facing question from an inspect sample.
 
-    Reads only what the controller put in ``metadata``; ``state.target`` is never
-    touched, and is empty on train runs regardless.
+    Reads only what the controller put in ``metadata``; ``state.target`` is never touched, and is empty on train runs regardless.
     """
     metadata = state.metadata or {}
     choices = tuple(choice.value for choice in state.choices) if state.choices else None
@@ -145,9 +140,7 @@ def policy_solver(policy: LoadedPolicy, runtime: RunRuntime, artifacts: Path) ->
             "error": error,
             "unparseable": completion.endswith(NO_ANSWER),
         }
-        runtime.emit_prediction(
-            question, completion, meter, error, log_lines, seconds
-        )
+        runtime.emit_prediction(question, completion, meter, error, log_lines, seconds)
         return state
 
     return solve

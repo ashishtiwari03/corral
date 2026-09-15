@@ -41,8 +41,9 @@ def _parse_models(pairs: list[str]) -> dict[str, str]:
 
 
 def _patch_tasks(level: int, measured: dict, refused: set[tuple[str, str]]) -> int:
-    path = ROOT / "environments" / f"level_{level}" / "tasks_json" / "tasks.json"
-    tasks = json.loads(path.read_text(encoding="utf-8"))
+    directory = ROOT / "environments" / f"level_{level}" / "tasks_json"
+    paths = sorted(directory.glob("task_*.json"))
+    tasks = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     patched = 0
     for task in tasks:
         config = task["initial_input"]
@@ -58,10 +59,8 @@ def _patch_tasks(level: int, measured: dict, refused: set[tuple[str, str]]) -> i
         config["refused"] = any(
             (benchmark, model) in refused for model in config["models"]
         )
-    body = "[\n" + ",\n".join(
-        "  " + json.dumps(task, sort_keys=True) for task in tasks
-    ) + "\n]\n"
-    path.write_text(body, encoding="utf-8")
+    for path, task in zip(paths, tasks, strict=True):
+        path.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return patched
 
 

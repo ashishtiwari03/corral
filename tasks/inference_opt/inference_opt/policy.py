@@ -176,7 +176,9 @@ def _import_module(root: Path) -> ModuleType:
     """Import ``<root>/policy.py`` once, with ``root`` importable for helpers."""
     entry = root / "policy.py"
     if not entry.is_file():
-        raise PolicyError(f"a policy directory must contain policy.py (looked in {root})")
+        raise PolicyError(
+            f"a policy directory must contain policy.py (looked in {root})"
+        )
 
     spec = importlib.util.spec_from_file_location(_MODULE_NAME, entry)
     if spec is None or spec.loader is None:
@@ -282,7 +284,9 @@ def discover_policy(root: Path | str) -> LoadedPolicy:
         manifest = manifest_from_mapping(raw_manifest)
     else:
         existing = getattr(obj, "manifest", None)
-        manifest = existing if isinstance(existing, PolicyManifest) else PolicyManifest()
+        manifest = (
+            existing if isinstance(existing, PolicyManifest) else PolicyManifest()
+        )
 
     forced = manifest.memory == "shared" and manifest.execution == "parallel"
     return LoadedPolicy(
