@@ -69,11 +69,6 @@ def _task_matches_selector(task_file: Path, selector: dict[str, Any]) -> bool:
     return minimum <= difficulty <= maximum
 
 
-def submission_budget(difficulty: int) -> int:
-    """The original runner's difficulty-based number of environment steps."""
-    return 3 if difficulty <= 2 else (5 if difficulty <= 6 else 10)
-
-
 def _task_prompt(env: Environment, _state: ExecutionState) -> str:
     task = env.current_task
     benchmark_task = task.scoring_inputs["benchmark_task"]
@@ -187,9 +182,9 @@ def _task_prompt(env: Environment, _state: ExecutionState) -> str:
            - Submission mode: params_and_model
 
         ### Budget Constraints
-        - Max tool calls: 20
-        - Max execution time: {600 if benchmark_task.truth_difficulty <= 2 else 900 if benchmark_task.truth_difficulty <= 6 else 1500}s
-        - You can submit up to {task.scoring_inputs["max_submissions"]} times
+        - Tool use is bounded by Corral's configured agent iteration limit.
+        - There is no separate limit on the number of submit_action calls.
+        - Keep refining and submitting candidates until one succeeds or your iterations run out.
 
         ### Mandatory Step 0: Read Protocol Guide First
         Before any fitting/submission, read `STARGAZER_SUBMISSION_GUIDE` in PythonREPL and set:
@@ -282,7 +277,6 @@ def _configure_trial(env: Environment, _state: ExecutionState) -> EnvironmentSet
                 "history": [],
                 "steps": 0,
                 "done": False,
-                "max_submissions": env.current_task.scoring_inputs["max_submissions"],
                 "protocol_ack": False,
                 "force_submit": False,
             },
@@ -395,14 +389,6 @@ def load_tasks_from_json(
             if not _task_matches_selector(task_file, selector):
                 continue
             benchmark_task = load_task(task_file, source=source)
-            maximum = int(
-                selector.get(
-                    "max_submissions",
-                    submission_budget(benchmark_task.truth_difficulty),
-                )
-            )
-            if maximum <= 0:
-                raise ValueError("max_submissions must be positive")
             task_id = benchmark_task.task_id
             if task_id in tasks:
                 raise ValueError(f"Duplicate Stargazer task id: {task_id}")
@@ -417,10 +403,7 @@ def load_tasks_from_json(
                 scoring_fn=make_stargazer_scorer(benchmark_task),
                 state_scoring_fn=score_execution,
                 submission_format=SUBMISSION_FORMAT,
-                scoring_inputs={
-                    "benchmark_task": benchmark_task,
-                    "max_submissions": maximum,
-                },
+                scoring_inputs={"benchmark_task": benchmark_task},
                 initial_input={
                     "task_id": task_id,
                     "source": source,

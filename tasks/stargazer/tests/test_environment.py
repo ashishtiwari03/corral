@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import asdict
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -19,6 +21,7 @@ from stargazer.score import make_stargazer_scorer, score_execution
 from stargazer.tools import create_tools
 
 from corral.agents.session import AgentSession
+from corral.agents.tool_calling import ToolCallingAgent
 from corral.core import Action, ActorRef, AgentStarted, CommitRequest
 from corral.core.environment import Toolset
 from corral.core.task import TaskDefinition
@@ -40,7 +43,7 @@ def environment(simple_task):
         scoring_fn=make_stargazer_scorer(simple_task),
         state_scoring_fn=score_execution,
         submission_format=SUBMISSION_FORMAT,
-        scoring_inputs={"benchmark_task": simple_task, "max_submissions": 2},
+        scoring_inputs={"benchmark_task": simple_task},
         prompt_fn=_task_prompt,
         setup_fn=_configure_trial,
         resolve_answer=False,
@@ -122,7 +125,6 @@ def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
         1: {5: 4, 6: 3, 7: 3},
         2: {8: 4, 9: 3, 10: 3},
     }
-    expected_evaluation_budgets = {1: {5, 10}, 2: {10}}
     for level, environments in levels.items():
         source_counts: dict[str, int] = {}
         difficulty_counts: dict[int, int] = {}
@@ -134,10 +136,6 @@ def test_official_levels_have_fixed_reference_valid_synthetic_banks(tmp_path):
             )
         assert source_counts == expected_source_counts[level]
         assert difficulty_counts == expected_difficulty_counts[level]
-        assert {
-            environment.current_task.scoring_inputs["max_submissions"]
-            for environment in environments.values()
-        } == expected_evaluation_budgets[level]
 
 
 @pytest.mark.parametrize("level", [3, "3", "real"])
@@ -205,6 +203,8 @@ async def test_released_environment_uses_original_workflow_and_completion(tmp_pa
         prompt = environment.get_task_prompt(state)
         assert "Lomb-Scargle" in prompt
         assert "MANDATORY MODEL GATING" in prompt
+        assert "Corral's configured agent iteration limit" in prompt
+        assert "no separate limit on the number of submit_action calls" in prompt
         assert str(task.truth_planets[0].P_days) not in prompt
         assert "truth_planets" not in state.model_dump_json()
         raw = json.loads(
@@ -250,6 +250,57 @@ async def test_live_feedback_equals_original_submit_action(
 
 
 @pytest.mark.anyio
+async def test_submissions_are_limited_only_by_agent_iterations(
+    tmp_path, environment, exact_submission, monkeypatch
+):
+    def response(**_kwargs):
+        return SimpleNamespace(
+            content=None,
+            tool_calls=[
+                SimpleNamespace(
+                    id=uuid4().hex,
+                    function=SimpleNamespace(
+                        name="submit_action", arguments='{"planets": []}'
+                    ),
+                )
+                for _ in range(2)
+            ],
+            usage=None,
+        )
+
+    model_call = AsyncMock(side_effect=response)
+    monkeypatch.setattr("corral.agents.base_agent.llm_call", model_call)
+    agent = ToolCallingAgent(
+        model="test-model",
+        system_prompt="system",
+        user_prompt="Task: {{task_guide}}\n{{examples}}\n{{surrender_instructions}}",
+    )
+    database = tmp_path / "unlimited.sqlite3"
+    async with SQLiteCommitStore(database, "unlimited") as store:
+        session = await _start_session(environment, store)
+        await _ack(session)
+        outcome = await agent.run_session(session)
+
+        assert outcome.status == "iteration_limit"
+        assert model_call.await_count == session.iteration_limit
+        submission = _submission_state(await store.materialize("main"))
+        # Multiple submissions per iteration remain usable beyond all old caps.
+        assert submission["steps"] == 2 * session.iteration_limit
+        assert len(submission["history"]) == submission["steps"]
+        assert all(not entry["done"] for entry in submission["history"])
+        assert not submission["done"]
+
+    async with SQLiteCommitStore(database, "unlimited") as store:
+        session = _resume_session(environment, await store.materialize("main"), store)
+        feedback = json.loads(
+            await _execute(session, "submit_action", **exact_submission)
+        )
+        assert feedback["success"]
+        assert feedback["done"]
+        assert score_execution(await store.materialize("main")) == 1.0
+
+
+@pytest.mark.anyio
 async def test_forced_submission_and_history_survive_restore(tmp_path, environment):
     database = tmp_path / "protocol.sqlite3"
     async with SQLiteCommitStore(database, "protocol") as store:
@@ -288,7 +339,7 @@ async def test_forced_submission_and_history_survive_restore(tmp_path, environme
 
 
 @pytest.mark.anyio
-async def test_done_budget_and_success_are_isolated_across_forks(
+async def test_submission_history_and_success_are_isolated_across_forks(
     tmp_path, environment, exact_submission
 ):
     database = tmp_path / "fork.sqlite3"
@@ -304,14 +355,20 @@ async def test_done_budget_and_success_are_isolated_across_forks(
         assert passed["success"]
         assert passed["done"]
         assert not failed["success"]
-        assert failed["done"]
-        for target in (session, branch):
-            assert "Stargazer is done" in await _execute(
-                target, "PythonREPL", input_code="print(42)"
-            )
-            assert "Stargazer is done" in await _execute(
-                target, "submit_action", **exact_submission
-            )
+        assert not failed["done"]
+        assert "Stargazer is done" in await _execute(
+            session, "PythonREPL", input_code="print(42)"
+        )
+        assert "Stargazer is done" in await _execute(
+            session, "submit_action", **exact_submission
+        )
+        assert (
+            await _execute(branch, "PythonREPL", input_code="print(42)")
+        ).strip() == "42"
+        retried = json.loads(await _execute(branch, "submit_action", planets=[]))
+        assert not retried["done"]
+        assert _submission_state(await store.materialize("main"))["steps"] == 2
+        assert _submission_state(await store.materialize("alternative"))["steps"] == 3
         await _execute(branch, "submit_answer", answer=json.dumps(exact_submission))
         assert (
             TaskScorer(environment.current_task)

@@ -2,19 +2,22 @@
 
 The tasks come from the Stargazer paper's radial-velocity exoplanet benchmark,
 adapted to the standard Corral lifecycle. An agent receives public observations
-and tools, may request a bounded number of diagnostic candidate evaluations,
-and is scored only on its final JSON answer.
+and tools, may evaluate candidates throughout its agent iteration budget,
+and is scored on its committed `submit_action` submissions.
 
-## Task splits and candidate budgets
+## Task splits
 
 The two official levels contain 10 fixed, reference-valid synthetic tasks
 each. Their explicit IDs are committed in `environments/level_*/tasks_json`,
 so membership never changes at runtime.
 
-| Split | Upstream difficulty | Synthetic tasks | Diagnostic evaluations | Final answer | Total candidates |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Level 1 | 5–7 | 10 | 4 | 1 | 5 |
-| Level 2 | 8–10 | 10 | 9 | 1 | 10 |
+| Split | Upstream difficulty | Synthetic tasks |
+| --- | --- | ---: |
+| Level 1 | 5–7 | 10 |
+| Level 2 | 8–10 | 10 |
+
+Both levels allow unlimited `submit_action` calls within Corral's configured
+agent iteration budget.
 
 Each level selects tasks from the Stargazer paper with passing reference
 solutions, balanced across its difficulties (4/3/3). Tasks retain their
@@ -90,7 +93,7 @@ compiler is available.
 
 Like Wetlab, `StargazerEnvironment` restores disposable sessions from
 `ExecutionState.environment` and returns their changes for Corral to commit.
-Diagnostic history, remaining budget, and the success lock persist across
+Diagnostic history, submission counts, and the success lock persist across
 resumption and branch forks. The Python namespace is checkpointed inside its
 public-data-only worker, preserving arrays, functions, and numerical random
 state without replaying earlier code. Checkpoints are decoded only inside the
@@ -117,11 +120,12 @@ Every trial exposes:
 - `submit_action`, which evaluates a candidate, returns the Stargazer feedback
   described below, and commits the result to the trial trajectory.
 
-Valid submissions consume the difficulty-based allowance: five submissions
-for difficulties 5--6 and ten submissions for difficulties 7--10. Invalid JSON,
-schema-invalid candidates, and submissions rejected by the phase-semantic
-validator do not consume that allowance. The Stargazer interaction ends when a
-candidate passes all four gates or the submission allowance is exhausted. A
+There is no separate submission allowance or difficulty-based tool-call cap.
+Agents can keep calling `submit_action` within Corral's configured
+`max_iterations` budget. Valid submissions are counted for history only;
+rejected candidates do not advance that count. The Stargazer interaction ends
+when a candidate passes all four gates; otherwise, the agent can continue until
+its iteration budget is exhausted or it closes the run. A
 successful committed submission determines the scientific score; Corral's
 final-answer action only closes the run and does not submit or rescore another
 planetary system.
@@ -217,7 +221,7 @@ Stargazer's RV-only Keplerian semantics: records marked as RV-only are loaded
 directly, while REBOUND records are converted in memory with their noise
 realization preserved.
 
-Compared with the upstream interaction loop, Corral owns the final submission:
-the iterative submission action is named `evaluate_candidate`, the final
-answer is the last candidate opportunity, and only that final answer affects
-the benchmark score. See `THIRD_PARTY_NOTICES.md` for attribution and licenses.
+Compared with the upstream interaction loop, Corral uses its configured agent
+iteration budget instead of a difficulty-based submission cap. `submit_action`
+evaluates candidates and determines the score; Corral's final-answer action
+closes the run. See `THIRD_PARTY_NOTICES.md` for attribution and licenses.

@@ -30,7 +30,6 @@ def test_docker_dispatch_sends_only_public_data_and_opaque_checkpoint(
             "history": [],
             "steps": 0,
             "done": False,
-            "max_submissions": 5,
             "protocol_ack": False,
             "force_submit": False,
         },

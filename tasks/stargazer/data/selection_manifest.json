@@ -57,12 +57,7 @@
           "task_id": "seed43_diff7",
           "difficulty": 7
         }
-      ],
-      "submission_budget_by_difficulty": {
-        "5": 5,
-        "6": 5,
-        "7": 10
-      }
+      ]
     },
     "2": {
       "difficulty_min": 8,
@@ -108,12 +103,7 @@
           "task_id": "seed82_diff10",
           "difficulty": 10
         }
-      ],
-      "submission_budget_by_difficulty": {
-        "8": 10,
-        "9": 10,
-        "10": 10
-      }
+      ]
     }
   }
 }

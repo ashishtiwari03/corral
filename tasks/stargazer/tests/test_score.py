@@ -192,7 +192,7 @@ def test_all_twenty_tasks_match_original_feedback(
         payload = reference_submission(task, raw).canonical_payload()
         if kind == "omitted_jitter":
             payload.pop("noise_jitter_ms", None)
-        session = {"steps": 0, "max_submissions": 10, "history": []}
+        session = {"steps": 0, "history": []}
         feedback = json.loads(submit_candidate(task, payload, session))
         assert_protocol_equal(feedback, expected["feedback"])
         assert_protocol_equal(session["history"][-1]["metrics"], expected["metrics"])

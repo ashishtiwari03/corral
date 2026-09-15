@@ -838,7 +838,7 @@ def evaluate_submission(
 def submit_candidate(
     task: StargazerTask, payload: dict[str, Any], session: dict[str, Any]
 ) -> str:
-    """Apply one original submission action to Corral's committed session state."""
+    """Evaluate a candidate, ending the interaction only on success."""
     reward, done, success, details, metrics = 0.0, False, False, {}, {}
     try:
         result = evaluate_submission(task, payload)
@@ -856,7 +856,7 @@ def submit_candidate(
     else:
         session["steps"] += 1
         reward, success = result.reward, bool(result.success)
-        done = success or session["steps"] >= session["max_submissions"]
+        done = success
         details, metrics = result.success_details, result.metrics
         output = json.dumps(
             {
