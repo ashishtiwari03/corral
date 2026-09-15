@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 1 task 5: Scale-Dependent Topographic Roughness",
-    "description": "Acquire one tapping-mode topography image over a 5 µm × 5 µm area at 512 × 512 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/10, amplitude setpoint to 70%, and drive amplitude to 200 mV. Calculate the nominal lateral sampling interval as scan width divided by the number of pixels. Process the image using the common roughness rules and report the sampling interval, Ra, and Rq. Save each completed acquisition as a distinct raw .nid file and report its absolute path. Submit images in acquisition order with recorded_params and physical_settings as numeric objects using the benchmark units. Centers are relative to the initial scan center, in nm. Record the complete acquisition state for every image. Common roughness rules: use the full forward height channel in meters; subtract a least-squares plane, then its residual mean, without filtering, masking or line flattening. Ra is mean absolute residual and Rq is RMS residual; report both in nm. Aggregate standard deviations use ddof=1; CV is 100 * sample standard deviation / mean. Percentage changes are 100 * (value - reference) / reference. Use null for undefined ratios or R².",
+    "description": "Acquire one tapping-mode topography image over a 5 µm × 5 µm area at 512 × 512 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/10, amplitude setpoint to 70%, and drive amplitude to 200 mV. Calculate the nominal lateral sampling interval as scan width divided by the number of pixels. Process the image using the common roughness rules and report the sampling interval, Ra, and Rq.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",

@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 2 task 3: Tapping-Mode Topography And Amplitude Setpoint",
-    "description": "Acquire exactly three tapping-mode topography images at the same location using amplitude setpoints of 80%, 70%, and 60%, in that order. Keep the scan size at 5 µm × 5 µm, resolution at 512 × 512 pixels, time per line at 0.075 s, P/I/D gains at 100/50/10, and drive amplitude at 200 mV. Change only the amplitude setpoint between acquisitions and report the setpoint used for every image. Save each completed acquisition as a distinct raw .nid file and report its absolute path. Submit images in acquisition order with recorded_params and physical_settings as numeric objects using the benchmark units. Centers are relative to the initial scan center, in nm. Record the complete acquisition state for every image. Aggregate standard deviations use ddof=1; CV is 100 * sample standard deviation / mean. Percentage changes are 100 * (value - reference) / reference. Use null for undefined ratios or R².",
+    "description": "Acquire exactly three tapping-mode topography images at the same location using amplitude setpoints of 80%, 70%, and 60%, in that order. Keep the scan size at 5 µm × 5 µm, resolution at 512 × 512 pixels, time per line at 0.075 s, P/I/D gains at 100/50/10, and drive amplitude at 200 mV. Change only the amplitude setpoint between acquisitions and report the setpoint used for every image.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",

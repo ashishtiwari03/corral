@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 2 task 1: Tapping-Mode Topography And Feedback Gains",
-    "description": "Acquire exactly three tapping-mode topography images at the same location. Initialize the scan size to 5 µm × 5 µm, resolution to 512 × 512 pixels, time per line to 0.075 s, P/I/D gains to 100/50/10, amplitude setpoint to 70%, and drive amplitude to 200 mV. Acquire image 1. Change only P gain to 150 and acquire image 2. Retain P gain at 150, change only I gain to 100, and acquire image 3. Report the complete parameter state associated with each image. Save each completed acquisition as a distinct raw .nid file and report its absolute path. Submit images in acquisition order with recorded_params and physical_settings as numeric objects using the benchmark units. Centers are relative to the initial scan center, in nm. Record the complete acquisition state for every image. Aggregate standard deviations use ddof=1; CV is 100 * sample standard deviation / mean. Percentage changes are 100 * (value - reference) / reference. Use null for undefined ratios or R².",
+    "description": "Acquire exactly three tapping-mode topography images at the same location. Initialize the scan size to 5 µm × 5 µm, resolution to 512 × 512 pixels, time per line to 0.075 s, P/I/D gains to 100/50/10, amplitude setpoint to 70%, and drive amplitude to 200 mV. Acquire image 1. Change only P gain to 150 and acquire image 2. Retain P gain at 150, change only I gain to 100, and acquire image 3. Report the complete parameter state associated with each image.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
