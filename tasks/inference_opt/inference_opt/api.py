@@ -1,13 +1,4 @@
-"""The contract between the harness and a teacher-written inference policy.
-
-A policy is duck-typed: it imports nothing from this module. These types exist so the harness, tests and generated documentation agree on one shape.
-
-A policy supplies, in ``policy.py``:
-
-A ``Policy`` class with ``solve(question, ctx)`` and optionally ``setup(ctx)``, or a module-level ``solve(question, model_client, context)`` (the legacy form), which :func:`inference_opt.policy.discover_policy` wraps automatically.
-
-Optionally a module- or class-level ``MANIFEST`` dict declares how the policy wants to be run; see :class:`PolicyManifest`.
-"""
+"""Public types used by submitted inference policies."""
 
 from __future__ import annotations
 
@@ -56,21 +47,12 @@ MemoryMode = Literal["none", "shared"]
 
 
 class BudgetExhausted(RuntimeError):
-    """Raised by :meth:`StudentClient.generate` when no student calls remain.
-
-    Derives from ``RuntimeError`` so a policy written defensively as ``except Exception: return fallback`` still produces an answer, and so the scaffold's original ``RuntimeError("... budget exhausted")`` contract holds.
-
-    Remaining questions in a run are still attempted after this is raised; every further call raises immediately. A policy that catches it and returns a cheap guess scores better than one that does not, which is the intended incentive.
-    """
+    """Raised when the policy has no student-model calls remaining."""
 
 
 @dataclass(frozen=True, slots=True)
 class Question:
-    """One benchmark question, with the answer withheld.
-
-    ``index`` and ``total`` let a policy pace itself across a run — for example,
-    spending more of a shared budget early and falling back to single-shot late.
-    """
+    """A benchmark question without its target answer."""
 
     id: str
     text: str
@@ -101,12 +83,7 @@ class Question:
 
 @dataclass(frozen=True, slots=True)
 class LabeledExample:
-    """A train question the teacher agent unlocked, with its gold answer.
-
-    ``baseline_completion`` and ``baseline_correct`` describe what the student said
-    zero-shot, so a policy can select demonstrations by the student's actual failure
-    modes rather than by guesswork. Only ever produced from the train split.
-    """
+    """A revealed training question, target, and baseline result."""
 
     question: Question
     answer: str
@@ -116,7 +93,7 @@ class LabeledExample:
 
 @dataclass(frozen=True, slots=True)
 class Answer:
-    """A policy's structured reply. Returning a bare string is equally valid."""
+    """A structured policy reply; its final value becomes ``ANSWER: <final>``."""
 
     final: Answerable
     confidence: float | None = None
@@ -126,13 +103,7 @@ class Answer:
 
 @runtime_checkable
 class StudentClient(Protocol):
-    """The only permitted access to the student model.
-
-    Every method charges the run's call budget before issuing a request, and raises
-    :class:`BudgetExhausted` when the reservation fails. The environment trusts the
-    teacher policy in this first iteration; the client remains its only documented
-    model interface.
-    """
+    """Budgeted interface to the student model."""
 
     def generate(
         self,
@@ -176,13 +147,7 @@ class StudentClient(Protocol):
 
 @runtime_checkable
 class Memory(Protocol):
-    """Mutable state shared across every question of one run.
-
-    Only available when the manifest declares ``memory="shared"``, which forces
-    sequential execution — concurrent questions mutating shared state is a
-    nondeterminism trap, so the two are deliberately not combinable. With
-    ``memory="none"`` the mutating methods raise.
-    """
+    """State shared across questions when enabled by the policy manifest."""
 
     def get(self, key: str, default: Any = None) -> Any: ...
     def set(self, key: str, value: Any) -> None: ...
@@ -192,13 +157,7 @@ class Memory(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SetupContext:
-    """Passed to the optional ``Policy.setup``, once, before any question.
-
-    This is where prompt optimization and few-shot selection belong: it is the only
-    place a policy sees gold answers. Calls made here are charged against the
-    separate ``setup_calls`` allowance declared in the manifest, so setup cannot eat
-    the per-question reserves.
-    """
+    """Arguments passed to the optional policy setup hook."""
 
     student: StudentClient
     train_examples: tuple[LabeledExample, ...]
@@ -211,15 +170,7 @@ class SetupContext:
 
 @dataclass(frozen=True, slots=True)
 class SolveContext:
-    """Passed to ``Policy.solve`` for each question.
-
-    ``question_budget`` is what this question may still spend; ``budget_remaining``
-    is what the whole run has left. An adaptive policy should consult both rather
-    than assuming a fixed per-question allowance.
-
-    Anything written to ``scratch["fallback"]`` is used as the answer if the policy
-    later raises — the cheapest way to stay scored under budget exhaustion.
-    """
+    """Arguments passed to ``Policy.solve`` for one question."""
 
     student: StudentClient
     memory: Memory

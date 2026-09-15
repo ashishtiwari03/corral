@@ -11,6 +11,7 @@ dependencies = [
     "corral",
     "requests>=2.32.3",
     "inspect-ai>=0.3.258",
+    "inspect-evals>=0.1.0",
     "numpy>=1.26",
     "pandas>=2.2",
     "pyarrow>=16",

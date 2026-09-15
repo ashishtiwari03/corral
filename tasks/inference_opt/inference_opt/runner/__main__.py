@@ -1,17 +1,4 @@
-"""The eval host: ``python -m inference_opt.runner <spec.json>``.
-
-Runs in its own process to isolate Inspect AI's process-global state from Corral.
-
-* ``inspect_eval`` has a process-global "one eval at a time" guard, and Corral may
-  execute several tasks in one process;
-* it is the only process that imports policy code, so isolating it lets us scrub
-  the environment it runs with.
-
-**What this process can see.** It receives a temporary JSONL containing only the
-items of *this* run, including their targets — inspect's scorers need targets in
-process. It does not receive a path to the frozen dataset, so a policy cannot read
-questions or answers beyond the ones it is being asked.
-"""
+"""Run one policy evaluation in an Inspect subprocess."""
 
 from __future__ import annotations
 
@@ -83,6 +70,15 @@ def _to_sample(record: dict[str, Any], index: int, total: int) -> Any:
                 else "numeric"
                 if answer_format == "numeric"
                 else "text"
+            ),
+            "task_type": (
+                "mae"
+                if record.get("benchmark") == "chembench"
+                and answer_format == "numeric"
+                else "multiple_choice"
+                if record.get("benchmark") == "chembench"
+                and answer_format.startswith("mcq")
+                else None
             ),
             "category": record.get("category"),
             "index": index,

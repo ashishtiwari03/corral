@@ -2,10 +2,10 @@
 
 Inspect normally owns the prompting: a solver calls ``generate`` and the model answers.
 Here the *policy* owns all prompting, so this solver never calls ``generate`` at all.
-It is a pure adapter — hand the policy a :class:`~inference_opt.api.Question` and a metered client, take back an answer, and write that answer into ``state.output`` in the canonical form inspect's scorers expect.
-
-That last step is what makes ``choice()`` work: it grades from the correctness flags on ``state.choices``, which the ``multiple_choice`` solver would normally set.
-Since we replaced that solver, we set them ourselves from the policy's answer.
+It is a pure adapter — hand the policy a :class:`~inference_opt.api.Question` and a
+metered client, take back a completion, and write it into ``state.output`` for
+Inspect's scorers. Inspect's own multiple-choice parser supplies choice flags where
+the selected scorer needs them.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from inspect_ai.solver._multiple_choice import (
 )
 
 from inference_opt.api import Answer, BudgetExhausted, Question
-from inference_opt.scoring_specs import NO_ANSWER, canonical_completion
+from inference_opt.scoring_specs import ANSWER_PREFIX
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -110,18 +110,21 @@ def policy_solver(policy: LoadedPolicy, runtime: RunRuntime, artifacts: Path) ->
 
         final, trace = unwrap_answer(raw)
         answer_format = str((state.metadata or {}).get("answer_format", "text"))
-        completion = canonical_completion(
-            final,
-            answer_format=answer_format,
-            n_choices=len(state.choices) if state.choices else 0,
-            choices=question.choices,
-        )
+        benchmark = str((state.metadata or {}).get("benchmark", ""))
+        if isinstance(raw, Answer):
+            if benchmark == "chembench":
+                completion = f"[ANSWER]{final}[/ANSWER]"
+            else:
+                completion = f"{ANSWER_PREFIX} {final}"
+        else:
+            completion = str(final)
+        completion = completion[:8192]
 
         state.output = ModelOutput.from_content(model="policy", content=completion)
         state.messages.append(ChatMessageAssistant(content=completion))
 
-        # choice() grades from these flags, not from the completion text.
-        if answer_format.startswith("mcq") and state.choices:
+        # This invokes Inspect's parser; no answer extraction is implemented here.
+        if benchmark != "chembench" and answer_format.startswith("mcq") and state.choices:
             set_choices_based_on_generated_response(
                 state,
                 parse_answers(state, multiple_correct=answer_format == "mcq_multi"),
@@ -138,7 +141,7 @@ def policy_solver(policy: LoadedPolicy, runtime: RunRuntime, artifacts: Path) ->
             "log": log_lines[:50],
             "trace": trace[:10],
             "error": error,
-            "unparseable": completion.endswith(NO_ANSWER),
+            "unparseable": not completion.strip(),
         }
         runtime.emit_prediction(question, completion, meter, error, log_lines, seconds)
         return state

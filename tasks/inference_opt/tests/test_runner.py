@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from inference_opt.datasets import write_jsonl
@@ -10,13 +11,31 @@ from inference_opt.runner import run_in_process
 from inference_opt.runner.spec import RunSpec
 
 QUESTIONS = [
-    {"item_id": "gsm8k:q1", "benchmark": "gsm8k", "question": "2+2?",
-     "answer_format": "numeric", "target": "4", "index": 0},
-    {"item_id": "gsm8k:q2", "benchmark": "gsm8k", "question": "3+3?",
-     "answer_format": "numeric", "target": "6", "index": 1},
-    {"item_id": "mmlu_pro:q3", "benchmark": "mmlu_pro", "question": "Capital of France?",
-     "answer_format": "mcq_single", "options": ["Paris", "Berlin"], "target": "A",
-     "index": 2},
+    {
+        "item_id": "gsm8k:q1",
+        "benchmark": "gsm8k",
+        "question": "2+2?",
+        "answer_format": "numeric",
+        "target": "4",
+        "index": 0,
+    },
+    {
+        "item_id": "gsm8k:q2",
+        "benchmark": "gsm8k",
+        "question": "3+3?",
+        "answer_format": "numeric",
+        "target": "6",
+        "index": 1,
+    },
+    {
+        "item_id": "mmlu_pro:q3",
+        "benchmark": "mmlu_pro",
+        "question": "Capital of France?",
+        "answer_format": "mcq_single",
+        "options": ["Paris", "Berlin"],
+        "target": "A",
+        "index": 2,
+    },
 ]
 
 
@@ -31,17 +50,17 @@ def make_spec(tmp_path, questions_file, source, **overrides):
     policy_dir = tmp_path / "policy"
     policy_dir.mkdir(parents=True, exist_ok=True)
     (policy_dir / "policy.py").write_text(source, encoding="utf-8")
-    defaults = dict(
-        run_id="t1",
-        policy_dir=str(policy_dir),
-        questions_path=str(questions_file),
-        out_dir=str(tmp_path / "out"),
-        model_spec="mockllm/model",
-        total_calls=40,
-        max_calls_per_question=4,
-        benchmark="gsm8k",
-        split="train",
-    )
+    defaults = {
+        "run_id": "t1",
+        "policy_dir": str(policy_dir),
+        "questions_path": str(questions_file),
+        "out_dir": str(tmp_path / "out"),
+        "model_spec": "mockllm/model",
+        "total_calls": 40,
+        "max_calls_per_question": 4,
+        "benchmark": "gsm8k",
+        "split": "train",
+    }
     defaults.update(overrides)
     return RunSpec(**defaults)
 
@@ -49,7 +68,8 @@ def make_spec(tmp_path, questions_file, source, **overrides):
 class TestEndToEnd:
     def test_a_working_policy_answers_every_question(self, tmp_path, questions_file):
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
             "        return ctx.student.generate(q.text)\n",
@@ -62,22 +82,21 @@ class TestEndToEnd:
 
     def test_predictions_and_logs_are_written(self, tmp_path, questions_file):
         spec = make_spec(
-            tmp_path, questions_file,
-            "class Policy:\n    def solve(self, q, ctx): return 'A'\n",
+            tmp_path,
+            questions_file,
+            "class Policy:\n    def solve(self, q, ctx): return 'ANSWER: A'\n",
         )
         run_in_process(spec)
-        rows = [
-            json.loads(line)
-            for line in open(spec.predictions_path, encoding="utf-8")
-            if line.strip()
-        ]
+        with Path(spec.predictions_path).open(encoding="utf-8") as stream:
+            rows = [json.loads(line) for line in stream if line.strip()]
         assert {row["item_id"] for row in rows} == {q["item_id"] for q in QUESTIONS}
         assert list(__import__("pathlib").Path(spec.log_dir).glob("*.json"))
 
     def test_sampling_charges_every_draw(self, tmp_path, questions_file):
         """`num_choices=n` is one request but n generations, so it costs n."""
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
             "        return ctx.student.sample(q.text, n=3)[0]\n",
@@ -87,7 +106,8 @@ class TestEndToEnd:
 
     def test_shared_memory_forces_sequential_execution(self, tmp_path, questions_file):
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "MANIFEST = {'memory': 'shared', 'execution': 'parallel'}\n"
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
@@ -98,40 +118,55 @@ class TestEndToEnd:
         assert summary.execution == "sequential"
         assert summary.forced_sequential
 
-    def test_memory_is_read_only_without_the_manifest_flag(self, tmp_path, questions_file):
+    def test_memory_is_read_only_without_the_manifest_flag(
+        self, tmp_path, questions_file
+    ):
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
             "        ctx.memory.set('x', 1)\n"
-            "        return 'A'\n",
+            "        return 'ANSWER: A'\n",
         )
         summary = run_in_process(spec)
         assert summary.n_crashed == 3
 
     def test_setup_runs_once_and_sees_revealed_answers(self, tmp_path, questions_file):
         revealed = tmp_path / "revealed.jsonl"
-        write_jsonl(revealed, [
-            {"item_id": "gsm8k:q0", "question": "1+1?", "answer_format": "numeric",
-             "target": "2", "baseline_correct": False},
-        ])
+        write_jsonl(
+            revealed,
+            [
+                {
+                    "item_id": "gsm8k:q0",
+                    "question": "1+1?",
+                    "answer_format": "numeric",
+                    "target": "2",
+                    "baseline_correct": False,
+                },
+            ],
+        )
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "MANIFEST = {'memory': 'shared', 'setup_calls': 2}\n"
             "class Policy:\n"
             "    def setup(self, ctx):\n"
             "        ctx.memory.set('n', len(ctx.train_examples))\n"
             "        ctx.memory.set('gold', ctx.train_examples[0].answer)\n"
             "    def solve(self, q, ctx):\n"
-            "        return ctx.memory.get('gold', 'X')\n",
-            revealed_path=str(revealed), setup_calls=2,
+            "        return 'ANSWER: ' + ctx.memory.get('gold', 'X')\n",
+            revealed_path=str(revealed),
+            setup_calls=2,
         )
         summary = run_in_process(spec)
         assert summary.ok, summary.error
         rows = {
             row["item_id"]: row["answer"]
             for row in (
-                json.loads(line) for line in open(spec.predictions_path) if line.strip()
+                json.loads(line)
+                for line in Path(spec.predictions_path).read_text().splitlines()
+                if line.strip()
             )
         }
         # The policy echoed the revealed gold answer "2", proving setup ran and
@@ -145,7 +180,8 @@ class TestEndToEnd:
 class TestFailureHandling:
     def test_a_crashing_policy_costs_items_not_the_run(self, tmp_path, questions_file):
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "class Policy:\n    def solve(self, q, ctx): raise ValueError('boom')\n",
         )
         summary = run_in_process(spec)
@@ -156,16 +192,22 @@ class TestFailureHandling:
     def test_a_fallback_survives_budget_exhaustion(self, tmp_path, questions_file):
         """Remaining questions still run, so a defensive policy still scores."""
         spec = make_spec(
-            tmp_path, questions_file,
+            tmp_path,
+            questions_file,
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
-            "        ctx.scratch['fallback'] = '4'\n"
+            "        ctx.scratch['fallback'] = 'ANSWER: 4'\n"
             "        return ctx.student.generate(q.text)\n",
-            total_calls=1, max_calls_per_question=1,
+            total_calls=1,
+            max_calls_per_question=1,
         )
         summary = run_in_process(spec)
         assert summary.budget_exhausted_at is not None
-        rows = [json.loads(line) for line in open(spec.predictions_path) if line.strip()]
+        rows = [
+            json.loads(line)
+            for line in Path(spec.predictions_path).read_text().splitlines()
+            if line.strip()
+        ]
         assert len(rows) == 3
         assert any(row["answer"] == "ANSWER: 4" for row in rows)
 

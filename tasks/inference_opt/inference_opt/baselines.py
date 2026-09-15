@@ -1,20 +1,4 @@
-"""Measuring the zero-shot baseline every score is relative to.
-
-Every score in this environment is an improvement over the baseline, so the baseline is the benchmark.
-
-* exactly **one** chat completion per question, never retried on a valid response;
-* ``temperature=0.0``, ``seed=0``;
-* **no system message** — an empty system slot is the only choice that does not
-  smuggle in prompt engineering and quietly inflate the number every policy is
-  then measured against;
-* zero-shot, including bbh, which is why the pipeline parses the bare question stem
-  out of that benchmark's pre-rendered 3-shot prompts;
-* a response with no parseable answer is **incorrect** — not retried, not dropped.
-
-The baseline is measured by running the same runner, solver, metering and grading
-that a submitted policy goes through. Measuring it any other way would compare two
-different pipelines and attribute the difference to the agent.
-"""
+"""Measure the pinned zero-shot student baseline."""
 
 from __future__ import annotations
 

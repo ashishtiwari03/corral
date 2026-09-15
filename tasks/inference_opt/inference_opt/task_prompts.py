@@ -26,12 +26,16 @@ A frozen student model is served for you. You cannot change its weights, and you
 cannot use any other model at inference time. What you *can* change is everything
 that happens around it at test time: the prompts, how many samples you draw, how
 they are combined, whether one call checks another, what is remembered between
-questions, and how the final answer is extracted.
+questions, and how the final answer is scored.
 
 You write that as a Python policy in `{policy_dir}/policy.py`. Read
 `guide/policy_api.md` first - it has the exact contract and a worked example. A
 runnable starter policy is already in place, so you can dry-run immediately and see
 the whole loop before changing anything.
+
+Return the answer marker required by the benchmark scorer: use `ANSWER: <answer>`
+for every benchmark except ChemBench, which uses `[ANSWER]<answer>[/ANSWER]`.
+Inspect Evals parses and grades these markers.
 
 Benchmark: {benchmark}
 Student model(s): {models}

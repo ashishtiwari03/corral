@@ -1,8 +1,4 @@
-"""Final scoring: run the submitted policy on the held-out test split.
-
-The score is the **improvement over a measured zero-shot baseline**, clamped to ``[0, 1]``.
-Raw delta, not headroom-normalised: dividing by ``1 - baseline`` would multiply a weak model's deltas by more than a strong one's, so at level 2 the ``min`` across two models would turn on which model had less headroom rather than which one the policy actually helped.
-"""
+"""Run the submitted policy and compute its test-set improvement."""
 
 from __future__ import annotations
 

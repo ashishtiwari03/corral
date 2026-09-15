@@ -1,13 +1,4 @@
-"""Discovery and normalisation of teacher-produced policies.
-
-A policy directory contains ``policy.py`` and whatever else it likes (prompt files,
-helper modules, demonstration sets). This module imports it **exactly once** and
-normalises whatever shape it found into one internal interface, so the runner never
-has to care whether the agent wrote a class or a bare function.
-
-Importing executes the policy's module-level code. The first iteration runs trusted
-teacher code, while keeping this loader responsible for the policy shape contract.
-"""
+"""Load and validate submitted policy modules."""
 
 from __future__ import annotations
 
@@ -56,22 +47,11 @@ _MANIFEST_FIELDS = frozenset(
 
 
 class PolicyError(ValueError):
-    """Raised when a submitted policy does not meet the contract.
-
-    Distinct from a policy that merely performs badly: this is a contract failure
-    and scores zero, whereas a policy that runs and answers poorly is scored on
-    what it answered.
-    """
+    """Raised when a submitted policy violates the policy contract."""
 
 
 def manifest_from_mapping(raw: Mapping[str, Any] | None) -> PolicyManifest:
-    """Build a :class:`PolicyManifest`, rejecting unknown keys.
-
-    Unknown keys are an error rather than a warning because the failure mode they
-    produce is silent: a policy that declares ``{"sequential": True}`` instead of
-    ``{"execution": "sequential"}`` would run concurrently with shared memory and
-    produce quietly wrong results.
-    """
+    """Build a validated manifest from a mapping."""
     if not raw:
         return PolicyManifest()
     if not isinstance(raw, dict):
@@ -121,12 +101,7 @@ def manifest_from_mapping(raw: Mapping[str, Any] | None) -> PolicyManifest:
 
 
 class LegacyPolicy:
-    """Adapts the original ``solve(question, model_client, context)`` contract.
-
-    Kept so policies written against the first version of this environment keep
-    working unchanged. ``ctx.student`` exposes ``.generate(prompt, system=...,
-    temperature=..., max_tokens=...)``, which is what those policies expect.
-    """
+    """Adapt the legacy module-level solve function."""
 
     def __init__(self, fn: Any) -> None:
         self._fn = fn

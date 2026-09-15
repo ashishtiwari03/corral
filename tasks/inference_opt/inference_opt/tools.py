@@ -24,12 +24,7 @@ NAG_THRESHOLD = 0.2
 
 
 def _compact(payload: dict[str, Any], summary: str, ledger: StateLedger) -> str:
-    """One human-readable line plus compact JSON, with a budget nag when low.
-
-    Bulk detail always goes to a file and is referenced by path: inlining a
-    30-question diagnostics blob into a tool result wastes thousands of tokens on
-    every call.
-    """
+    """Format a summary and compact JSON tool result."""
     payload = dict(payload)
     payload["budget"] = ledger.snapshot()["remaining"]
     lines = [summary, json.dumps(payload, sort_keys=True, default=str)]
@@ -148,10 +143,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def get_baseline(work_dir: str = "", inference_state: Any = None) -> str:
-        """Report the student's measured zero-shot accuracy on this benchmark.
-
-        Every score in this task is an improvement over this number, so it is the
-        thing to beat. The per-topic breakdown shows where the headroom is.
+        """Return the measured zero-shot baseline.
 
         Args:
             work_dir: Task workspace, injected by the environment.
@@ -183,12 +175,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Unlock a few labelled training questions, with the student's answers.
-
-        This is the only way to see gold answers, and it is capped - spend the
-        reveals on the questions that will teach you most. Revealed questions are
-        also passed to your policy's setup() so it can fit prompts or pick few-shot
-        demonstrations against real failures rather than guesses.
+        """Reveal a bounded set of labelled training questions.
 
         Args:
             count: How many new questions to reveal, at most 5 per call.
@@ -266,11 +253,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Ask the student model something directly, without writing a policy.
-
-        Use this to learn how the student behaves - how it formats answers, where
-        it goes wrong, whether it follows an instruction - before spending an
-        experiment on a full evaluation.
+        """Query the student without recording an evaluation prediction.
 
         Args:
             prompt: The user message to send.
@@ -308,13 +291,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Check that a policy actually runs through the real evaluation pipeline.
-
-        This is the cheap way to find out whether your code works before spending an
-        experiment. It uses the identical runner, solver, budget metering and
-        grading that a scored evaluation uses, on two questions by default, and
-        reports the parsed manifest, what was sent to the student, and how answers
-        graded.
+        """Run a policy through the evaluation pipeline on a small sample.
 
         Args:
             policy_path: Workspace-relative path to the policy directory.
@@ -423,10 +400,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Score a policy on the full training split and record the result.
-
-        This is your main experiment and it is strictly limited, so dry_run_policy
-        first. The result reports accuracy and improvement over the measured baseline.
+        """Evaluate a policy on the training split.
 
         Args:
             policy_path: Workspace-relative path to the policy directory.
@@ -535,10 +509,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Look at what happened on individual questions in an earlier run.
-
-        Reading the actual prompts and responses is usually far more informative
-        than the aggregate score, and it costs no budget.
+        """Inspect prediction records from an earlier run.
 
         Args:
             run_id: Which run to inspect, or "last" for the most recent.
@@ -600,7 +571,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def compare_runs(work_dir: str = "", inference_state: Any = None) -> str:
-        """Show every experiment so far, best first, with an honest noise warning.
+        """Compare completed policy runs.
 
         Args:
             work_dir: Task workspace, injected by the environment.
@@ -631,7 +602,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def get_budget(work_dir: str = "", inference_state: Any = None) -> str:
-        """Report what budget remains and what it will buy.
+        """Return the remaining policy budget.
 
         Args:
             work_dir: Task workspace, injected by the environment.
@@ -650,10 +621,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         work_dir: str = "",
         inference_state: Any = None,
     ) -> str:
-        """Validate a policy and stage it as your final answer.
-
-        Call this when you are done, then pass the exact string it gives you to
-        submit_answer. Staging alone does not finish the task.
+        """Validate and stage the final policy submission.
 
         Args:
             policy_path: Workspace-relative path to the policy directory.

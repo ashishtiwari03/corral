@@ -1,18 +1,4 @@
-"""Reading the frozen question set.
-
-The question set is fixed: it was assembled once and committed (from benchmark platform), and this module is the only reader. See the README for the selection protocol.
-
-Layout, under ``inference_opt/data/frozen/<version>/``::
-
-    manifest.json          provenance, seed, selection counts, content_fingerprint
-    items.parquet          canonical typed table, no targets
-    public/<bench>.jsonl   what the eval host and the agent may see: NO targets
-    private/labels.jsonl   {item_id, split, target, answer_format}
-
-The eval host process that imports policy code is given a temporary copy of the public records only, and never the path to ``private/``. Only ``trusted`` controller-side tools read labels.
-
-``item_id`` is ``"{benchmark}:{inspect_sample_id}"`` and is used verbatim as the inspect ``Sample.id``, so an item can always be traced back to its source dataset.
-"""
+"""Read the frozen public questions and private targets."""
 
 from __future__ import annotations
 

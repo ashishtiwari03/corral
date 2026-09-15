@@ -14,15 +14,13 @@ class Policy:
         ...
 
     def solve(self, question, ctx):       # required, runs per question
-        return "B"
+        return "Reasoning...\nANSWER: B"
 ```
 
-`solve` returns the answer. A bare string, int or float is fine; so is
-`Answer(final=..., confidence=..., rationale=...)` if you want the extra fields
-recorded in diagnostics. The answer is parsed leniently — `"B"`, `"ANSWER: B"`,
-`"The answer is B"` and even the choice text `"Berlin"` all resolve to choice B —
-so do not contort your output format. Note that a single-choice question answered
-with two letters counts as unanswered.
+`solve` returns the student's completion. Inspect Evals owns parsing and grading.
+Use `ANSWER: <answer>` for all benchmarks except ChemBench, which requires
+`[ANSWER]<answer>[/ANSWER]`. A structured `Answer(final=..., ...)` is also
+accepted and is formatted for the selected benchmark by the runner.
 
 ### `question`
 
@@ -43,7 +41,7 @@ with two letters counts as unanswered.
 
 | member | meaning |
 | --- | --- |
-| `ctx.student.generate(prompt, system=..., temperature=..., max_tokens=...)` | one completion, costs 1 call |
+| `ctx.student.generate(prompt, system=..., temperature=..., max_tokens=...)` | one completion, costs 1 call; ask the student to use the benchmark's answer marker |
 | `ctx.student.sample(prompt, n=5, temperature=0.8)` | `n` completions, costs `n` calls |
 | `ctx.student.batch([p1, p2, p3])` | several prompts concurrently, costs 3 calls |
 | `ctx.student.calls_remaining` | what this question may still spend |
@@ -105,7 +103,7 @@ degrades gracefully still scores:
 
 ```python
 def solve(self, question, ctx):
-    ctx.scratch["fallback"] = "A"          # used if anything below fails
+    ctx.scratch["fallback"] = "ANSWER: A"  # used if anything below fails
     try:
         return self._full_strategy(question, ctx)
     except Exception:

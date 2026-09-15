@@ -18,6 +18,12 @@ class Policy:
         if question.choices:
             prompt += "\n\n" + question.rendered_choices()
             prompt += "\n\nAnswer with the letter of the correct option."
+        marker = (
+            "`[ANSWER]<answer>[/ANSWER]`"
+            if question.benchmark == "chembench"
+            else "`ANSWER: <answer>`"
+        )
+        prompt += f"\n\nExplain briefly, then finish with {marker}."
 
         answer = ctx.student.generate(prompt, temperature=0.0, max_tokens=512)
         ctx.log(f"one call, {len(answer)} chars back")
