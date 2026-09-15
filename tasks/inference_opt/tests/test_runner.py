@@ -170,11 +170,11 @@ class TestEndToEnd:
             )
         }
         # The policy echoed the revealed gold answer "2", proving setup ran and
-        # saw the labelled example. "2" is not a valid choice letter, so the
-        # multiple-choice question correctly records it as unanswered.
+        # saw the labelled example. The runner preserves that raw completion;
+        # Inspect's choice scorer grades it incorrect because "2" is not a letter.
         assert rows["gsm8k:q1"] == "ANSWER: 2"
         assert rows["gsm8k:q2"] == "ANSWER: 2"
-        assert rows["mmlu_pro:q3"] == "ANSWER: NOANSWER"
+        assert rows["mmlu_pro:q3"] == "ANSWER: 2"
 
 
 class TestFailureHandling:
