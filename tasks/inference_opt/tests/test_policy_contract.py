@@ -88,22 +88,10 @@ class TestDiscovery:
 class TestManifest:
     def test_defaults(self):
         manifest = manifest_from_mapping(None)
-        assert manifest.execution == "parallel"
         assert manifest.memory == "none"
 
-    def test_shared_memory_forces_sequential(self, tmp_path):
-        root = write_policy(
-            tmp_path / "p",
-            "MANIFEST = {'memory': 'shared', 'execution': 'parallel'}\n"
-            "class Policy:\n    def solve(self, q, ctx): return ''\n",
-        )
-        loaded = discover_policy(root)
-        assert loaded.manifest.effective_execution == "sequential"
-        assert loaded.forced_sequential
-
     def test_unknown_key_is_an_error_not_a_silent_noop(self):
-        # `{"sequential": True}` would otherwise run concurrently with shared
-        # memory and produce quietly wrong results.
+        # Execution is always sequential; unsupported knobs fail loudly.
         with pytest.raises(PolicyError, match="unknown key"):
             manifest_from_mapping({"sequential": True})
 
@@ -118,7 +106,7 @@ class TestManifest:
         assert manifest.components[1].kind == "sampler"
 
     def test_invalid_execution_value(self):
-        with pytest.raises(PolicyError, match="execution must be"):
+        with pytest.raises(PolicyError, match="unknown key"):
             manifest_from_mapping({"execution": "whenever"})
 
     def test_object_manifest_beats_module_manifest(self, tmp_path):

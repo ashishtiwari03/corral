@@ -19,7 +19,6 @@ __all__ = [
     "Answerable",
     "BudgetExhausted",
     "ComponentSpec",
-    "ExecutionMode",
     "LabeledExample",
     "Memory",
     "MemoryMode",
@@ -42,7 +41,6 @@ Message = Mapping[str, str]
 Prompt = str | Sequence[Message]
 
 AnswerType = Literal["mcq", "numeric", "text"]
-ExecutionMode = Literal["sequential", "parallel"]
 MemoryMode = Literal["none", "shared"]
 
 
@@ -203,7 +201,6 @@ class PolicyManifest:
 
     name: str = "policy"
     version: int = 1
-    execution: ExecutionMode = "parallel"
     memory: MemoryMode = "none"
     max_calls_per_question: int = 8
     setup_calls: int = 0
@@ -218,8 +215,3 @@ class PolicyManifest:
             raise ValueError("setup_calls cannot be negative")
         if self.max_tokens_per_call < 1:
             raise ValueError("max_tokens_per_call must be at least 1")
-
-    @property
-    def effective_execution(self) -> ExecutionMode:
-        """Shared memory forces sequential execution, whatever was declared."""
-        return "sequential" if self.memory == "shared" else self.execution

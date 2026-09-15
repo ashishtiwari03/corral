@@ -1,4 +1,4 @@
-"""The eval host, end to end, with no GPU and no network (``mockllm``)."""
+"""The policy evaluator, end to end, with no GPU and no network (``mockllm``)."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ class TestEndToEnd:
         spec = make_spec(
             tmp_path,
             questions_file,
-            "MANIFEST = {'memory': 'shared', 'execution': 'parallel'}\n"
+            "MANIFEST = {'memory': 'shared'}\n"
             "class Policy:\n"
             "    def solve(self, q, ctx):\n"
             "        ctx.memory.append('seen', q.id)\n"
@@ -116,7 +116,6 @@ class TestEndToEnd:
         )
         summary = run_in_process(spec)
         assert summary.execution == "sequential"
-        assert summary.forced_sequential
 
     def test_memory_is_read_only_without_the_manifest_flag(
         self, tmp_path, questions_file

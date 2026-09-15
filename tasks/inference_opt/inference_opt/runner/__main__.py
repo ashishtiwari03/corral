@@ -1,4 +1,8 @@
-"""Run one policy evaluation in an Inspect subprocess."""
+"""Run one policy evaluation with Inspect.
+
+This module remains a command-line entry point for local debugging and image
+compatibility. Scored task execution calls :class:`PolicyEvaluator` directly.
+"""
 
 from __future__ import annotations
 
@@ -149,13 +153,12 @@ def run(spec: RunSpec) -> RunSummary:
     manifest = policy.manifest
     summary.manifest = {
         "name": manifest.name,
-        "execution": manifest.effective_execution,
+        "execution": "sequential",
         "memory": manifest.memory,
         "max_calls_per_question": manifest.max_calls_per_question,
         "setup_calls": manifest.setup_calls,
         "components": [component.name for component in manifest.components],
     }
-    summary.forced_sequential = policy.forced_sequential
 
     records = _read_jsonl(Path(spec.questions_path))
     total = len(records)
@@ -232,18 +235,16 @@ def run(spec: RunSpec) -> RunSummary:
             )
         )
 
-    sequential = (
-        spec.execution_override == "sequential"
-        or manifest.effective_execution == "sequential"
-    )
-    summary.execution = "sequential" if sequential else "parallel"
+    # Policy questions are deliberately sequential. This keeps shared memory,
+    # budgets, artifacts, and restart/retry behavior deterministic.
+    summary.execution = "sequential"
 
     try:
         inspect_eval(
             tasks,
             model=model,
-            max_samples=1 if sequential else max(1, min(spec.max_connections, 8)),
-            max_connections=1 if sequential else spec.max_connections,
+            max_samples=1,
+            max_connections=1,
             max_tasks=1,
             log_dir=spec.log_dir,
             log_format="json",
@@ -292,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         summary = RunSummary(run_id=spec.run_id, ok=False, error=traceback.format_exc())
         summary.write(spec.summary_path)
-    # One machine-readable line on stdout, so the controller never has to parse logs.
+    # One machine-readable line on stdout for local/container diagnostics.
     print(json.dumps({"run_id": summary.run_id, "ok": summary.ok,
                       "error": summary.error[:400], "calls_used": summary.calls_used,
                       "summary_path": spec.summary_path}))

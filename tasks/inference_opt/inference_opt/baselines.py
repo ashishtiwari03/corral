@@ -10,7 +10,7 @@ from typing import Any
 
 from inference_opt import datasets
 from inference_opt.outcomes import read_outcomes
-from inference_opt.runner import SubprocessRunner
+from inference_opt.runner import PolicyEvaluator
 from inference_opt.runner.spec import RunSpec
 
 __all__ = [
@@ -162,7 +162,7 @@ def measure_baseline(
             benchmark=benchmark,
             split=split,
         )
-        summary = SubprocessRunner(timeout_s=timeout_s).run(spec)
+        summary = PolicyEvaluator().run(spec)
         if not summary.ok and summary.n_answered == 0:
             result.error = summary.error[:600]
             return result

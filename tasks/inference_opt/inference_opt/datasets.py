@@ -45,7 +45,7 @@ BENCHMARKS: tuple[str, ...] = (
 
 Split = Literal["train", "test"]
 
-#: Fields a policy and the eval host may see. `target` is deliberately absent.
+#: Fields policy execution may see. `target` is deliberately absent here.
 PUBLIC_FIELDS: tuple[str, ...] = (
     "item_id",
     "benchmark",
@@ -200,7 +200,7 @@ def load_targets(
 ) -> dict[str, str]:
     """Load gold answers keyed by ``item_id``.
 
-    Only ever called from trusted controller-side code. The eval host does not
+    Only ever called from trusted evaluator-side code. Policy execution does not
     receive the path this reads.
     """
     records = _read_jsonl(labels_path(version))
@@ -226,7 +226,7 @@ def load_manifest(version: str = DATASET_VERSION) -> dict[str, Any]:
 
 
 def public_record(item: FrozenItem) -> dict[str, Any]:
-    """The subset of an item the eval host is allowed to receive."""
+    """The subset of an item policy execution is allowed to receive."""
     record = {
         "item_id": item.item_id,
         "benchmark": item.benchmark,

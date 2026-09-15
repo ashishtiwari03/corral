@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from inference_opt import datasets
 from inference_opt.outcomes import read_outcomes
-from inference_opt.runner import SubprocessRunner
+from inference_opt.runner import PolicyEvaluator
 from inference_opt.runner.spec import RunSpec
 
 if TYPE_CHECKING:
@@ -123,9 +123,8 @@ def resolve_submission(answer: str, work_dir: Path) -> tuple[Path | None, list[s
 def _write_test_questions(benchmark: str, path: Path) -> int:
     """Materialise the test split, with targets, for one run.
 
-    Only this controller-side code reads ``private/labels.jsonl``. The eval host is
-    handed the file this writes and no path to anything else, so a policy cannot
-    read questions or answers beyond the ones it has been asked.
+    This scoring path reads the private labels and writes the complete evaluation
+    input. Policy code is trusted within the Docker trial in this first iteration.
     """
     items = datasets.load_items(benchmark, "test")
     targets = datasets.load_targets(benchmark, "test")
@@ -184,9 +183,7 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
             n_items = _write_test_questions(benchmark, questions)
             report.n_test_items = n_items
 
-            runner = SubprocessRunner(
-                timeout_s=int(config.get("score_timeout_s", 3600))
-            )
+            runner = PolicyEvaluator()
             deltas: dict[str, float] = {}
 
             for model in models:
@@ -217,7 +214,7 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
                         # A host that never produced a single answer is far more
                         # likely broken infrastructure than a broken policy.
                         raise HarnessError(
-                            f"eval host produced no answers for {model}: {summary.error[:500]}"
+                            f"policy evaluator produced no answers for {model}: {summary.error[:500]}"
                         )
                     report.notes.append(summary.error[:500])
                     report.write(workspace / "state" / "scoring_failure.json")

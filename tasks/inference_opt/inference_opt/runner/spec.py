@@ -1,11 +1,9 @@
-"""The controller  -  eval-host interface.
+"""Serializable configuration and results for one policy evaluation.
 
-The two processes share no Python objects, because the eval host imports policy code and the controller holds the labels.
-Keeping that boundary crossable only by serialisable data is what makes the separation real.
-
-Note what is *absent* from :class:`RunSpec`: any path to the gold answers.
-The host is handed a temporary JSONL of public records that the controller wrote, and nothing else.
-A policy running in that process has nothing to read even if it tries.
+The first iteration evaluates trusted policy code inside the Docker trial.
+``RunSpec`` still keeps the evaluator inputs explicit and JSON-shaped, but it is
+not a security boundary and may contain task-local paths that trusted code can
+access.
 """
 
 from __future__ import annotations
@@ -20,11 +18,11 @@ __all__ = ["RunSpec", "RunSummary"]
 
 @dataclass(frozen=True, slots=True)
 class RunSpec:
-    """Everything the eval host needs to run one policy over one set of questions."""
+    """Everything the evaluator needs to run one policy over one question set."""
 
     run_id: str
     policy_dir: str
-    #: JSONL of public records. Written by the controller; contains no targets.
+    #: JSONL of records written for this evaluation.
     questions_path: str
     out_dir: str
 
@@ -40,11 +38,9 @@ class RunSpec:
     max_tokens_per_call: int = 2048
     setup_calls: int = 0
 
-    #: Labeled train examples for ``Policy.setup``. Only ever set for train runs.
+    #: Labeled train examples for ``Policy.setup`` when this is a train run.
     revealed_path: str | None = None
     #: Overrides the policy manifest, for the dry-run path.
-    execution_override: str | None = None
-    max_connections: int = 8
     time_limit_s: int = 1800
     epochs: int = 1
     seed: int = 0
@@ -78,7 +74,7 @@ class RunSpec:
 
 @dataclass
 class RunSummary:
-    """What the eval host reports back. Written to ``summary.json``."""
+    """What the evaluator reports. Written to ``summary.json``."""
 
     run_id: str
     ok: bool = False
@@ -91,9 +87,8 @@ class RunSummary:
     output_tokens: int = 0
     setup_calls_used: int = 0
     seconds: float = 0.0
-    execution: str = "parallel"
+    execution: str = "sequential"
     manifest: dict[str, Any] = field(default_factory=dict)
-    forced_sequential: bool = False
     budget_exhausted_at: dict[str, Any] | None = None
     questions_after_exhaustion: int = 0
     per_component: dict[str, Any] = field(default_factory=dict)

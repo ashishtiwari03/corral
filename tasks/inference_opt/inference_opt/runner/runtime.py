@@ -1,4 +1,4 @@
-"""Per-run state for the eval host: metering, memory, and the student client.
+"""Per-run evaluator state: metering, memory, and the student client.
 
 Everything a policy can use is built here. The runtime meters every request and the controller records the resulting run artifacts.
 """
@@ -35,7 +35,8 @@ __all__ = ["QuestionMeter", "RunRuntime", "SharedMemory", "StudentClientImpl"]
 class SharedMemory(Memory):
     """Cross-question state. Mutating it requires ``memory="shared"``.
 
-    Guarded by a re-entrant lock even though shared memory forces sequential execution, because a policy may still use ``batch()`` concurrently inside one question.
+    The lock keeps the public memory object safe for policy code that manages its
+    own threads, while question execution itself is sequential.
     """
 
     def __init__(self, *, enabled: bool) -> None:
@@ -46,7 +47,7 @@ class SharedMemory(Memory):
     def _require(self) -> None:
         if not self._enabled:
             raise RuntimeError(
-                """this policy declared memory='none', so cross-question memory is  read-only. Set MANIFEST['memory'] = 'shared' to enable it; note that this also forces sequential execution."""
+                """this policy declared memory='none', so cross-question memory is read-only. Set MANIFEST['memory'] = 'shared' to enable it."""
             )
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -247,27 +248,19 @@ class StudentClientImpl:
         component: str | None = None,
         **_ignored: Any,
     ) -> list[str]:
-        """Complete several prompts. Charged as ``len(prompts)`` calls."""
+        """Complete several prompts sequentially. Charges ``len(prompts)`` calls."""
         items = list(prompts)
         if not items:
             return []
         self._meter.reserve(len(items))
         config = self._config(temperature=temperature, max_tokens=max_tokens)
-        results: list[str] = [""] * len(items)
-
-        async def call_all() -> None:
-            async def one(index: int, prompt: Any) -> None:
-                output = await self._model.generate(
-                    _as_messages(prompt, system), config=config
-                )
-                results[index] = output.completion or ""
-                self._meter.record(_output_tokens(output), component)
-
-            async with anyio.create_task_group() as group:
-                for index, prompt in enumerate(items):
-                    group.start_soon(one, index, prompt)
-
-        self._run(call_all)
+        results: list[str] = []
+        for prompt in items:
+            output = self._run(
+                self._model.generate, _as_messages(prompt, system), config=config
+            )
+            results.append(output.completion or "")
+            self._meter.record(_output_tokens(output), component)
         return results
 
     @property

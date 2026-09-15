@@ -240,7 +240,7 @@ There are two different evaluations.
 
 1. resolves `policy/policy.py`
 2. creates a trusted question file for the train split
-3. runs the inspect-ai adapter
+3. runs the `PolicyEvaluator`, which uses the Inspect AI adapter
 4. reads the resulting accuracy/log artifacts
 5. computes the candidate's improvement over the stored baseline
 6. records a compact run summary in `inference_state`
@@ -277,7 +277,7 @@ Inspect-ai provides the actual model-evaluation and grading machinery:
 
 Inference-opt supplies a policy solver and a metered student client so the policy controls prompting while inspect remains responsible for evaluation.
 
-The current inspect adapter is therefore an evaluation abstraction, not another teacher-agent environment abstraction.
+The current inspect adapter is therefore an evaluation abstraction, not another teacher-agent environment abstraction. `PolicyEvaluator` is the single task-level policy execution boundary; Corral provides the outer trial lifecycle and Docker boundary.
 
 ## Docker execution
 
@@ -289,9 +289,7 @@ Docker container
 └── /corral-state   committed Corral state and request/result files
 ```
 
-Docker improves isolation and makes it possible to run the trusted first-iteration design in a contained task environment. It does not change the Corral state model.
-
-The first iteration deliberately does not add another policy-execution boundary.
+Docker is the security boundary for the trusted first-iteration policy design. It does not change the Corral state model, and `PolicyEvaluator` deliberately does not add another policy-execution boundary.
 
 ## Current deliberate simplifications
 
@@ -309,7 +307,7 @@ The following abstractions remain because they still provide direct value:
 - Corral committed `ExecutionState`
 - Corral `ToolExecutionResult`
 - `StateLedger` as a budget API
-- the inspect-ai policy runner
+- `PolicyEvaluator` using Inspect AI
 - the policy API and answer normalization layer
 - workspace files for source and detailed artifacts
 
@@ -324,7 +322,7 @@ The following abstractions remain because they still provide direct value:
 | Policy contract | `inference_opt/api.py` |
 | Policy loading | `inference_opt/policy.py` |
 | Inspect runner interface | `inference_opt/runner/spec.py` |
-| Inspect execution | `inference_opt/runner/__main__.py` |
+| Policy evaluation and Inspect execution | `inference_opt/runner/evaluator.py`, `inference_opt/runner/__main__.py` |
 | Policy solver | `inference_opt/runner/solver.py` |
 | Student client and per-run metering | `inference_opt/runner/runtime.py` |
 | Answer normalization and grading specs | `inference_opt/scoring_specs.py` |

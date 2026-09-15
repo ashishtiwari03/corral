@@ -40,10 +40,10 @@ The domain tools are trusted Corral tools and use Corral's committed environment
 Corral owns the session state. Each trusted tool receives a JSON-shaped `inference_state` namespace and returns its updated state in `ToolExecutionResult`.
 The environment commits that state after every call. No active budget or run ledger is stored in the workspace filesystem.
 
-The policy evaluation itself runs through Inspect AI in a dedicated eval-host process. That process receives only the questions materialised for its run, uses a metered `StudentClient`, writes predictions and Inspect logs, and returns a summary.
+The policy evaluation runs through one sequential `PolicyEvaluator` inside the trial. It uses Inspect AI for task execution and grading, a metered `StudentClient`, and writes predictions and Inspect logs. Policy code is trusted within the Docker trial for this first iteration; Docker, not the evaluator, is the host-isolation boundary.
 The teacher-facing tools remain synchronous; there is no background job or persistent policy REPL.
 
-This first iteration trusts teacher-written policy code. The client is the only supported model interface, but policy execution is not an AST sandbox or a restricted Corral worker. Docker can provide the outer deployment boundary when needed.
+This first iteration trusts teacher-written policy code inside Docker. The client is the only supported model interface by contract, but policy execution is not an AST sandbox or a restricted Corral worker. Running the task outside Docker therefore does not provide the intended safety boundary.
 
 ## Source map
 
@@ -51,7 +51,7 @@ This first iteration trusts teacher-written policy code. The client is the only 
 - `inference_opt/tools.py`: trusted teacher-facing tools.
 - `inference_opt/budget.py`: local meters and `StateLedger`.
 - `inference_opt/policy.py` and `api.py`: policy loading and policy/client contract.
-- `inference_opt/runner/`: Inspect AI eval host, solver, runtime, and summaries.
+- `inference_opt/runner/`: policy evaluator, Inspect adapter, runtime, and summaries.
 - `inference_opt/outcomes.py`: Inspect-log outcome parsing.
 - `inference_opt/score.py`: held-out scoring and baseline delta.
 - `inference_opt/datasets.py`: packaged questions and targets.

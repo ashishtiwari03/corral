@@ -14,7 +14,7 @@ from inference_opt.budget import BudgetSpec, RunRecord, StateLedger
 from inference_opt.client import probe_student
 from inference_opt.outcomes import read_outcomes
 from inference_opt.policy import PolicyError, discover_policy
-from inference_opt.runner import SubprocessRunner
+from inference_opt.runner import PolicyEvaluator
 from inference_opt.runner.spec import RunSpec
 
 __all__ = ["create_tools"]
@@ -333,7 +333,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         run_spec = _spec_for(
             work_dir, run_id, policy_dir, questions, models[0], budgeted, "train"
         )
-        summary = SubprocessRunner(timeout_s=600).run(run_spec)
+        summary = PolicyEvaluator().run(run_spec)
         ledger.refund(calls=max(0, budgeted - summary.calls_used))
 
         predictions = []
@@ -383,7 +383,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             {
                 "run_id": run_id,
                 "manifest": summary.manifest,
-                "forced_sequential": summary.forced_sequential,
+                "execution": summary.execution,
                 "traces": traces,
                 "calls_used": summary.calls_used,
                 "artifacts": str(out.relative_to(Path(work_dir))),
@@ -428,7 +428,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             run_spec = _spec_for(
                 work_dir, run_id, policy_dir, questions, model, budgeted, "train"
             )
-            summary = SubprocessRunner(timeout_s=2400).run(run_spec)
+            summary = PolicyEvaluator().run(run_spec)
             predictions_path = Path(run_spec.predictions_path)
             predictions = (
                 [
@@ -644,7 +644,6 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             policy_dir,
             {
                 "name": loaded.manifest.name,
-                "execution": loaded.manifest.effective_execution,
                 "memory": loaded.manifest.memory,
             },
             best,

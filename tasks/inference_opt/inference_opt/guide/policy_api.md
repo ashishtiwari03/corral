@@ -71,8 +71,7 @@ All keys optional; unknown keys are rejected so a typo cannot silently do nothin
 | key | default | meaning |
 | --- | --- | --- |
 | `name` | `"policy"` | label in diagnostics |
-| `execution` | `"parallel"` | `"sequential"` runs questions one at a time |
-| `memory` | `"none"` | `"shared"` enables `ctx.memory`, and **forces sequential** |
+| `memory` | `"none"` | `"shared"` enables `ctx.memory` |
 | `max_calls_per_question` | `8` | your own cap; the task cap still applies |
 | `setup_calls` | `0` | calls reserved for `setup` |
 | `max_tokens_per_call` | `2048` | clamped by the task |
@@ -112,7 +111,7 @@ def solve(self, question, ctx):
 
 Unattempted questions count as wrong — the denominator is always the whole split.
 
-## A complete example (#TODO needs to decide if we should give this)
+## A complete policy example
 
 ```python
 from collections import Counter

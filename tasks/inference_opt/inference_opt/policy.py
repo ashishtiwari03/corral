@@ -35,7 +35,6 @@ _MANIFEST_FIELDS = frozenset(
     {
         "name",
         "version",
-        "execution",
         "memory",
         "max_calls_per_question",
         "setup_calls",
@@ -86,11 +85,9 @@ def manifest_from_mapping(raw: Mapping[str, Any] | None) -> PolicyManifest:
             )
     values["components"] = tuple(parsed)
 
-    for key in ("execution", "memory"):
+    for key in ("memory",):
         if key in values:
             values[key] = str(values[key])
-    if values.get("execution") not in (None, "sequential", "parallel"):
-        raise PolicyError("MANIFEST execution must be 'sequential' or 'parallel'")
     if values.get("memory") not in (None, "none", "shared"):
         raise PolicyError("MANIFEST memory must be 'none' or 'shared'")
 
@@ -131,7 +128,6 @@ class LoadedPolicy:
     manifest: PolicyManifest
     root: Path
     is_legacy: bool = False
-    forced_sequential: bool = False
 
     @property
     def has_setup(self) -> bool:
@@ -263,13 +259,11 @@ def discover_policy(root: Path | str) -> LoadedPolicy:
             existing if isinstance(existing, PolicyManifest) else PolicyManifest()
         )
 
-    forced = manifest.memory == "shared" and manifest.execution == "parallel"
     return LoadedPolicy(
         obj=obj,
         manifest=manifest,
         root=root,
         is_legacy=is_legacy,
-        forced_sequential=forced,
     )
 
 
