@@ -1,11 +1,7 @@
 """Per-run state for the eval host: metering, memory, and the student client.
 
-Everything a policy can touch is built here, and everything it can touch is
-deliberately narrow. The budget counter is a closure variable rather than an
-attribute, so a policy cannot reach it without tripping the validator's ban on
-private-attribute access — and even then, the controller cross-checks the reported
-call count against the model events in the inspect log, so a tampered meter changes
-nothing.
+Everything a policy can touch is built here and deliberately narrow. The runtime
+meters every request and the controller records the resulting run artifacts.
 """
 
 from __future__ import annotations

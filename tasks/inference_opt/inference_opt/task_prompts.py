@@ -49,8 +49,8 @@ Because the test set is held out, a policy that memorises the training questions
 scores nothing. What pays is a strategy that generalises.
 
 Be aware of the resolution: with {n_test} test questions, a difference of a few
-questions is noise. `evaluate_candidate` tells you how many questions actually
-changed outcome - trust that more than the headline delta.
+questions is noise. Use `evaluate_candidate` to inspect the result, not just the
+headline delta.
 
 ## Budget
 
@@ -61,11 +61,10 @@ Every experiment costs real inference. `dry_run_policy` is much cheaper than
 
 ## The one hard rule
 
-Your policy may use **only** the student client it is given (`ctx.student`). No
-other model, no network, no reading files outside your policy directory, no
-reflection to get around those. Submissions that break this are rejected by the
-validator and score zero. `dry_run_policy` shows you the validator's verdict before
-it matters.
+Your policy should use the student client it is given (`ctx.student`) for model
+inference. The environment trusts teacher code in this first iteration; the client
+is still the only supported model interface. `dry_run_policy` checks that the policy
+loads and runs before you spend an experiment.
 
 ## Finishing
 

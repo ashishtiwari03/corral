@@ -1,15 +1,4 @@
-"""Trusted teacher tools for building, testing and submitting an inference policy.
-
-The initial inference-opt implementation intentionally follows wetlab's stateful
-environment pattern. Tool calls run in the trusted Corral environment, and mutable
-session state is returned through ``ToolExecutionResult`` and committed by Corral.
-This assumes the teacher policy is trusted; a later hardened version can put policy
-execution behind a separate worker without changing the teacher-facing tools.
-
-Everything the agent can do with ordinary files — notes, a TODO list, writing the
-policy itself — uses Corral's built-in workspace tools rather than a bespoke tool
-here.
-"""
+"""Trusted teacher tools for building, testing and submitting an inference policy."""
 
 from __future__ import annotations
 
@@ -23,11 +12,10 @@ from corral.core.tool import Tool, tool
 from inference_opt import datasets
 from inference_opt.budget import BudgetSpec, RunRecord, StateLedger
 from inference_opt.client import probe_student
-from inference_opt.pairing import compare, read_outcomes
+from inference_opt.outcomes import read_outcomes
 from inference_opt.policy import PolicyError, discover_policy
 from inference_opt.runner import SubprocessRunner
 from inference_opt.runner.spec import RunSpec
-from inference_opt.validator import validate_tree
 
 __all__ = ["create_tools"]
 
@@ -308,8 +296,8 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         This is the cheap way to find out whether your code works before spending an
         experiment. It uses the identical runner, solver, budget metering and
         grading that a scored evaluation uses, on two questions by default, and
-        reports the validation report, any traceback, the parsed manifest, what was
-        sent to the student, and how the answers graded.
+        reports the parsed manifest, what was sent to the student, and how answers
+        graded.
 
         Args:
             policy_path: Workspace-relative path to the policy directory.
@@ -318,19 +306,11 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             work_dir: Task workspace, injected by the environment.
 
         Returns:
-            JSON with the validation report, per-question traces, and any errors.
+            JSON with per-question traces and any errors.
         """
         ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
 
-        report = validate_tree(policy_dir)
-        if not report.ok:
-            return _compact(
-                {"validation": report.to_dict()},
-                "Policy failed validation - fix these before running:\n"
-                + report.render(),
-                ledger,
-            )
         try:
             # Loads the module, so an import-time failure is reported here with a
             # usable message rather than surfacing later as a failed run.
@@ -403,7 +383,6 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
                 "run_id": run_id,
                 "manifest": summary.manifest,
                 "forced_sequential": summary.forced_sequential,
-                "validation": {"ok": True, "warnings": len(report.warnings)},
                 "traces": traces,
                 "calls_used": summary.calls_used,
                 "artifacts": str(out.relative_to(Path(work_dir))),
@@ -421,9 +400,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         """Score a policy on the full training split and record the result.
 
         This is your main experiment and it is strictly limited, so dry_run_policy
-        first. The result is compared against the baseline on the same questions,
-        and reports how many questions actually changed outcome - a delta driven by
-        two or three questions is noise at this sample size.
+        first. The result reports accuracy and improvement over the measured baseline.
 
         Args:
             policy_path: Workspace-relative path to the policy directory.
@@ -431,19 +408,10 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             work_dir: Task workspace, injected by the environment.
 
         Returns:
-            JSON with accuracy, delta over baseline, paired statistics, and the
-            path to the per-question artifacts.
+            JSON with accuracy, delta over baseline, and the path to run artifacts.
         """
         ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
-        report = validate_tree(policy_dir)
-        if not report.ok:
-            return _compact(
-                {"validation": report.to_dict()},
-                "Policy failed validation; no experiment was spent.\n" + report.render(),
-                ledger,
-            )
-
         run_id = f"exp-{ledger.experiments + 1}"
         out = _run_dir(work_dir, run_id)
         questions = out / "questions.jsonl"
@@ -472,12 +440,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
                 else []
             )
             outcome = read_outcomes(run_spec.log_dir, predictions)
-            baseline_items = {
-                item_id: bool(value)
-                for item_id, value in (config.get("baseline_items", {}).get(model, {})).items()
-            }
             accuracy = outcome.n_correct / n_items if n_items else 0.0
-            comparison = compare(outcome, baseline_items) if baseline_items else None
             baseline_value = float(
                 (config.get("baselines_train") or config.get("baselines") or {}).get(model, 0.0)
             )
@@ -492,7 +455,6 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
                 "n_unparseable": summary.n_unparseable,
                 "budget_exhausted_at": summary.budget_exhausted_at,
                 "error": summary.error[:300],
-                "paired": comparison.to_dict() if comparison else None,
                 "by_topic": outcome.by_category(),
             }
 
@@ -517,7 +479,6 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
         verdicts = "; ".join(
             f"{model}: {value['delta']:+.3f}"
-            + (f" ({value['paired']['verdict']})" if value.get("paired") else "")
             for model, value in results.items()
         )
         return _compact(
@@ -661,14 +622,6 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         """
         ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
-        report = validate_tree(policy_dir)
-        if not report.ok:
-            return _compact(
-                {"validation": report.to_dict()},
-                "NOT staged - this policy fails validation and would score zero:\n"
-                + report.render(),
-                ledger,
-            )
         try:
             loaded = discover_policy(policy_dir)
         except PolicyError as exc:

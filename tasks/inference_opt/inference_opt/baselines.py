@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from inference_opt import datasets
-from inference_opt.pairing import read_outcomes
+from inference_opt.outcomes import read_outcomes
 from inference_opt.runner import SubprocessRunner
 from inference_opt.runner.spec import RunSpec
 

@@ -23,10 +23,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from inference_opt import datasets
-from inference_opt.pairing import compare, read_outcomes
+from inference_opt.outcomes import read_outcomes
 from inference_opt.runner import SubprocessRunner
 from inference_opt.runner.spec import RunSpec
-from inference_opt.validator import validate_tree
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,7 +40,6 @@ class ScoreOutcome(StrEnum):
     """Why a run scored what it did. Recorded in the diagnostics sidecar."""
 
     OK = "ok"
-    POLICY_INVALID = "policy_invalid"
     POLICY_CRASHED = "policy_crashed"
     BUDGET_EXHAUSTED = "budget_exhausted"
     TIMEOUT = "timeout"
@@ -154,17 +152,6 @@ def _write_test_questions(benchmark: str, path: Path) -> int:
     return datasets.write_jsonl(path, records)
 
 
-def _baseline_correctness(config: dict[str, Any], model: str, benchmark: str) -> dict[str, bool]:
-    """Per-item baseline outcomes, for the paired comparison. May be empty."""
-    raw = config.get("baseline_items") or {}
-    per_model = raw.get(model) or {}
-    return {
-        item_id: bool(correct)
-        for item_id, correct in per_model.items()
-        if item_id.startswith(f"{benchmark}:")
-    }
-
-
 def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float]:
     """Build the scorer Corral calls with the agent's submitted answer."""
 
@@ -200,13 +187,6 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
             return 0.0
         report.policy_dir = str(policy_dir)
 
-        validation = validate_tree(policy_dir)
-        if not validation.ok:
-            report.outcome = ScoreOutcome.POLICY_INVALID
-            report.notes.append(validation.render())
-            report.write(workspace / "state" / "scoring_failure.json")
-            return 0.0
-
         with tempfile.TemporaryDirectory(prefix="inference-opt-score-") as scratch:
             scratch_root = Path(scratch)
             questions = scratch_root / "test.jsonl"
@@ -238,8 +218,6 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
                     lowered = summary.error.lower()
                     if "timeout" in lowered:
                         report.outcome = ScoreOutcome.TIMEOUT
-                    elif "policy_invalid" in lowered or "validation" in lowered:
-                        report.outcome = ScoreOutcome.POLICY_INVALID
                     else:
                         # A host that never produced a single answer is far more
                         # likely broken infrastructure than a broken policy.
@@ -254,8 +232,6 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
                 # The denominator is always the full test split: an unattempted
                 # question is wrong, so budget is a real constraint to plan against.
                 accuracy = outcome.n_correct / n_items if n_items else 0.0
-                baseline_items = _baseline_correctness(config, model, benchmark)
-                comparison = compare(outcome, baseline_items) if baseline_items else None
                 baseline_value = float(baselines[model])
                 delta = accuracy - baseline_value
                 deltas[model] = delta
@@ -276,15 +252,12 @@ def policy_score(config: dict[str, Any], work_dir: str) -> Callable[[Any], float
                     "budget_exhausted_at": summary.budget_exhausted_at,
                     "execution": summary.execution,
                 }
-                if comparison is not None:
-                    entry["paired"] = comparison.to_dict()
                 report.per_model[model] = entry
                 report.per_item.extend(
                     {
                         "item_id": item.item_id,
                         "model": model,
                         "policy_correct": item.correct,
-                        "baseline_correct": baseline_items.get(item.item_id),
                         "calls": item.calls,
                     }
                     for item in outcome.items

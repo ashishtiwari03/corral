@@ -1,21 +1,16 @@
 """The eval host: ``python -m inference_opt.runner <spec.json>``.
 
-Runs in its own process, always. Three independent reasons:
+Runs in its own process to isolate Inspect AI's process-global state from Corral.
 
 * ``inspect_eval`` has a process-global "one eval at a time" guard, and Corral may
   execute several tasks in one process;
-* a non-``trusted`` Corral tool runs in a privilege-dropped worker that cannot see
-  the dataset directory at all;
 * it is the only process that imports policy code, so isolating it lets us scrub
   the environment it runs with.
 
 **What this process can see.** It receives a temporary JSONL containing only the
 items of *this* run, including their targets — inspect's scorers need targets in
 process. It does not receive a path to the frozen dataset, so a policy cannot read
-questions or answers beyond the ones it is being asked. The defence against reading
-even those is the AST allowlist in :mod:`inference_opt.validator`, which denies
-``open``, every non-stdlib import, and reflection. That is a checked guarantee, not
-a structural one; see the README's threat model.
+questions or answers beyond the ones it is being asked.
 """
 
 from __future__ import annotations
@@ -34,7 +29,6 @@ from inference_opt.runner.runtime import RunRuntime
 from inference_opt.runner.solver import policy_solver
 from inference_opt.runner.spec import RunSpec, RunSummary
 from inference_opt.scoring_specs import spec_for
-from inference_opt.validator import validate_tree
 
 #: Anything that could authenticate to another model provider is removed before a
 #: policy is imported. The import allowlist already blocks the clients that would
@@ -149,17 +143,10 @@ def run(spec: RunSpec) -> RunSummary:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     policy_root = Path(spec.policy_dir)
-    report = validate_tree(policy_root)
-    summary.validation = report.to_dict()
-    if not report.ok:
-        summary.error = "policy failed validation:\n" + report.render()
-        summary.write(spec.summary_path)
-        return summary
-
     try:
         policy = discover_policy(policy_root)
     except PolicyError as exc:
-        summary.error = f"policy_invalid: {exc}"
+        summary.error = f"policy could not be loaded: {exc}"
         summary.write(spec.summary_path)
         return summary
 

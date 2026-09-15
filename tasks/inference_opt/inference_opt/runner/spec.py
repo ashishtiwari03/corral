@@ -99,7 +99,6 @@ class RunSummary:
     budget_exhausted_at: dict[str, Any] | None = None
     questions_after_exhaustion: int = 0
     per_component: dict[str, Any] = field(default_factory=dict)
-    validation: dict[str, Any] = field(default_factory=dict)
     first_tracebacks: list[str] = field(default_factory=list)
     setup_log: list[str] = field(default_factory=list)
 

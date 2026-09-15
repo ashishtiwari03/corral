@@ -1,9 +1,4 @@
-"""The eval host and the controller-side handle onto it.
-
-``SubprocessRunner`` is the only runner a scored path may use: it starts
-``python -m inference_opt.runner`` with a scrubbed environment, so policy code
-never executes in the process that holds the budget ledger.
-"""
+"""The Inspect AI eval host and its controller-side process handle."""
 
 from __future__ import annotations
 

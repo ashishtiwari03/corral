@@ -5,8 +5,8 @@ helper modules, demonstration sets). This module imports it **exactly once** and
 normalises whatever shape it found into one internal interface, so the runner never
 has to care whether the agent wrote a class or a bare function.
 
-Importing executes the policy's module-level code, so callers must run
-:func:`inference_opt.validator.validate_tree` first. Nothing here is a sandbox.
+Importing executes the policy's module-level code. The first iteration runs trusted
+teacher code, while keeping this loader responsible for the policy shape contract.
 """
 
 from __future__ import annotations

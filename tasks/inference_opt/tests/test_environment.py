@@ -6,7 +6,7 @@ import json
 
 import pytest
 from inference_opt.env import create_environments
-from inference_opt.score import ScoreOutcome, resolve_submission
+from inference_opt.score import resolve_submission
 
 BENCHMARKS = {"gsm8k", "mmlu_pro", "gpqa_diamond", "bbh", "chembench", "arc_challenge"}
 
@@ -72,29 +72,6 @@ class TestToolSurface:
             "compare_runs", "get_budget", "submit_policy",
         }
 
-    def test_evaluations_are_foreground_state_transitions(self, environments):
-        tools = environments["gsm8k_a"].tools
-        background = {
-            name for name, tool in tools.items()
-            if getattr(tool, "background_capable", False)
-        }
-        assert background == set()
-
-    def test_untrusted_tools_only_hide_the_workspace_argument(self, environments):
-        """Corral refuses any other hidden argument on a sandboxed tool.
-
-        The check applies to tools that actually reach the restricted worker.
-        Trusted tools and the generated background wrappers are both dispatched
-        through `environment.execute_tool` instead, so they are exempt.
-        """
-        from corral.backend.background_tools import _CallableTool
-
-        for name, tool in environments["gsm8k_a"].tools.items():
-            if getattr(tool, "trusted", False) or isinstance(tool, _CallableTool):
-                continue
-            extra = set(tool.hidden_args or ()) - set(getattr(tool, "workspace_args", ()))
-            assert not extra, f"{name} hides {extra}"
-
     def test_tools_are_bound_to_their_own_task(self, environments):
         """One shared pool would bind every task to whichever was built last."""
         first = environments["gsm8k_a"].tools["get_baseline"]
@@ -154,7 +131,3 @@ class TestSubmissionResolution:
         resolved, notes = resolve_submission("nope", tmp_path)
         assert resolved is None
         assert any("no policy.py" in note for note in notes)
-
-    def test_outcomes_are_distinguishable(self):
-        # A harness fault must never be recorded as an agent score of zero.
-        assert ScoreOutcome.POLICY_INVALID != ScoreOutcome.NO_SUBMISSION

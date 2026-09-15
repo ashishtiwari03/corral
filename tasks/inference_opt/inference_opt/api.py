@@ -1,10 +1,7 @@
 """The contract between the harness and a teacher-written inference policy.
 
 A policy is duck-typed: it imports nothing from this module. These types exist so
-the harness, the tests and the generated documentation all agree on one shape, and
-so the AST validator (:mod:`inference_opt.validator`) can keep its import allowlist
-maximally strict — a policy that had to ``import inference_opt`` would need the
-package inside the sandbox, and the allowlist would have to admit it.
+the harness, tests and generated documentation agree on one shape.
 
 A policy supplies, in ``policy.py``:
 
@@ -139,10 +136,10 @@ class Answer:
 class StudentClient(Protocol):
     """The only permitted access to the student model.
 
-    A policy that reaches any other model — by import, HTTP, or subprocess — is
-    rejected by the validator and scores zero. Every method charges the run's call
-    budget before issuing a request, and raises :class:`BudgetExhausted` when the
-    reservation fails.
+    Every method charges the run's call budget before issuing a request, and raises
+    :class:`BudgetExhausted` when the reservation fails. The environment trusts the
+    teacher policy in this first iteration; the client remains its only documented
+    model interface.
     """
 
     def generate(

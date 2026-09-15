@@ -169,21 +169,11 @@ class TestFailureHandling:
         assert len(rows) == 3
         assert any(row["answer"] == "ANSWER: 4" for row in rows)
 
-    def test_an_invalid_policy_is_refused_before_it_runs(self, tmp_path, questions_file):
-        spec = make_spec(
-            tmp_path, questions_file,
-            "import requests\nclass Policy:\n    def solve(self, q, ctx): return 'A'\n",
-        )
-        summary = run_in_process(spec)
-        assert not summary.ok
-        assert "validation" in summary.error
-        assert summary.calls_used == 0
-
     def test_a_policy_with_no_solve_is_refused(self, tmp_path, questions_file):
         spec = make_spec(tmp_path, questions_file, "answer = 1\n")
         summary = run_in_process(spec)
         assert not summary.ok
-        assert "policy_invalid" in summary.error
+        assert "could not be loaded" in summary.error
 
 
 class TestEnvironmentScrubbing:
