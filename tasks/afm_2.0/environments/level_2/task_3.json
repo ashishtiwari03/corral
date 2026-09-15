@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 2 task 3: Tapping-Mode Topography And Amplitude Setpoint",
-    "description": "Acquire exactly three tapping-mode topography images at the same location using amplitude setpoints of 80%, 70%, and 60%, in that order. Keep the scan size at 5 µm × 5 µm, resolution at 512 × 512 pixels, time per line at 0.075 s, P/I/D gains at 100/50/10, and drive amplitude at 200 mV. Change only the amplitude setpoint between acquisitions and report the setpoint used for every image.",
+    "description": "Acquire exactly three tapping-mode topography images at the same location using amplitude setpoints of 80%, 70%, and 60%, in that order. Keep the scan size at 5 µm × 5 µm, resolution at 512 × 512 pixels, time per line at 0.075 s, and P/I/D gains at 100/50/10.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
@@ -33,9 +33,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 2,
@@ -59,9 +57,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 3,
@@ -85,9 +81,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         }
       ],
       "question": 3,
@@ -142,9 +136,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 2,
@@ -168,9 +160,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 3,
@@ -194,9 +184,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           }
         ],
         "expected_image_count": 3,

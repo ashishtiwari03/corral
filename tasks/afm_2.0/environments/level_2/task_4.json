@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 2 task 4: Tapping-Mode Roughness Repeatability",
-    "description": "Acquire exactly three consecutive tapping-mode topography images at the same location without changing any acquisition parameter. Use a scan size of 5 µm × 5 µm, resolution of 512 × 512 pixels, time per line of 0.075 s, P/I/D gains of 100/50/10, amplitude setpoint of 70%, and drive amplitude of 200 mV. Calculate Ra and Rq separately for every image. Then calculate the mean, sample standard deviation, and coefficient of variation of Ra and Rq across the three images.",
+    "description": "Acquire exactly three consecutive tapping-mode topography images at the same location without changing any acquisition parameter. Use a scan size of 5 µm × 5 µm, resolution of 512 × 512 pixels, time per line of 0.075 s, P/I/D gains of 100/50/10, and amplitude setpoint of 70%. Calculate rms and mean roughness separately for every image.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
@@ -33,9 +33,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 2,
@@ -59,9 +57,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 3,
@@ -85,9 +81,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         }
       ],
       "question": 4,
@@ -142,9 +136,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 2,
@@ -168,9 +160,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 3,
@@ -194,9 +184,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           }
         ],
         "expected_image_count": 3,

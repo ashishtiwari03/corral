@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 2 task 5: Scale-Dependent Topographic Roughness",
-    "description": "Acquire exactly three tapping-mode topography images centered at the same coordinates using scan sizes of 10 µm × 10 µm, 5 µm × 5 µm, and 2 µm × 2 µm, in that order. Keep the resolution at 512 × 512 pixels, time per line at 0.075 s, P/I/D gains at 100/50/10, amplitude setpoint at 70%, and drive amplitude at 200 mV. Before acquisition, calculate the nominal lateral sampling intervals; the expected values are 19.53125 nm/pixel, 9.765625 nm/pixel, and 3.90625 nm/pixel, respectively. Calculate Ra and Rq for every image and report the percentage change of each metric relative to the 5 µm × 5 µm result.",
+    "description": "Acquire exactly three tapping-mode topography images centered at the same coordinates using scan sizes of 10 µm × 10 µm, 5 µm × 5 µm, and 2 µm × 2 µm, in that order. Keep the resolution at 512 × 512 pixels, time per line at 0.075 s, P/I/D gains at 100/50/10, and amplitude setpoint at 70%. Before acquisition. Calculate the rms and mean roughness for every image.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
@@ -33,9 +33,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 19.53125,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 2,
@@ -59,9 +57,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         },
         {
           "sequence_number": 3,
@@ -85,9 +81,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 3.90625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         }
       ],
       "question": 5,
@@ -142,9 +136,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 19.53125,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 2,
@@ -168,9 +160,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           },
           {
             "sequence_number": 3,
@@ -194,9 +184,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 3.90625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           }
         ],
         "expected_image_count": 3,
