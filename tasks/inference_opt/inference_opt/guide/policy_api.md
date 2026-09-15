@@ -81,22 +81,17 @@ All keys optional; unknown keys are rejected so a typo cannot silently do nothin
 | `components` | `()` | `[{"name": "critic", "kind": "critic"}]`, for diagnostics |
 | `config` | `{}` | passed through to `ctx.config` in `setup` |
 
-## What you may import
+## Imports and model access
 
-Standard library only, and only these:
+Teacher policy code is trusted in this first iteration, so it is not restricted by
+an AST validator or a Corral worker sandbox. The policy should still use the
+provided `ctx.student` client as its model interface; other model endpoints are
+outside the task's intended scope. The policy directory may contain normal helper
+modules and prompt files.
 
-`abc`, `collections`, `copy`, `dataclasses`, `difflib`, `enum`, `fractions`,
-`functools`, `heapq`, `itertools`, `json`, `math`, `operator`, `random`, `re`,
-`statistics`, `string`, `textwrap`, `typing`, `unicodedata` — plus your own files.
-
-**Not** permitted, and rejected before your policy ever runs: any other model or
-HTTP client, `os`, `subprocess`, `pathlib`, `open()`, `eval`, `exec`, `getattr`,
-`setattr`, `__import__`, dunder attribute access, and reading private attributes of
-objects you were given. The rule behind all of it: **the student client you are
-handed is your only model access.**
-
-`dry_run_policy` reports exactly which line broke a rule, and costs far less than a
-failed experiment.
+`dry_run_policy` imports and executes the policy through the real evaluation path,
+so use it to catch import, contract, and runtime errors before spending an
+experiment.
 
 ## Budget
 

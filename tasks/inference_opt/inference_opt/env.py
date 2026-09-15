@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from copy import deepcopy
 from pathlib import Path
@@ -56,6 +57,9 @@ def load_tasks_from_json(
     tasks: dict[str, TaskDefinition] = {}
     for entry in entries:
         config = dict(entry["initial_input"])
+        config["base_urls"] = _bind_endpoints(
+            config.get("models", []), config.get("base_urls")
+        )
         tasks[entry["id"]] = TaskDefinition(
             name=entry["name"],
             description=entry["description"],
@@ -71,6 +75,16 @@ def load_tasks_from_json(
             resolve_answer=True,
         )
     return tasks
+
+
+def _bind_endpoints(models: list[str], configured: Any) -> dict[str, str]:
+    """Resolve task endpoints from config, falling back to startup environment."""
+    base_urls = dict(configured or {})
+    default = os.environ.get("CORRAL_VLLM_URL", "http://127.0.0.1:8000")
+    for model in models:
+        key = "CORRAL_VLLM_URL_" + re.sub(r"[^A-Z0-9]+", "_", model.upper()).strip("_")
+        base_urls.setdefault(model, os.environ.get(key, default))
+    return base_urls
 
 
 def _seed_workspace(root: Path) -> None:
