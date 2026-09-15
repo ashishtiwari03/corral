@@ -12,7 +12,7 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_numerical",
-    "submission_format": "numerical value without units (eg. 56.00)",
+    "submission_format": "numerical value without units (eg. 35.02)",
     "initial_input": {
       "path to molten state": "/structures/melt/liq4000.dat",
       "atom style": "charge",
@@ -21,7 +21,7 @@
     },
     "scoring_params": {
       "target": 1576.88,
-      "tolerance": 0.08
+      "tolerance": 8e-2
     },
     "id": "level_2_task_2",
     "uuid": "07801519-d189-4c82-bdc4-59e3954110a9"

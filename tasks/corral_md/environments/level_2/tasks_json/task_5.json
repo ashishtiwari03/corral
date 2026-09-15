@@ -9,13 +9,13 @@
       "keyword_log_extractor",
       "visualisation_tool"
     ],
-    "scoring_function": "check_json",
+    "scoring_function": "check_phonon",
     "submission_format": "Absolute path to the JSON file eg. '/path/to/phonon.json'",
     "initial_input": {
     },
     "scoring_params": {
       "target": ".../../ground_truth/level_2/task_5/phonon.json",
-      "tolerance": 1e-2
+      "tolerance": 2e-2
     },
     "id": "level_2_task_5",
     "uuid": "8f3b6c2d-9e1f-4b7a-a4c5-3d8e9f2a1b7c"

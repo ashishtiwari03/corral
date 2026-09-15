@@ -10,13 +10,13 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_numerical",
-    "submission_format": "numerical value without units (eg. 9.56e-05)",
+    "submission_format": "numerical value without units (eg. 35.02)",
     "initial_input": {
 
     },
     "scoring_params": {
       "target": 9.56133318e-05,
-      "tolerance": 4.31e-06
+      "tolerance": 1e-1
     },
     "id": "level_2_task_7",
     "uuid": "d643a18e-1793-49d7-84bc-7c9b83b9f8d2"

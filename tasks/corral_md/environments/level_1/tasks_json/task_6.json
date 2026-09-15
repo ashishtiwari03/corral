@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_1 - Task_6",
-    "description": "Construct a bulk conventional face-centered cubic (FCC) unit cell of Copper (Cu) with a lattice parameter a = 3.615 \u00c5, and expand it into a 3 \u00d7 3 \u00d7 3 supercell. Construct a separate bulk conventional FCC unit cell of Nickel (Ni) with a lattice parameter a = 3.52 \u00c5. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator and attach it to both structures. Perform a geometry optimization (e.g., using BFGS) on both the pure Cu supercell and the pure Ni unit cell until the maximum atomic force is below 0.00005 eV/\u00c5, and calculate their respective energies per atom. Next, identify the Cu atom closest to the geometric center of the Cu supercell and replace it with a Ni atom. Relax this defective supercell using the same optimization criteria. Calculate the impurity substitution energy using E_sub = E_defected - E_pure_Cu + E_Cu_bulk_per_atom - E_Ni_bulk_per_atom, where E_defected is the relaxed total energy of the Ni-substituted Cu supercell, E_pure_Cu is the relaxed total energy of the pure Cu 3 \u00d7 3 \u00d7 3 supercell, and E_Cu_bulk_per_atom and E_Ni_bulk_per_atom are the relaxed energies per atom of the corresponding bulk Cu and Ni unit cells. Return the impurity substitution energy as a floating-point value in eV units. USE ASE FOR THIS SIMULATION, DO NOT USE LAMMPS.",
+    "description": "Evaluate the impurity substitution energy of a single Nickel (Ni) atom in a bulk Copper (Cu) lattice. Construct a conventional face-centered cubic (FCC) unit cell of Copper (a = 3.615 \u00c5) and expand it into a 3 \u00d7 3 \u00d7 3 supercell. Construct a separate conventional FCC unit cell of Nickel (a = 3.52 \u00c5). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Perform a geometry optimization on both the pure Cu supercell and the pure Ni unit cell using the BFGS optimizer until the maximum atomic force is below 0.05 eV/\u00c5 to establish your bulk reference states. Next, identify the Cu atom closest to the geometric center of the pure Cu supercell and replace it with a Ni atom. Relax this defected supercell using the BFGS optimizer until the maximum atomic force falls below 0.05 eV/\u00c5. Calculate the impurity substitution energy of the system, defining your chemical potential reference states as the relaxed bulk pure Cu and the relaxed bulk pure Ni. Return the calculated impurity substitution energy as a floating-point value in eV.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -10,11 +10,11 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_numerical",
-    "submission_format": "numerical value without units (eg. 0.1250)",
+    "submission_format": "numerical value without units (eg. 35.02)",
     "initial_input": {},
     "scoring_params": {
       "target": 0.1250,
-      "tolerance": 0.005
+      "tolerance": 2e-2
     },
     "id": "level_1_task_6",
     "uuid": "c3e85f41-096b-4e12-b901-2a4b8cd9a77d"

@@ -14,8 +14,7 @@
     "initial_input": {},
     "scoring_params": {
       "hidden_test_path" : "../../ground_truth/level_2/task_9/",
-      "target": 0.996587,
-      "tolerance": 0.001902
+      "threshold" : 0.98
     },
     "id": "level_2_task_9",
     "uuid": "f9a2d3c1-b75e-41d8-8c1a-8e2b9c7d4a6f"

@@ -12,16 +12,11 @@
     "scoring_function": "check_trajectory_temperature",
     "submission_format": "json dictionary mapping temperature (int) to trajectory file path (string) (eg. {'300': '/path/to/300K.traj'})",
     "initial_input": {},
-  "scoring_params": {
-      "target": {
-        "300": 300
+    "scoring_params": {
+      "target": 300.0,
+      "window_size" : 10.0,
+      "tolerance" : 1e-1
 
-      },
-      "std": {
-        "300": 27.59
-
-      },
-      "tolerance_factor": 2.0
     },
     "id": "level_2_task_3",
     "uuid": "a82b49d3-6e1c-4b55-87d2-7c3a9f1b4a6e"

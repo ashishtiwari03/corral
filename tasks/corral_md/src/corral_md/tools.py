@@ -423,6 +423,7 @@ def get_potential_metadata(file_path: str) -> str:
             "pair_style : hybrid/overlay buck/coul/long + kspace_style pppm}"
         ),
         
+        
     }
     POTENTIAL_PATHS = {
         "Si.sw": "/potentials/SW/Si.sw",

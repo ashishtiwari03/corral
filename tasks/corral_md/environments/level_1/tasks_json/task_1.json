@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_1 - Task_1",
-    "description": "Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator. Construct a bulk Silver (Ag) conventional face-centered cubic (FCC) unit cell with a lattice parameter a = 4.09 \u00c5, and expand it into a 4 \u00d7 4 \u00d7 4 supercell to yield exactly 256 Ag atoms. Run a molecular dynamics (MD) simulation using a Langevin thermostat at a target temperature of 300 K with a timestep of 1.0 fs and a friction coefficient of 0.01 fs\u207b\u00b9. Execute the simulation for 5000 steps and write the system state to an ASE trajectory file every 100 steps. Return the absolute path to the resulting trajectory file. ",
+    "description": "Generate a finite-temperature molecular dynamics trajectory for bulk Silver (Ag). Construct a conventional face-centered cubic (FCC) unit cell of Silver (a = 4.09 \u00c5) and replicate it into a 4 \u00d7 4 \u00d7 4 supercell. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at a target temperature of 300 K with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9. Execute the simulation for 5,000 steps, recording the atomic configuration to an ASE trajectory file every 100 steps. Return the absolute path to the resulting trajectory file as a string.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -14,7 +14,9 @@
     "initial_input": {},
     "scoring_params": {
       "target": 300.0,
-      "tolerance": 15.0
+      "window_size" : 10.0,
+      "tolerance" : 1e-1
+
     },
     "id": "level_1_task_1",
     "uuid": "f2c4b8e9-3d1a-4f5c-8b2a-1e9d7c6b5a4f"

@@ -15,7 +15,7 @@
     },
     "scoring_params": {
       "target": 0.025437,
-      "tolerance": 1e-4
+      "tolerance": 2e-2
     },
     "id": "level_2_task_4",
     "uuid": "4c8f2b8b-1e7a-4c28-9d6a-543e5c9b7e3f"

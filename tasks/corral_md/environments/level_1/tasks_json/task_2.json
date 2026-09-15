@@ -12,7 +12,7 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_numerical",
-    "submission_format": "numerical value without units (eg. 56.00)",
+    "submission_format": "numerical value without units (eg. 35.02)",
     "initial_input": {
       "units": "metal",
       "minimiser": "conjugate gradient",
@@ -30,7 +30,7 @@
     },
     "scoring_params": {
       "target": 0.0589,
-      "tolerance": 0.02
+      "tolerance": 2e-2
     },
     "id": "aluminum_surface_energy_1",
     "uuid": "67fef9d6-eb98-4f01-a7fa-632c9298946a"

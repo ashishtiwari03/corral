@@ -13,12 +13,363 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
-
+from typing import Any, List
+import numpy as np
+import pandas as pd
 import modal
 from loguru import logger
+from sklearn.metrics import r2_score
+import pickle
+from ase.io import read
 
-# from utils import extract_lattice_coordinates
+def check_phonon(target: str, tolerance: float) -> Callable[[Any], float]:
+    """
+    Create a scoring function that validates the linear regression coefficients 
+    for the lattice strain vs. optical phonon frequency task.
+
+    The function verifies that:
+    1. The submitted JSON file exists and can be parsed.
+    2. It contains the keys "isotropic_coefficient" and "uniaxial_coefficient".
+    3. Both coefficients match the ground truth values within the relative tolerance.
+
+    Args:
+        target (str): Absolute or relative path to the ground truth JSON file.
+        tolerance (float): Relative tolerance factor (e.g., 2e-2 for 2%).
+
+    Returns:
+        Callable[[Any], float]: A scoring function returning 1.0 if both coefficients pass, else 0.0.
+    """
+
+    def score_fn(result: Any) -> float:
+        try:
+            agent_dict = None
+
+            # 1) Parse the agent's result to extract the dictionary
+            if isinstance(result, str):
+                s = result.strip()
+                # If the string is a file path to a JSON file
+                if s.endswith('.json') and Path(s).is_file():
+                    try:
+                        with open(s, 'r') as f:
+                            agent_dict = json.load(f)
+                    except Exception as e:
+                        logger.warning(f"Failed to read agent JSON file at {s}: {e}")
+                        return 0.0
+                else:
+                    # Try parsing as a raw JSON string
+                    try:
+                        parsed = json.loads(s)
+                        if isinstance(parsed, dict):
+                            # Check if the dict has the keys directly
+                            if "isotropic_coefficient" in parsed:
+                                agent_dict = parsed
+                            else:
+                                # Check if it contains a path to the JSON file
+                                for v in parsed.values():
+                                    if isinstance(v, str) and v.endswith('.json') and Path(v).is_file():
+                                        with open(v, 'r') as f:
+                                            agent_dict = json.load(f)
+                                        break
+                    except json.JSONDecodeError:
+                        logger.warning("Result string is neither a valid JSON file path nor a valid JSON string.")
+                        return 0.0
+            
+            elif isinstance(result, dict):
+                # If a dictionary was passed directly
+                if "isotropic_coefficient" in result:
+                    agent_dict = result
+                else:
+                    for v in result.values():
+                        if isinstance(v, str) and v.endswith('.json') and Path(v).is_file():
+                            with open(v, 'r') as f:
+                                agent_dict = json.load(f)
+                            break
+            
+            else:
+                logger.warning(f"Unrecognized result type in check_phonon: {type(result)}")
+                return 0.0
+
+            if not agent_dict or not isinstance(agent_dict, dict):
+                logger.warning("Could not extract a valid dictionary from the agent's submission.")
+                return 0.0
+
+            # 2) Verify required keys exist in the agent's dictionary
+            req_keys = ["isotropic_coefficient", "uniaxial_coefficient"]
+            for k in req_keys:
+                if k not in agent_dict:
+                    logger.warning(f"Missing required key '{k}' in agent's JSON.")
+                    return 0.0
+
+            # 3) Load Ground Truth data
+            gt_path = Path(target)
+            if not gt_path.is_file():
+                logger.error(f"Ground truth JSON not found at {gt_path}")
+                return 0.0
+                
+            try:
+                with open(gt_path, 'r') as f:
+                    gt_dict = json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to read ground truth JSON: {e}")
+                return 0.0
+                
+            for k in req_keys:
+                if k not in gt_dict:
+                    logger.error(f"Ground truth JSON is missing key '{k}'")
+                    return 0.0
+            
+            # 4) Compare Agent Values vs Ground Truth Values
+            for k in req_keys:
+                try:
+                    agent_val = float(agent_dict[k])
+                    gt_val = float(gt_dict[k])
+                except (ValueError, TypeError):
+                    logger.warning(f"Coefficient for '{k}' could not be converted to float.")
+                    return 0.0
+                
+                tol = tolerance * abs(gt_val)
+                lower_bound = gt_val - tol
+                upper_bound = gt_val + tol
+                
+                logger.info(f"Checking {k}: Target = {gt_val:.6e}, Agent = {agent_val:.6e}, Allowed Range = [{lower_bound:.6e}, {upper_bound:.6e}]")
+                
+                if not (lower_bound <= agent_val <= upper_bound):
+                    logger.warning(f"Value for {k} ({agent_val}) is outside the {tolerance*100}% tolerance window.")
+                    return 0.0
+                    
+            logger.info("Both phonon strain coefficients passed the tolerance check.")
+            return 1.0
+
+        except Exception as exc:
+            logger.warning(f"Unexpected error in check_phonon: {exc}, result was: {result}")
+            return 0.0
+
+    return score_fn
+
+def check_multiple_trajectory_temp(target: List[float], tolerance_factor: float) -> Callable[[Any], float]:
+    """
+    Create a scoring function that validates a dictionary mapping temperatures 
+    to trajectory files.
+
+    The function verifies that:
+    1. The submitted JSON/dict contains keys for all required target temperatures.
+    2. Every file path points to an existing .traj file.
+    3. The mean temperature of all frames in each trajectory matches the target 
+       temperature within the specified relative tolerance.
+
+    Args:
+        target (List[float]): List of target temperatures (e.g., [300, 400, 500...]).
+        tolerance_factor (float): Relative tolerance factor (e.g., 1e-1 for 10%).
+
+    Returns:
+        Callable[[Any], float]: A scoring function returning 1.0 if all targets pass, else 0.0.
+    """
+
+    def score_fn(result: Any) -> float:
+        if read is None:
+            logger.error("ASE library is not installed. Cannot evaluate .traj files.")
+            return 0.0
+
+        try:
+            submission_dict = None
+
+            # 1) Parse the agent's result to extract the dictionary
+            if isinstance(result, str):
+                s = result.strip()
+                # If the string is a file path to a JSON file
+                if s.endswith('.json') and Path(s).is_file():
+                    try:
+                        with open(s, 'r') as f:
+                            submission_dict = json.load(f)
+                    except Exception as e:
+                        logger.warning(f"Failed to read JSON file at {s}: {e}")
+                        return 0.0
+                else:
+                    # Try parsing as a raw JSON string
+                    try:
+                        submission_dict = json.loads(s)
+                    except json.JSONDecodeError:
+                        logger.warning("Result string is neither a valid JSON file path nor a valid JSON string.")
+                        return 0.0
+
+            elif isinstance(result, dict):
+                submission_dict = result
+            else:
+                logger.warning(f"Unrecognized result type in check_multiple_trajectory_temp: {type(result)}")
+                return 0.0
+
+            if not isinstance(submission_dict, dict):
+                logger.warning("Parsed result is not a dictionary.")
+                return 0.0
+
+            # Normalize keys to strings for robust matching (e.g., handle "300" vs 300)
+            normalized_submission = {str(k).split('.')[0]: str(v) for k, v in submission_dict.items()}
+
+            # 2) Iterate through each required target temperature
+            for t in target:
+                t_key = str(t).split('.')[0] # E.g., 300.0 -> '300'
+
+                if t_key not in normalized_submission:
+                    logger.warning(f"Missing target temperature {t} K in submitted dictionary.")
+                    return 0.0
+
+                traj_path_str = normalized_submission[t_key]
+                traj_path = Path(traj_path_str)
+
+                # Verify file exists
+                if not traj_path.is_file():
+                    logger.warning(f"Trajectory file for {t} K not found: {traj_path}")
+                    return 0.0
+
+                # Load trajectory and calculate mean temperature
+                try:
+                    images = read(traj_path, index=':')
+                    if len(images) == 0:
+                        logger.warning(f"Trajectory file for {t} K is empty.")
+                        return 0.0
+                        
+                    temperatures = [atoms.get_temperature() for atoms in images]
+                    mean_temp = float(np.mean(temperatures))
+                except Exception as e:
+                    logger.warning(f"Failed to read/process trajectory for {t} K: {e}")
+                    return 0.0
+
+                # Check if mean temperature falls within the tolerance window
+                tol = tolerance_factor * t
+                lower_bound = t - tol
+                upper_bound = t + tol
+
+                logger.info(f"Target: {t} K | Mean: {mean_temp:.2f} K | Allowed: [{lower_bound:.2f}, {upper_bound:.2f}]")
+
+                if not (lower_bound <= mean_temp <= upper_bound):
+                    logger.warning(f"Temperature check failed for {t} K target. Mean temp {mean_temp:.2f} K is out of bounds.")
+                    return 0.0
+
+            # If the loop completes successfully, all trajectories passed!
+            logger.info("All trajectory temperatures validated successfully.")
+            return 1.0
+
+        except Exception as exc:
+            logger.warning(f"Unexpected error in check_multiple_trajectory_temp: {exc}, result was: {result}")
+            return 0.0
+
+    return score_fn
+
+
+def check_trajectory_temperature(target: float, window_size: float, tolerance: float) -> Callable[[Any], float]:
+    """
+    Create a scoring function that validates a molecular dynamics trajectory file (.traj)
+    by calculating the mean temperature of the last N frames.
+
+    Validation succeeds if the mean temperature is within the relative tolerance of the target.
+    Formula: |mean_temp - target| <= tolerance * abs(target)
+
+    Args:
+        target (float): The target temperature in Kelvin (e.g., 300.0).
+        window_size (float): The number of frames at the end of the trajectory to average over (e.g., 10.0).
+        tolerance (float): Relative tolerance factor (e.g., 1e-1 means +/- 10%).
+
+    Returns:
+        Callable[[Any], float]: A scoring function that takes a result object
+        and returns:
+            - 1.0 if the temperature check passes
+            - 0.0 otherwise
+    """
+
+    def score_fn(result: Any) -> float:
+        if read is None:
+            logger.error("ASE library is not installed. Cannot evaluate .traj files.")
+            return 0.0
+
+        try:
+            agent_path_str = None
+
+            # 1) Parse the agent's result to extract the .traj file path
+            if isinstance(result, str):
+                s = result.strip()
+                try:
+                    parsed = json.loads(s)
+                except json.JSONDecodeError:
+                    # Not JSON: treat the raw string as the file path
+                    agent_path_str = s
+                else:
+                    if isinstance(parsed, dict):
+                        agent_path_str = next(
+                            (v for v in parsed.values() if isinstance(v, str) and v.endswith('.traj')), 
+                            None
+                        )
+                        if not agent_path_str and parsed:
+                            agent_path_str = str(list(parsed.values())[0])
+                    else:
+                        agent_path_str = str(parsed)
+
+            elif isinstance(result, dict):
+                agent_path_str = next(
+                    (v for v in result.values() if isinstance(v, str) and v.endswith('.traj')), 
+                    None
+                )
+                if not agent_path_str and result:
+                    agent_path_str = str(list(result.values())[0])
+            else:
+                logger.warning(f"Unrecognized result type in check_trajectory_temperature: {type(result)}")
+                return 0.0
+
+            if not agent_path_str:
+                logger.warning("Could not extract a file path from the result.")
+                return 0.0
+
+            # 2) Verify the agent's file exists
+            agent_path = Path(agent_path_str)
+            if not agent_path.is_file():
+                logger.warning(f"Agent's trajectory file not found: {agent_path}")
+                return 0.0
+
+            # 3) Load the trajectory using ASE
+            try:
+                images = read(agent_path, index=':')
+            except Exception as e:
+                logger.warning(f"Failed to read trajectory with ASE: {e}")
+                return 0.0
+
+            num_frames = len(images)
+            win_size = int(window_size)
+
+            if num_frames == 0:
+                logger.warning("Trajectory file is empty.")
+                return 0.0
+
+            if num_frames < win_size:
+                logger.warning(f"Trajectory has only {num_frames} frames, but window_size is {win_size}. Using all frames.")
+                win_size = num_frames
+
+            # 4) Extract temperatures from the final window
+            last_images = images[-win_size:]
+            
+            try:
+                temperatures = [atoms.get_temperature() for atoms in last_images]
+                mean_temp = float(np.mean(temperatures))
+            except Exception as e:
+                logger.warning(f"Failed to calculate temperature from atoms objects: {e}")
+                return 0.0
+
+            # 5) Evaluate against the target and tolerance
+            tol = tolerance * abs(target)
+            lower_bound = target - tol
+            upper_bound = target + tol
+
+            logger.info(f"Mean temp (last {win_size} frames): {mean_temp:.2f} K. Allowed range: [{lower_bound:.2f}, {upper_bound:.2f}]")
+
+            if lower_bound <= mean_temp <= upper_bound:
+                return 1.0
+            else:
+                logger.info("Temperature out of bounds.")
+                return 0.0
+
+        except Exception as exc:
+            logger.warning(f"Unexpected error in check_trajectory_temperature: {exc}, result was: {result}")
+            return 0.0
+
+    return score_fn
 
 
 def check_potential_file(target: str):
@@ -496,6 +847,254 @@ def check_structure(target, atom_style):
                 )
         except Exception as exc:
             logger.warning(f"Error in check_structure: {exc}")
+            return 0.0
+
+    return score_fn
+
+def check_cosine_similarity(target: str, threshold: float) -> Callable[[Any], float]:
+    """
+    Create a scoring function that validates a generated spectrum (e.g., VDOS) 
+    against a set of ground truth spectra using cosine similarity.
+
+    The returned function evaluates an input `result` (which should contain the 
+    path to a generated CSV file) and returns a score in {0.0, 1.0}. 
+    
+    Validation succeeds if the maximum cosine similarity between the agent's 
+    spectrum and any of the ground truth spectra is >= threshold.
+
+    Args:
+        target (str): Path to the directory containing ground truth CSV files.
+        threshold (float): Minimum cosine similarity score to pass (e.g., 0.90).
+
+    Returns:
+        Callable[[Any], float]: A scoring function that takes a result object
+        (string, JSON string, or dict) and returns:
+            - 1.0 if max cosine similarity >= threshold
+            - 0.0 otherwise
+    """
+
+    def score_fn(result: Any) -> float:
+        try:
+            agent_path_str = None
+
+            # 1) Parse the agent's result to extract the file path
+            if isinstance(result, str):
+                s = result.strip()
+                try:
+                    parsed = json.loads(s)
+                except json.JSONDecodeError:
+                    # Not JSON: treat the raw string as the file path
+                    agent_path_str = s
+                else:
+                    # Parsed JSON is a dict
+                    if isinstance(parsed, dict):
+                        # Look for a value ending in .csv
+                        agent_path_str = next(
+                            (v for v in parsed.values() if isinstance(v, str) and v.endswith('.csv')), 
+                            None
+                        )
+                        # Fallback: take the first value
+                        if not agent_path_str and parsed:
+                            agent_path_str = str(list(parsed.values())[0])
+                    else:
+                        agent_path_str = str(parsed)
+
+            elif isinstance(result, dict):
+                # Input is directly a dict
+                agent_path_str = next(
+                    (v for v in result.values() if isinstance(v, str) and v.endswith('.csv')), 
+                    None
+                )
+                if not agent_path_str and result:
+                    agent_path_str = str(list(result.values())[0])
+            else:
+                logger.warning(f"Unrecognized result type in check_cosine_similarity: {type(result)}")
+                return 0.0
+
+            if not agent_path_str:
+                logger.warning("Could not extract a file path from the result.")
+                return 0.0
+
+            # 2) Verify the agent's file exists
+            agent_path = Path(agent_path_str)
+            if not agent_path.is_file():
+                logger.warning(f"Agent's CSV file not found: {agent_path}")
+                return 0.0
+
+            # 3) Load agent's VDOS data
+            try:
+                agent_df = pd.read_csv(agent_path)
+                # Look for 'vdos' column; fallback to the second column if headers are malformed
+                if 'vdos' in agent_df.columns:
+                    agent_vdos = agent_df['vdos'].values
+                elif len(agent_df.columns) >= 2:
+                    agent_vdos = agent_df.iloc[:, 1].values
+                else:
+                    logger.warning("Agent's CSV does not contain enough columns.")
+                    return 0.0
+            except Exception as e:
+                logger.warning(f"Failed to read agent's CSV: {e}")
+                return 0.0
+
+            # 4) Find ground truth files
+            gt_dir = Path(target)
+            gt_files = list(gt_dir.glob("*.csv"))
+            if not gt_files:
+                logger.error(f"No ground truth CSVs found in target dir: {gt_dir}")
+                return 0.0
+
+            # 5) Compute cosine similarity against all ground truths
+            max_sim = 0.0
+            for gt_file in gt_files:
+                try:
+                    gt_df = pd.read_csv(gt_file)
+                    if 'vdos' in gt_df.columns:
+                        gt_vdos = gt_df['vdos'].values
+                    else:
+                        gt_vdos = gt_df.iloc[:, 1].values
+                except Exception as e:
+                    logger.warning(f"Failed to read ground truth CSV {gt_file}: {e}")
+                    continue
+
+                # Truncate to the minimum length in case of a minor step discrepancy
+                min_len = min(len(agent_vdos), len(gt_vdos))
+                if min_len == 0:
+                    continue
+
+                v1 = agent_vdos[:min_len]
+                v2 = gt_vdos[:min_len]
+
+                norm1 = np.linalg.norm(v1)
+                norm2 = np.linalg.norm(v2)
+
+                if norm1 == 0 or norm2 == 0:
+                    continue
+
+                sim = np.dot(v1, v2) / (norm1 * norm2)
+                if sim > max_sim:
+                    max_sim = sim
+
+            logger.info(f"Max cosine similarity achieved: {max_sim:.4f} (Threshold: {threshold})")
+
+            # 6) Return final score
+            return 1.0 if max_sim >= threshold else 0.0
+
+        except Exception as exc:
+            logger.warning(f"Unexpected error in check_cosine_similarity: {exc}, result was: {result}")
+            return 0.0
+
+    return score_fn
+
+def check_r2(hidden_test_path: str, threshold: float) -> Callable[[Any], float]:
+    """
+    Create a scoring function that validates a trained regression model (saved as a .pkl)
+    by evaluating its R^2 score on a hidden test dataset.
+
+    The returned function extracts the path to a .pkl file from the input `result`, 
+    loads the model, runs predictions on X_test.npy, and calculates the R^2 score 
+    against y_test.npy.
+
+    Args:
+        hidden_test_path (str): Path to the directory containing 'X_test.npy' and 'y_test.npy'.
+        threshold (float): Minimum R^2 score required to pass (e.g., 0.98).
+
+    Returns:
+        Callable[[Any], float]: A scoring function that takes a result object
+        and returns:
+            - 1.0 if R^2 score >= threshold
+            - 0.0 otherwise
+    """
+
+    def score_fn(result: Any) -> float:
+        try:
+            agent_path_str = None
+
+            # 1) Parse the agent's result to extract the .pkl file path
+            if isinstance(result, str):
+                s = result.strip()
+                try:
+                    parsed = json.loads(s)
+                except json.JSONDecodeError:
+                    # Not JSON: treat the raw string as the file path
+                    agent_path_str = s
+                else:
+                    if isinstance(parsed, dict):
+                        agent_path_str = next(
+                            (v for v in parsed.values() if isinstance(v, str) and v.endswith('.pkl')), 
+                            None
+                        )
+                        if not agent_path_str and parsed:
+                            agent_path_str = str(list(parsed.values())[0])
+                    else:
+                        agent_path_str = str(parsed)
+
+            elif isinstance(result, dict):
+                agent_path_str = next(
+                    (v for v in result.values() if isinstance(v, str) and v.endswith('.pkl')), 
+                    None
+                )
+                if not agent_path_str and result:
+                    agent_path_str = str(list(result.values())[0])
+            else:
+                logger.warning(f"Unrecognized result type in check_r2: {type(result)}")
+                return 0.0
+
+            if not agent_path_str:
+                logger.warning("Could not extract a file path from the result.")
+                return 0.0
+
+            # 2) Verify the agent's model file exists
+            agent_path = Path(agent_path_str)
+            if not agent_path.is_file():
+                logger.warning(f"Agent's model file not found: {agent_path}")
+                return 0.0
+
+            # 3) Verify the hidden test data exists
+            gt_dir = Path(hidden_test_path)
+            x_test_path = gt_dir / "X_test.npy"
+            y_test_path = gt_dir / "y_test.npy"
+
+            if not x_test_path.is_file() or not y_test_path.is_file():
+                logger.error(f"Hidden test data missing in {gt_dir}. Ensure X_test.npy and y_test.npy exist.")
+                return 0.0
+
+            # 4) Load hidden test data
+            try:
+                X_test = np.load(x_test_path)
+                y_test = np.load(y_test_path)
+            except Exception as e:
+                logger.error(f"Failed to load hidden test numpy arrays: {e}")
+                return 0.0
+
+            # 5) Load the agent's trained model
+            try:
+                with open(agent_path, 'rb') as f:
+                    model = pickle.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load agent's pickle file: {e}")
+                return 0.0
+
+            # 6) Run inference and calculate R^2
+            try:
+                # Duck-typing check: Ensure the loaded object has a predict method
+                if not hasattr(model, "predict"):
+                    logger.warning("Loaded pickle object does not have a 'predict' method.")
+                    return 0.0
+                
+                y_pred = model.predict(X_test)
+                r2 = r2_score(y_test, y_pred)
+                
+            except Exception as e:
+                logger.warning(f"Error during model prediction or R^2 calculation: {e}")
+                return 0.0
+
+            logger.info(f"R^2 Score achieved: {r2:.4f} (Threshold: {threshold})")
+
+            # 7) Return final score
+            return 1.0 if r2 >= threshold else 0.0
+
+        except Exception as exc:
+            logger.warning(f"Unexpected error in check_r2: {exc}, result was: {result}")
             return 0.0
 
     return score_fn

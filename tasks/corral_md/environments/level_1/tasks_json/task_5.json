@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_1 - Task_5",
-    "description": "Construct a Platinum (Pt) (111) surface slab with a 2 \u00d7 2 surface cell, 4 atomic layers, and a 10 \u00c5 vacuum layer. Constrain the bottom 2 atomic layers of the slab so they are fixed during optimization. Add a Carbon Monoxide (CO) molecule oriented with the Carbon atom directly above a surface Pt atom (at the atop site), with its initial z-coordinate 1.8 \u00c5 above the z-coordinate of the top-layer Pt atoms. Load the MACE-MP-0 foundation model as an ASE-compatible atomic calculator. Perform geometry optimization using a quasi-Newton optimizer (e.g., BFGS) until the maximum force is below 0.05 eV/\u00c5 for three configurations: the combined slab-CO system (with bottom slab layers constrained), the clean reference slab (with bottom slab layers constrained), and an isolated reference CO molecule centered in a simulation box providing 5 \u00c5 of vacuum padding on all sides.",
+    "description": "Evaluate the adsorption energy of a Carbon Monoxide (CO) molecule on a Platinum (111) surface. Construct a Pt(111) surface slab consisting of a 2 \u00d7 2 surface cell with 4 atomic layers and 10 \u00c5 of vacuum padding. Apply kinematic constraints to fix the atomic positions of the bottom two layers of the slab. Position a CO molecule such that its Carbon atom sits directly at an atop site above a surface Pt atom, with an initial vertical separation of 1.8 \u00c5 from the topmost slab layer. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Perform geometry optimization using the BFGS optimizer until the maximum atomic force falls below 0.05 eV/\u00c5 for three distinct configurations: the combined CO-adsorbed slab system, the clean reference Pt(111) slab, and an isolated reference CO molecule centered within a cell containing 5 \u00c5 of vacuum padding. Calculate the adsorption energy of the system based on these relaxed reference states. Return the calculated adsorption energy as a floating-point value in eV.",
     "tools": [
       "get_structure_from_mp_text",
       "run_python_script",
@@ -10,11 +10,11 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_numerical",
-    "submission_format": "numerical value without units (eg. -1.7855)",
+    "submission_format": "numerical value without units (eg. 35.02)",
     "initial_input": {},
     "scoring_params": {
       "target": -1.7855,
-      "tolerance": 0.01
+      "tolerance": 2e-2
     },
     "id": "level_1_task_5",
     "uuid": "4f9d8a3e-1b2c-4e5f-a6b7-8c9d0e1f2a3b"

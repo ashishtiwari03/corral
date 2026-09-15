@@ -15,7 +15,8 @@
     "initial_input": {
     },
     "scoring_params": {
-      "target": "./ground_truths/task_6/"
+      "target": "./ground_truths/task_6/",
+      "threshold" : 0.90
     },
     "id": "level_2_task_6",
     "uuid": "b23c8a9e-f417-48a5-b1a7-578f7e2c9081"
