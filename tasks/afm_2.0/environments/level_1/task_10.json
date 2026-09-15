@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 1 task 10: Spatially Resolved Roughness And Friction",
-    "description": "Treat the initial scan center as (0 µm, 0 µm). Acquire one contact-mode lateral-force image centered at the origin using a scan size of 2 µm × 2 µm, resolution of 256 × 256 pixels, time per line of 0.075 s, normal-force setpoint of 5 nN, and P/I/D gains of 100/50/0. From this single acquisition, calculate Ra and Rq from the height channel and average friction magnitude and spatial standard deviation from the lateral channels. Report the recorded scan center and all four measurements.",
+    "description": "Treat the initial scan center as (0 µm, 0 µm). Acquire one contact-mode lateral-force image centered at the origin using a scan size of 2 µm × 2 µm, resolution of 256 × 256 pixels, time per line of 0.075 s, normal-force setpoint of 5 nN, and P/I/D gains of 100/50/0. From this single acquisition, calculate rms and mean roughness from the height channel and average friction magnitude and spatial standard deviation from the lateral channels.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",

@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 1 task 9: Friction Repeatability And Surface-Check Measurement",
-    "description": "Acquire one contact-mode lateral-force image over a 5 µm × 5 µm area at 256 × 256 pixels. Use a time per line of 0.075 s, normal-force setpoint of 10 nN, and P/I/D gains of 100/50/0. Calculate the average friction magnitude and spatial standard deviation from the lateral channels. Calculate Ra and Rq from the simultaneously recorded height channel.",
+    "description": "Acquire one contact-mode lateral-force image over a 5 µm × 5 µm area at 256 × 256 pixels. Use a time per line of 0.075 s, normal-force setpoint of 10 nN, and P/I/D gains of 100/50/0. Calculate the average friction magnitude and spatial standard deviation from the lateral channels. Calculate rms and mean roughness from the simultaneously recorded height channel.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",

@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 1 task 5: Scale-Dependent Topographic Roughness",
-    "description": "Acquire one tapping-mode topography image over a 5 µm × 5 µm area at 512 × 512 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/10, amplitude setpoint to 70%, and drive amplitude to 200 mV. Calculate the nominal lateral sampling interval as scan width divided by the number of pixels. Process the image using the common roughness rules and report the sampling interval, Ra, and Rq.",
+    "description": "Acquire one tapping-mode topography image over a 5 µm × 5 µm area at 512 × 512 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/10, and amplitude setpoint to 70%. Process the image and measure the rms roughness at multiple scales (1 x 1 µm, 2 x 2 µm).",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
@@ -33,9 +33,7 @@
           },
           "nominal_duration_seconds": 38.4,
           "nominal_sampling_interval_nm": 9.765625,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         }
       ],
       "question": 5,
@@ -90,9 +88,7 @@
             },
             "nominal_duration_seconds": 38.4,
             "nominal_sampling_interval_nm": 9.765625,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           }
         ],
         "expected_image_count": 1,

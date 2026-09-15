@@ -1,7 +1,7 @@
 [
   {
     "name": "AFM level 1 task 2: Contact-Mode Topography And Setpoint",
-    "description": "Perform one contact-mode AFM topography acquisition over a 5 µm × 5 µm area at 256 × 256 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/0 and use a normal-deflection setpoint of 0.1 V. Save the image and its complete parameter record.",
+    "description": "Perform one contact-mode AFM topography acquisition over a 5 µm × 5 µm area at 256 × 256 pixels and a time per line of 0.075 s. Set P/I/D gains to 100/50/0 and use a normal-deflection setpoint of 0.1 V.",
     "tools": [
       "Document_Retrieval",
       "Image_optimizer",
@@ -32,9 +32,7 @@
           },
           "nominal_duration_seconds": 19.2,
           "nominal_sampling_interval_nm": 19.53125,
-          "required_channels": [
-            "topography"
-          ]
+          "required_channels": ["topography"]
         }
       ],
       "question": 2,
@@ -88,9 +86,7 @@
             },
             "nominal_duration_seconds": 19.2,
             "nominal_sampling_interval_nm": 19.53125,
-            "required_channels": [
-              "topography"
-            ]
+            "required_channels": ["topography"]
           }
         ],
         "expected_image_count": 1,
