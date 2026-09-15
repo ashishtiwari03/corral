@@ -1,15 +1,11 @@
 # Inference-opt architecture
 
-This document describes the current first-iteration design of the inference-time
-optimization environment.
+This document describes the current first-iteration design of the inference-time optimization environment.
 
-The environment asks a teacher agent to write a Python policy that improves a
-frozen student model. The teacher edits `policy/policy.py`, runs experiments on the
-training split, and submits the policy for evaluation on the held-out test split.
+The environment asks a teacher agent to write a Python policy that improves a frozen student model. The teacher edits `policy/policy.py`, runs experiments on the training split, and submits the policy for evaluation on the held-out test split.
 
-The implementation currently follows the stateful pattern used by the wetlab
-environment. Inference tools are trusted and return updated session state through
-Corral's normal environment-state transition mechanism.
+The implementation currently follows the stateful pattern used by the wetlab environment.
+Inference tools are trusted and return updated session state through Corral's normal environment-state transition mechanism.
 
 ## System overview
 
@@ -150,8 +146,7 @@ tools.
 
 Defined in `inference_opt/budget.py`.
 
-`StateLedger` is a small convenience wrapper over the mutable JSON mapping passed
-to a tool. It provides operations such as:
+`StateLedger` is a small convenience wrapper over the mutable JSON mapping passed to a tool. It provides operations such as:
 
 - `reserve()`
 - `remaining()`
@@ -160,9 +155,7 @@ to a tool. It provides operations such as:
 - `best_run()`
 - `snapshot()`
 
-It is not the source of truth. The source of truth is the mapping inside the
-Corral environment projection. `StateLedger` only gives tool implementations a
-convenient API for reading and updating that mapping.
+The source of truth is the mapping inside the Corral environment projection. `StateLedger` only gives tool implementations a convenient API for reading and updating that mapping.
 
 ## Tool execution flow
 
@@ -184,8 +177,7 @@ For a normal teacher action:
 9. The agent receives the tool response.
 ```
 
-The environment makes a deep copy before tool execution. This prevents a failed
-tool from accidentally mutating the `ExecutionState` object supplied by Corral.
+The environment makes a deep copy before tool execution. This prevents a failed tool from accidentally mutating the `ExecutionState` object supplied by Corral.
 
 ## Trusted tools
 
@@ -195,9 +187,7 @@ All inference-opt domain tools are currently marked with:
 @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
 ```
 
-This includes tools that execute the teacher-written policy. That is an explicit
-first-iteration trust assumption: teacher policy code runs as trusted task code.
-Docker can still provide the outer deployment boundary when needed.
+This includes tools that execute the teacher-written policy. That is an explicit first-iteration trust assumption: teacher policy code runs as trusted task code. Docker can still provide the outer deployment boundary when needed.
 
 ## Workspace state versus Corral state
 
@@ -236,11 +226,9 @@ runs/
 submission.json
 ```
 
-The policy source and detailed run artifacts are intentionally files. They are
-large, human-readable artifacts rather than compact execution-state fields.
+The policy source and detailed run artifacts are intentionally files. They are large, human-readable artifacts rather than compact execution-state fields.
 
-The revealed training records are also written to a workspace JSONL file because
-the inspect runner consumes them during `Policy.setup()`.
+The revealed training records are also written to a workspace JSONL file because the inspect runner consumes them during `Policy.setup()`.
 
 ## Evaluation layers
 
@@ -258,14 +246,11 @@ There are two different evaluations.
 6. records a compact run summary in `inference_state`
 7. writes detailed results below `runs/`
 
-The inspect adapter remains in `inference_opt/runner/`. It handles conversion from
-the policy API to inspect samples, student-client calls, answer normalization, and
-inspect scoring.
+The inspect adapter remains in `inference_opt/runner/`. It handles conversion from the policy API to inspect samples, student-client calls, answer normalization, and inspect scoring.
 
 ### Final Corral scoring
 
-The teacher eventually submits the string `submission.json`. Corral resolves that
-answer against the task workspace and invokes the task scoring function.
+The teacher eventually submits the string `submission.json`. Corral resolves that answer against the task workspace and invokes the task scoring function.
 
 `policy_score()` then:
 
@@ -276,8 +261,7 @@ answer against the task workspace and invokes the task scoring function.
 5. subtracts the stored scalar baseline accuracy
 6. returns the final score
 
-The policy-run labels are required internally by inspect to calculate policy
-accuracy. They are not exposed to the teacher as an answer-selection mechanism.
+The policy-run labels are required internally by inspect to calculate policy accuracy. They are not exposed to the teacher as an answer-selection mechanism.
 Item-level baseline pairing is not required for the scalar score.
 
 ## Why inspect-ai is retained
@@ -291,16 +275,13 @@ Inspect-ai provides the actual model-evaluation and grading machinery:
 - logs
 - accuracy metrics
 
-Inference-opt supplies a policy solver and a metered student client so the policy
-controls prompting while inspect remains responsible for evaluation.
+Inference-opt supplies a policy solver and a metered student client so the policy controls prompting while inspect remains responsible for evaluation.
 
-The current inspect adapter is therefore an evaluation abstraction, not another
-teacher-agent environment abstraction.
+The current inspect adapter is therefore an evaluation abstraction, not another teacher-agent environment abstraction.
 
 ## Docker execution
 
-When Corral runs the task in Docker, the task container receives a task-scoped
-workspace and Corral state volume. The same environment-state protocol applies:
+When Corral runs the task in Docker, the task container receives a task-scoped workspace and Corral state volume. The same environment-state protocol applies:
 
 ```text
 Docker container
@@ -308,8 +289,7 @@ Docker container
 └── /corral-state   committed Corral state and request/result files
 ```
 
-Docker improves isolation and makes it possible to run the trusted first-iteration
-design in a contained task environment. It does not change the Corral state model.
+Docker improves isolation and makes it possible to run the trusted first-iteration design in a contained task environment. It does not change the Corral state model.
 
 The first iteration deliberately does not add another policy-execution boundary.
 
