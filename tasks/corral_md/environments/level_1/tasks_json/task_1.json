@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_1",
     "description": "Generate a finite-temperature molecular dynamics trajectory for bulk Silver (Ag). Construct a conventional face-centered cubic (FCC) unit cell of Silver (a = 4.09 \u00c5) and replicate it into a 4 \u00d7 4 \u00d7 4 supercell. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at a target temperature of 300 K with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9. Execute the simulation for 5,000 steps, recording the atomic configuration to an ASE trajectory file every 100 steps. Return the absolute path to the resulting trajectory file as a string.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

@@ -172,7 +172,6 @@ def keyword_log_extractor(path: str, keyword: str) -> str:
 
 def build_execute_python_script_tool(workspace: str | Path):
     """Build execute_python_script bound to one local Corral task workspace."""
-
     @tool
     def execute_python_script(
         script_path: str,

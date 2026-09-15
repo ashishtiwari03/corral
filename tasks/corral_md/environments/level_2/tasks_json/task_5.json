@@ -3,8 +3,10 @@
     "name": "Level_2 - Task_5",
     "description": "Evaluate the linear coupling between lattice strain and the optical phonon frequency of bulk Silicon using a machine learning regression model. Start with a primitive diamond unit cell of Silicon (a = 5.43 \u00c5). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Generate a dataset of 25 distinct deformed crystal structures by systematically applying combinations of isotropic lattice-parameter scaling (scaling the baseline lattice parameter by the fractions: -0.02, -0.01, 0.0, 0.01, 0.02) and a subsequent uniaxial strain along the z-axis (scaling the cell's c-vector by the fractions: -0.02, -0.01, 0.0, 0.01, 0.02). For each of the 25 configurations, compute the \u0393-point phonons using finite-displacement methods and extract the maximum positive vibrational frequency (which corresponds to the highest optical mode) in eV. Construct a feature matrix of shape (25, 2) where the first column is the isotropic lattice-strain fraction and the second column is the uniaxial strain fraction. Construct a target vector containing the 25 extracted frequencies. Train a linear regression model on this complete dataset to predict the frequency from the strain components. Save the results locally to a JSON file named strain_phonon_results.json containing a dictionary with the keys \"isotropic_coefficient\" and \"uniaxial_coefficient\". Return the absolute path to this JSON file as your final output.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

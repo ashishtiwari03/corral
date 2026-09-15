@@ -3,8 +3,10 @@
     "name": "Level_2 - Task_3",
     "description": "Finetune the MACE-MP-0b machine learning interatomic potential for a diatomic Ag₂ system. First, generate a dataset of Ag₂ configurations using an interatomic-distance grid spanning from 0.6 Å to 5.0 Å with a uniform spacing of 0.1 Å. Use the base MACE-MP foundation model as an ASE calculator to compute the potential energies and forces for all configurations, and store these as proxy labels. Next, use these generated pseudo-labels to fine-tune the MACE-MP-0b foundation model. Once fine-tuning is complete, load the resulting checkpoint as an ASE calculator. Construct a conventional cubic FCC unit cell of Silver (4 Ag atoms) and expand it into a 3×3×3 supercell (108 atoms). Perform a molecular dynamics (MD) simulation on this supercell using a Langevin thermostat at 300 K with a 1.0 fs timestep for 5,000 steps, logging the atomic configurations every 100 steps into a trajectory file. Return a JSON dictionary mapping the temperature integer (in K) to the absolute file path of its corresponding trajectory file.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

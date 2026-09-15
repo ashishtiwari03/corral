@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_4",
     "description": "Evaluate the unrelaxed activation barrier for Lithium (Li) adatom diffusion on a graphene sheet using the Nudged Elastic Band (NEB) method. Construct a 3 \u00d7 3 \u00d7 1 periodic graphene sheet with 10 \u00c5 of vacuum padding. Define the initial state by placing a single Li adatom directly above a hollow site, positioned precisely at the horizontal center of the unit cell ($x = \text{cell}[0, 0] \times 0.5$, $y = \text{cell}[1, 1] \times 0.5$) and at a vertical height of 1.8 \u00c5 above the maximum z-coordinate of the carbon atoms. Define the final state by displacing the Li adatom from its initial position by a vector equal to one-third of the first unit cell vector ($\text{cell}[0] / 3.0$), keeping its vertical z-coordinate unchanged. Generate a linear interpolation path consisting of exactly 5 images (inclusive of the initial and final states). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Calculate the single-point potential energy of all 5 images without performing any structural relaxation or NEB force optimization. Calculate the unrelaxed activation barrier for this diffusion path and return the resulting activation barrier as a floating-point value in eV.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

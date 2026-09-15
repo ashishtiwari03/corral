@@ -4,8 +4,10 @@
     "description": "Evaluate the finite-temperature Vibrational Density of States (VDOS) of bulk Aluminum at 300 K by computing the Fourier transform of atomic velocities from a molecular dynamics trajectory. Start with a primitive face-centered cubic (FCC) unit cell of Aluminum (a = 4.05 \u00c5) and replicate it into a 4 \u00d7 4 \u00d7 4 supercell. Use the MACE-MP-0 foundation model as the ASE-compatible calculator. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at 300 K for 2,000 steps with a 1.0 fs timestep. Switch to the microcanonical (NVE) ensemble and execute a 4,096-step production run with a 1.0 fs timestep, recording the atomic velocities at every step. Compute the unnormalized VDOS from the velocity time series and construct the corresponding frequency axis in THz. Save the resulting spectrum to a CSV file named vdos.csv with exactly two columns: frequency_thz and vdos. Return the absolute path to the generated vdos.csv file.",
 
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

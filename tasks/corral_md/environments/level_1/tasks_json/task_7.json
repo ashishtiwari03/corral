@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_7",
     "description": "Evaluate the cohesive energy per formula unit of bulk rutile Titanium Dioxide (TiO\u2082). Construct a conventional tetragonal unit cell of rutile TiO\u2082 (a = 4.594 \u00c5, c = 2.959 \u00c5, internal oxygen parameter u = 0.305) and expand it into a 2 \u00d7 2 \u00d7 2 supercell. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Calculate the total potential energy of the unrelaxed TiO\u2082 supercell to determine the bulk energy per formula unit. Next, construct isolated Titanium (Ti) and Oxygen (O) atoms, each positioned in a 10 \u00d7 10 \u00d7 10 \u00c5 cubic cell with periodic boundary conditions disabled, and compute their respective atomic potential energies using the same calculator. Calculate the cohesive energy (defined as the energy required to separate one TiO\u2082 formula unit into its constituent isolated atoms) using the bulk and isolated atomic energies. Return the calculated cohesive energy as a floating-point value in eV. Do not perform any structural optimization or relaxation.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

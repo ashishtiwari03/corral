@@ -3,8 +3,10 @@
     "name": "Level_2 - Task_10",
     "description": "Simulate a stepped temperature ramp for bulk Aluminum to validate thermostat equipartition. Start with a conventional face-centered cubic (FCC) unit cell of Aluminum (a = 4.05 \u00c5) expanded into a 3 \u00d7 3 \u00d7 3 supercell. Use the MACE-MP-0 foundation model as the calculator. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9. Initialize velocities for 300 K. Sequentially ramp the target temperature from 300 K to 900 K in increments of 100 K. At each temperature plateau, equilibrate the system for 4,000 steps, then run 1,000 production steps. Save the atomic configurations during the production phase of each temperature plateau into an ASE trajectory file. Return a JSON dictionary mapping each temperature integer (in K) to the absolute file path of its corresponding production trajectory file.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

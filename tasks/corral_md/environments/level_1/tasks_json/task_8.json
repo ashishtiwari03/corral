@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_8",
     "description": "Evaluate the equilibrium cell volume of bulk Copper at 600 K using molecular dynamics. Start with a conventional face-centered cubic (FCC) unit cell of Copper (a = 3.615 \u00c5) and replicate it into a 3 \u00d7 3 \u00d7 3 supercell (108 atoms). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Initialize the atomic velocities for a temperature of 600 K and zero out the center-of-mass momentum. Conduct molecular dynamics simulations in the isothermal-isobaric (NPT) ensemble with a target temperature of 600 K, an external pressure of 1.01325 bar, a timestep of 1.0 fs, a thermostat time constant of 25 fs, and a barostat factor of 2e6 GPa \u00d7 fs\u00b2. Perform an initial equilibration phase of 2,000 steps, followed immediately by a 1,000-step production run. Record the instantaneous cell volume at every step of the production phase and compute the average. Return the average cell volume as a floating-point value in \u00c5\u00b3.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

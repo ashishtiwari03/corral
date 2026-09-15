@@ -6,13 +6,17 @@ from pathlib import Path
 from time import perf_counter
 from typing import ClassVar
 
+
 from corral_md.score import (
-    check_log,
-    check_msd,
     check_numerical,
-    check_potential_file,
-    check_structure,
+    check_phonon,
+    check_multiple_trajectory_temp,
+    check_trajectory_temperature,
+    check_cosine_similarity,
+    check_r2,
+
 )
+
 from corral_md.tools import (
     build_run_lammps_tool,
     convert_structure_to_lammps_data,
@@ -41,10 +45,11 @@ BASE_WORK_DIR = os.environ.get("CORRAL_WORK_DIR", "../CORRAL_WORK_DIR/corral_md"
 
 SCORING_FUNCTIONS = {
     "check_numerical": check_numerical,
-    "check_potential_file": check_potential_file,
-    "check_structure": check_structure,
-    "check_log": check_log,
-    "check_msd": check_msd,
+    "check_phonon": check_phonon,
+    "check_multiple_trajectory_temp": check_multiple_trajectory_temp,
+    "check_trajectory_temperature": check_trajectory_temperature,
+    "check_cosine_similarity": check_cosine_similarity,
+    "check_r2": check_r2,
 }
 
 

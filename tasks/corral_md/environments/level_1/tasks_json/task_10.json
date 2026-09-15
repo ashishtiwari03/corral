@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_10",
     "description": "Evaluate the 2D in-plane mechanical stiffness of graphene. Construct a primitive graphene unit cell containing two carbon atoms (lattice parameter a = 2.46 \u00c5) with 15 \u00c5 of vacuum padding along the z-axis. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Perform a constrained geometric relaxation of the system using the BFGS optimizer until the maximum atomic force falls below 0.005 eV/\u00c5. During this optimization, allow the internal atomic positions and the in-plane cell vectors to fully relax, but strictly constrain the out-of-plane cell dimension and cross-plane shear components. After relaxation, calculate the equilibrium in-plane cell area, A\u2080 = |a\u2081 \u00d7 a\u2082|. Generate 11 biaxially strained configurations by uniformly scaling the relaxed in-plane lattice vectors by factors ranging from 0.98 to 1.02. Scale the atomic coordinates proportionally in the xy-plane without altering the out-of-plane vacuum layer. Compute the single-point potential energy for each strained configuration without performing any further structural relaxation. Fit the resulting energy-area data to a quadratic polynomial ($E(A) = aA^2 + bA + c$) and compute the 2D in-plane stiffness using the relation K_2D = 2aA\u2080. Convert the final result from eV/\u00c5\u00b2 to N/m (using the conversion factor 1 eV/\u00c5\u00b2 = 16.0217662 N/m) and return it as a floating-point value.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

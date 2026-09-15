@@ -3,8 +3,10 @@
     "name": "Level_2 - Task_4",
   "description": "Evaluate the vibrational properties of bulk Palladium (Pd) by computing its phonon band structure and density of states (DOS). Start from a primitive face-centered cubic (FCC) unit cell with a lattice parameter of a = 3.89 \u00c5. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Compute the finite-displacement force constants using a finite-difference method with a 5 \u00d7 5 \u00d7 5 supercell and an atomic displacement delta of 0.05 \u00c5. Assemble the dynamical matrix while enforcing the acoustic sum rule. Extract the phonon band structure along the high-symmetry Brillouin zone path \"GXULGK\" using 100 points, and compute the phonon DOS on a 20 \u00d7 20 \u00d7 20 k-point grid sampled over 100 points with a smearing width of 1e-3 eV. Finally, calculate the Zero-Point Energy (ZPE) by numerically integrating the sampled DOS ($ZPE = \\frac{1}{2} \\int E \\cdot g(E) dE$) and return the result in eV.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

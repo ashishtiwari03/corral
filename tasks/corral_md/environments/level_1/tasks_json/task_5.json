@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_5",
     "description": "Evaluate the adsorption energy of a Carbon Monoxide (CO) molecule on a Platinum (111) surface. Construct a Pt(111) surface slab consisting of a 2 \u00d7 2 surface cell with 4 atomic layers and 10 \u00c5 of vacuum padding. Apply kinematic constraints to fix the atomic positions of the bottom two layers of the slab. Position a CO molecule such that its Carbon atom sits directly at an atop site above a surface Pt atom, with an initial vertical separation of 1.8 \u00c5 from the topmost slab layer. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Perform geometry optimization using the BFGS optimizer until the maximum atomic force falls below 0.05 eV/\u00c5 for three distinct configurations: the combined CO-adsorbed slab system, the clean reference Pt(111) slab, and an isolated reference CO molecule centered within a cell containing 5 \u00c5 of vacuum padding. Calculate the adsorption energy of the system based on these relaxed reference states. Return the calculated adsorption energy as a floating-point value in eV.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

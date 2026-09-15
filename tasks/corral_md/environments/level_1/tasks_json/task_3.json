@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_3",
     "description": "Evaluate the equilibrium bulk modulus of Copper by computing its Equation of State (EOS). Construct a conventional face-centered cubic (FCC) unit cell of bulk Copper (a = 3.615 \u00c5). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Generate 9 distinct crystal configurations by uniformly scaling the lattice parameter from -5% to +5% relative to the baseline value (i.e., scaling factors ranging from 0.95 to 1.05). Calculate the single-point potential energy and exact cell volume for each scaled configuration without performing any structural relaxation. Fit the resulting volume-energy data to a Birch-Murnaghan equation of state to extract the equilibrium bulk modulus. Return the calculated bulk modulus as a floating-point value in GPa.",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"

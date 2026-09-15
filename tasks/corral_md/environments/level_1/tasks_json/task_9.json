@@ -3,8 +3,10 @@
     "name": "Level_1 - Task_9",
     "description": "Evaluate the \u0393-point vibrational Zero-Point Energy (ZPE) of bulk Silicon using finite-displacement harmonic analysis. Start with a primitive diamond unit cell of Silicon (a = 5.43 \u00c5). The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Perform a geometry optimization of the atomic positions using the BFGS optimizer until the maximum residual force is below 0.01 eV/\u00c5. Compute the vibrational frequencies at the \u0393-point on the relaxed crystal and calculate the corresponding Zero-Point Energy. Return the final answer in eV units",
     "tools": [
+      "get_potential_metadata",
       "get_structure_from_mp_text",
-      "run_python_script",
+      "convert_structure_to_lammps_data",
+      "run_lammps",
       "get_nth_run_log",
       "keyword_log_extractor",
       "visualisation_tool"
