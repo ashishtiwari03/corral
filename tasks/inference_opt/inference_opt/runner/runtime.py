@@ -254,14 +254,9 @@ class StudentClientImpl:
         ]
         if not completions:
             completions = [output.completion or ""]
-        # Some servers ignore num_choices; resample rather than silently returning
-        # fewer samples than the policy paid for.
-        while len(completions) < count:
-            extra = self._generate(
-                _as_messages(prompt, system),
-                self._config(temperature=temperature, max_tokens=max_tokens),
-            )
-            completions.append(extra.completion or "")
+        # Do not issue unmetered fallback requests when a server ignores
+        # ``num_choices``. Empty slots preserve the hard call budget.
+        completions.extend([""] * max(0, count - len(completions)))
         return completions[:count]
 
     def batch(

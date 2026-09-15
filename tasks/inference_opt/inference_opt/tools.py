@@ -1,19 +1,10 @@
-"""Tools the teacher agent uses to build, test and submit an inference policy.
+"""Trusted teacher tools for building, testing and submitting an inference policy.
 
-Two classes of tool, and the split is forced by Corral's permission model rather
-than chosen for tidiness:
-
-* **Trusted** tools (``get_baseline``, ``reveal_train_questions``) read gold answers.
-  A non-trusted tool runs in a privilege-dropped worker whose mount namespace
-  excludes the dataset directory entirely, so label access requires ``trusted=True``.
-* **Untrusted** tools do everything else, including anything that executes
-  agent-written policy code. A trusted tool must never run model-written code, so
-  these two sets are deliberately disjoint.
-
-Because an untrusted tool is cloudpickled into a fresh process per call and only its
-return value comes back, *no mutable state may live in this module's closures*. The
-budget ledger and the run history are workspace files; see
-:class:`inference_opt.budget.BudgetLedger`.
+The initial inference-opt implementation intentionally follows wetlab's stateful
+environment pattern. Tool calls run in the trusted Corral environment, and mutable
+session state is returned through ``ToolExecutionResult`` and committed by Corral.
+This assumes the teacher policy is trusted; a later hardened version can put policy
+execution behind a separate worker without changing the teacher-facing tools.
 
 Everything the agent can do with ordinary files — notes, a TODO list, writing the
 policy itself — uses Corral's built-in workspace tools rather than a bespoke tool
@@ -30,7 +21,7 @@ from typing import Any
 
 from corral.core.tool import Tool, tool
 from inference_opt import datasets
-from inference_opt.budget import BudgetLedger, BudgetSpec, RunRecord
+from inference_opt.budget import BudgetSpec, RunRecord, StateLedger
 from inference_opt.client import probe_student
 from inference_opt.pairing import compare, read_outcomes
 from inference_opt.policy import PolicyError, discover_policy
@@ -44,7 +35,7 @@ __all__ = ["create_tools"]
 NAG_THRESHOLD = 0.2
 
 
-def _compact(payload: dict[str, Any], summary: str, ledger: BudgetLedger) -> str:
+def _compact(payload: dict[str, Any], summary: str, ledger: StateLedger) -> str:
     """One human-readable line plus compact JSON, with a budget nag when low.
 
     Bulk detail always goes to a file and is referenced by path: inlining a
@@ -66,7 +57,7 @@ def _resolve(work_dir: str, policy_path: str) -> Path:
     root = Path(work_dir)
     candidate = (root / policy_path).resolve() if not Path(policy_path).is_absolute() else Path(policy_path)
     # Keep the agent inside its workspace.
-    if not str(candidate).startswith(str(root.resolve())):
+    if not candidate.is_relative_to(root.resolve()):
         raise ValueError(f"policy path must be inside the workspace: {policy_path}")
     return candidate
 
@@ -117,8 +108,8 @@ def _write_questions(
 def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
     """Build the tool set for one task.
 
-    ``config`` is the task's ``initial_input``: immutable, so it may safely travel
-    with the cloudpickled tool. Mutable state lives in workspace files only.
+    ``config`` is the task's immutable ``initial_input``. Mutable session state is
+    supplied by Corral as a hidden JSON namespace and committed after each call.
     """
     del work_dir  # injected per call as a hidden workspace argument instead
     benchmark = str(config["benchmark"])
@@ -128,8 +119,8 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
     base_urls = dict(config.get("base_urls") or {})
     max_calls_per_question = int(config.get("max_calls_per_question", 8))
 
-    def _ledger(work_dir: str) -> BudgetLedger:
-        return BudgetLedger.load(work_dir, spec)
+    def _ledger(inference_state: Any) -> StateLedger:
+        return StateLedger(inference_state or {}, spec)
 
     def _spec_for(
         work_dir: str, run_id: str, policy_dir: Path, questions: Path,
@@ -152,8 +143,8 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
 
     # -- trusted tools: they read gold answers, so they never run policy code ----
 
-    @tool(hidden_args=["work_dir"], trusted=True)
-    def get_baseline(work_dir: str = "") -> str:
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
+    def get_baseline(work_dir: str = "", inference_state: Any = None) -> str:
         """Report the student's measured zero-shot accuracy on this benchmark.
 
         Every score in this task is an improvement over this number, so it is the
@@ -165,7 +156,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON with the train-split baseline accuracy per model and per topic.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         baselines = dict(config.get("baselines_train") or config.get("baselines") or {})
         payload = {
             "benchmark": benchmark,
@@ -182,9 +173,10 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], trusted=True)
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def reveal_train_questions(
-        count: int = 5, strategy: str = "failures", work_dir: str = ""
+        count: int = 5, strategy: str = "failures", work_dir: str = "",
+        inference_state: Any = None
     ) -> str:
         """Unlock a few labelled training questions, with the student's answers.
 
@@ -203,7 +195,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             JSON with the newly revealed questions, their gold answers, and what
             the student answered zero-shot.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         count = max(1, min(int(count), spec.reveal_batch))
         ledger.reserve(reveals=1)
 
@@ -257,9 +249,9 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    # -- untrusted tools --------------------------------------------------------
+    # -- trusted tools -----------------------------------------------------------
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",))
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def query_student(
         prompt: str,
         system: str = "",
@@ -267,6 +259,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         max_tokens: int = 512,
         n: int = 1,
         work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Ask the student model something directly, without writing a policy.
 
@@ -285,7 +278,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON with the completions the student produced.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         count = max(1, min(int(n), 8))
         ledger.reserve(probe_calls=count, calls=count)
         completions = probe_student(
@@ -303,11 +296,12 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",), background_capable=True)
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def dry_run_policy(
         policy_path: str = "policy",
         question_ids: str = "",
         work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Check that a policy actually runs through the real evaluation pipeline.
 
@@ -326,7 +320,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON with the validation report, per-question traces, and any errors.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
 
         report = validate_tree(policy_dir)
@@ -419,9 +413,10 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",), background_capable=True)
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def evaluate_candidate(
-        policy_path: str = "policy", note: str = "", work_dir: str = ""
+        policy_path: str = "policy", note: str = "", work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Score a policy on the full training split and record the result.
 
@@ -439,7 +434,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             JSON with accuracy, delta over baseline, paired statistics, and the
             path to the per-question artifacts.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
         report = validate_tree(policy_dir)
         if not report.ok:
@@ -533,9 +528,10 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",))
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def inspect_failures(
-        run_id: str = "last", only: str = "wrong", limit: int = 5, work_dir: str = ""
+        run_id: str = "last", only: str = "wrong", limit: int = 5,
+        work_dir: str = "", inference_state: Any = None
     ) -> str:
         """Look at what happened on individual questions in an earlier run.
 
@@ -551,7 +547,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON with per-question answers, logs, call counts and errors.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         runs_root = Path(work_dir) / "runs"
         if run_id == "last":
             candidates = sorted(runs_root.glob("*"), key=lambda p: p.stat().st_mtime)
@@ -600,8 +596,8 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",))
-    def compare_runs(work_dir: str = "") -> str:
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
+    def compare_runs(work_dir: str = "", inference_state: Any = None) -> str:
         """Show every experiment so far, best first, with an honest noise warning.
 
         Args:
@@ -610,7 +606,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON with the run ledger and which run is currently staged to submit.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         experiments = [run for run in ledger.runs if run.get("kind") == "experiment"]
         ordered = sorted(
             experiments, key=lambda run: run.get("delta") or -9.9, reverse=True
@@ -631,8 +627,8 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             ledger,
         )
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",))
-    def get_budget(work_dir: str = "") -> str:
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
+    def get_budget(work_dir: str = "", inference_state: Any = None) -> str:
         """Report what budget remains and what it will buy.
 
         Args:
@@ -642,12 +638,13 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
             JSON with used and remaining experiments, dry runs, student calls and
             reveals.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         return _compact(ledger.snapshot(), ledger.advice(), ledger)
 
-    @tool(hidden_args=["work_dir"], workspace_args=("work_dir",))
+    @tool(hidden_args=["work_dir", "inference_state"], trusted=True)
     def submit_policy(
-        policy_path: str = "policy", rationale: str = "", work_dir: str = ""
+        policy_path: str = "policy", rationale: str = "", work_dir: str = "",
+        inference_state: Any = None,
     ) -> str:
         """Validate a policy and stage it as your final answer.
 
@@ -662,7 +659,7 @@ def create_tools(config: dict[str, Any], work_dir: str) -> dict[str, Tool]:
         Returns:
             JSON confirming what was staged, and the literal string to submit.
         """
-        ledger = _ledger(work_dir)
+        ledger = _ledger(inference_state)
         policy_dir = _resolve(work_dir, policy_path)
         report = validate_tree(policy_dir)
         if not report.ok:

@@ -62,19 +62,23 @@ class TestToolSurface:
             "compare_runs", "get_budget", "submit_policy",
         } <= set(tools)
 
-    def test_only_label_readers_are_trusted(self, environments):
-        """A trusted tool bypasses the sandbox, so it must never run policy code."""
+    def test_inference_tools_are_trusted_for_the_first_iteration(self, environments):
+        """The first implementation intentionally follows wetlab's trusted model."""
         tools = environments["gsm8k_a"].tools
         trusted = {name for name, tool in tools.items() if getattr(tool, "trusted", False)}
-        assert trusted == {"get_baseline", "reveal_train_questions"}
+        assert trusted == {
+            "get_baseline", "reveal_train_questions", "query_student",
+            "dry_run_policy", "evaluate_candidate", "inspect_failures",
+            "compare_runs", "get_budget", "submit_policy",
+        }
 
-    def test_long_running_tools_can_go_to_the_background(self, environments):
+    def test_evaluations_are_foreground_state_transitions(self, environments):
         tools = environments["gsm8k_a"].tools
         background = {
             name for name, tool in tools.items()
             if getattr(tool, "background_capable", False)
         }
-        assert background == {"dry_run_policy", "evaluate_candidate"}
+        assert background == set()
 
     def test_untrusted_tools_only_hide_the_workspace_argument(self, environments):
         """Corral refuses any other hidden argument on a sandboxed tool.

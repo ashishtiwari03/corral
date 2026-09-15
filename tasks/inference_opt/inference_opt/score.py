@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from inference_opt import datasets
-from inference_opt.budget import BudgetLedger
 from inference_opt.pairing import compare, read_outcomes
 from inference_opt.runner import SubprocessRunner
 from inference_opt.runner.spec import RunSpec
@@ -122,22 +121,7 @@ def resolve_submission(answer: str, work_dir: Path) -> tuple[Path | None, list[s
         except (OSError, json.JSONDecodeError) as exc:
             notes.append(f"could not read {staged.name}: {exc}")
 
-    # 3. The best run the ledger recorded, for an agent that ran out mid-flight.
-    try:
-        ledger = BudgetLedger.load(root if (root / "state").is_dir() else work_dir)
-        best = ledger.best_run()
-        if best:
-            policy_dir = (work_dir / str(best.get("policy_dir", "policy"))).resolve()
-            if (policy_dir / "policy.py").is_file():
-                notes.append(
-                    f"no valid submission; falling back to best recorded run "
-                    f"{best.get('run_id')}"
-                )
-                return policy_dir, notes
-    except Exception as exc:  # the ledger is advisory here
-        notes.append(f"ledger unreadable: {exc}")
-
-    # 4. The path itself as a policy directory.
+    # 3. The path itself as a policy directory.
     for guess in (candidate, root, root / "policy", work_dir / "policy"):
         if (guess / "policy.py").is_file():
             notes.append(f"treating {guess} as the policy directory")

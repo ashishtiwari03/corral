@@ -10,6 +10,7 @@ from inference_opt.budget import (
     BudgetSpec,
     QuestionAllocator,
     RunRecord,
+    StateLedger,
 )
 
 
@@ -101,6 +102,16 @@ class TestAllocator:
         allocator.charge("q1", 3)
         allocator.charge("q2", 2)
         assert allocator.used_total == 5
+
+
+def test_state_ledger_uses_the_corral_namespace():
+    state = {}
+    ledger = StateLedger(state, BudgetSpec(max_experiments=2, max_student_calls=10))
+    ledger.reserve(experiments=1, calls=3)
+    ledger.mark_revealed(["q1"])
+    assert state["experiments"] == 1
+    assert state["student_calls"] == 3
+    assert state["revealed_ids"] == ["q1"]
 
 
 class TestLegacyBudget:

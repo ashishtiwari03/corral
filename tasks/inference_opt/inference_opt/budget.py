@@ -37,6 +37,7 @@ __all__ = [
     "Budget",
     "BudgetExhausted",
     "BudgetLedger",
+    "StateLedger",
     "BudgetSpec",
     "QuestionAllocator",
     "RunRecord",
@@ -395,6 +396,139 @@ class BudgetLedger:
 
     def advice(self) -> str:
         """A short, actionable statement of what the remaining budget buys."""
+        left = self.remaining()
+        return (
+            f"Remaining: {left['experiments']} evaluation(s), "
+            f"{left['dry_runs']} dry run(s), {left['student_calls']} student call(s), "
+            f"{left['reveals']} reveal(s)."
+        )
+
+
+class StateLedger:
+    """Small Corral-native ledger backed by a mutable environment namespace.
+
+    Corral commits the namespace after each trusted tool call, so this ledger does
+    not need a workspace file or inter-process locking. The mapping is intentionally
+    plain JSON-shaped data: it is copied into an ExecutionState by the environment
+    and returned through ``ToolExecutionResult`` after every mutation.
+    """
+
+    def __init__(self, state: dict[str, Any], spec: BudgetSpec) -> None:
+        self.state = state
+        self.spec = spec
+        state.setdefault("experiments", 0)
+        state.setdefault("debug_runs", 0)
+        state.setdefault("student_calls", 0)
+        state.setdefault("reveals", 0)
+        state.setdefault("probe_calls", 0)
+        state.setdefault("revealed_ids", [])
+        state.setdefault("runs", [])
+        state.setdefault("best_run_id", None)
+
+    @property
+    def experiments(self) -> int:
+        return int(self.state["experiments"])
+
+    @property
+    def runs(self) -> list[dict[str, Any]]:
+        return self.state["runs"]
+
+    @property
+    def revealed_ids(self) -> list[str]:
+        return self.state["revealed_ids"]
+
+    @property
+    def best_run_id(self) -> str | None:
+        return self.state.get("best_run_id")
+
+    def reserve(
+        self,
+        *,
+        experiments: int = 0,
+        debug_runs: int = 0,
+        calls: int = 0,
+        reveals: int = 0,
+        probe_calls: int = 0,
+    ) -> None:
+        proposed = {
+            "experiments": self.experiments + experiments,
+            "debug_runs": int(self.state["debug_runs"]) + debug_runs,
+            "student_calls": int(self.state["student_calls"]) + calls,
+            "reveals": int(self.state["reveals"]) + reveals,
+            "probe_calls": int(self.state["probe_calls"]) + probe_calls,
+        }
+        limits = {
+            "experiments": self.spec.max_experiments,
+            "debug_runs": self.spec.max_debug_runs,
+            "student_calls": self.spec.max_student_calls,
+            "reveals": self.spec.max_reveals,
+            "probe_calls": self.spec.max_probe_calls,
+        }
+        for name, value in proposed.items():
+            if value > limits[name]:
+                raise BudgetExhausted(
+                    f"{name.replace('_', ' ')} budget exhausted ({limits[name]} allowed)"
+                )
+        self.state.update(proposed)
+
+    def refund(self, *, calls: int = 0) -> None:
+        self.state["student_calls"] = max(0, int(self.state["student_calls"]) - calls)
+
+    def record_run(self, record: RunRecord) -> None:
+        payload = asdict(record)
+        self.runs.append(payload)
+        if record.kind == "experiment" and record.delta is not None:
+            best = self.best_run()
+            if best is None or record.delta > (best.get("delta") or float("-inf")):
+                self.state["best_run_id"] = record.run_id
+
+    def best_run(self) -> dict[str, Any] | None:
+        run_id = self.best_run_id
+        if run_id is None:
+            return None
+        return next((run for run in self.runs if run.get("run_id") == run_id), None)
+
+    def mark_revealed(self, item_ids: list[str]) -> None:
+        for item_id in item_ids:
+            if item_id not in self.revealed_ids:
+                self.revealed_ids.append(item_id)
+
+    def remaining(self) -> dict[str, int]:
+        return {
+            "experiments": self.spec.max_experiments - self.experiments,
+            "dry_runs": self.spec.max_debug_runs - int(self.state["debug_runs"]),
+            "student_calls": self.spec.max_student_calls - int(self.state["student_calls"]),
+            "reveals": self.spec.max_reveals - int(self.state["reveals"]),
+            "probe_calls": self.spec.max_probe_calls - int(self.state["probe_calls"]),
+        }
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "used": {
+                "experiments": self.experiments,
+                "dry_runs": int(self.state["debug_runs"]),
+                "student_calls": int(self.state["student_calls"]),
+                "reveals": int(self.state["reveals"]),
+                "probe_calls": int(self.state["probe_calls"]),
+            },
+            "limits": asdict(self.spec),
+            "remaining": self.remaining(),
+            "runs_recorded": len(self.runs),
+            "best_run_id": self.best_run_id,
+            "questions_revealed": len(self.revealed_ids),
+        }
+
+    def fraction_left(self) -> float:
+        pairs = (
+            (self.spec.max_experiments - self.experiments, self.spec.max_experiments),
+            (
+                self.spec.max_student_calls - int(self.state["student_calls"]),
+                self.spec.max_student_calls,
+            ),
+        )
+        return min(left / total if total else 1.0 for left, total in pairs)
+
+    def advice(self) -> str:
         left = self.remaining()
         return (
             f"Remaining: {left['experiments']} evaluation(s), "

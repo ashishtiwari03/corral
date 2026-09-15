@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
@@ -20,6 +21,8 @@ from corral.core.environment import (
     Toolset,
     default_file_tools,
 )
+from corral.core import ToolExecutionResult
+from corral.core.transition import environment_operations
 from corral.core.task import EnvironmentSetup, TaskDefinition
 from corral.report.logging import event, exception_fields
 from inference_opt.task_prompts import task_prompt
@@ -29,7 +32,7 @@ from inference_opt.tools import create_tools
 if TYPE_CHECKING:
     from corral.core.state import ExecutionState
 
-__all__ = ["create_environments", "load_tasks_from_json"]
+__all__ = ["InferenceOptEnvironment", "create_environments", "load_tasks_from_json"]
 
 BASE_WORK_DIR = os.environ.get("CORRAL_WORK_DIR", ".corral/workspaces")
 
@@ -113,10 +116,54 @@ def _prepare_workspace(env: Environment, state: ExecutionState) -> EnvironmentSe
     workspace = env.workspace_path or ""
     if workspace:
         _seed_workspace(Path(workspace))
+    config = dict(env.current_task.initial_input)
+    budget = dict(config.get("budget") or {})
+    inference_state = {
+        "experiments": 0,
+        "debug_runs": 0,
+        "student_calls": 0,
+        "reveals": 0,
+        "probe_calls": 0,
+        "revealed_ids": [],
+        "runs": [],
+        "best_run_id": None,
+        "limits": {
+            "max_experiments": int(budget.get("max_experiments", 20)),
+            "max_debug_runs": int(budget.get("max_debug_runs", 10)),
+            "max_student_calls": int(budget.get("max_student_calls", 250)),
+            "max_reveals": int(budget.get("max_reveals", 4)),
+            "max_probe_calls": int(budget.get("max_probe_calls", 30)),
+            "reveal_batch": int(budget.get("reveal_batch", 5)),
+        },
+    }
     return EnvironmentSetup(
-        hidden_arguments={"work_dir": workspace},
+        hidden_arguments={"work_dir": workspace, "inference_state": inference_state},
         status="Policy workspace prepared with guide, starter policy and state.",
     )
+
+
+class InferenceOptEnvironment(Environment):
+    """Trusted, stateful inference-optimization environment.
+
+    The first iteration intentionally trusts policy code. Its durable session state
+    therefore follows the wetlab pattern: tools receive a JSON state snapshot and
+    return the updated snapshot through ``ToolExecutionResult``. The environment
+    itself retains no mutable execution history.
+    """
+
+    def execute_tool(self, state: ExecutionState, tool, arguments):
+        if "inference_state" not in tool.hidden_args:
+            return super().execute_tool(state, tool, arguments)
+        session = deepcopy(arguments["inference_state"])
+        raw = tool.execute(**{**arguments, "inference_state": session})
+        environment = {
+            **dict(state.environment.values),
+            "hidden_arguments": {
+                **dict(state.environment.values.get("hidden_arguments", {})),
+                "inference_state": session,
+            },
+        }
+        return ToolExecutionResult(content=raw, environment=environment)
 
 
 def create_environments(
@@ -144,7 +191,7 @@ def create_environments(
         # each task binds its tools to its own benchmark and student. A single
         # shared pool would bind every task to whichever was configured last.
         environments = {
-            task_id: Environment(
+            task_id: InferenceOptEnvironment(
                 task_id=task_id,
                 task=task,
                 base_work_dir=work_dir,
