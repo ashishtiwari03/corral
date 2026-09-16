@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from pathlib import Path
 
     from pydantic import JsonValue
 
@@ -77,6 +78,8 @@ class TaskDefinition:
         Callable[[Environment, ExecutionState], EnvironmentSetup | None] | None
     ) = None
     resolve_answer: bool = True
+    # Optional benchmark-specific handling of mixed file/JSON submissions.
+    submission_resolver: Callable[[str, str | Path], str] | None = None
 
     def dependencies(self) -> set[str]:
         return {ref.task_id for ref in self.input_map.values()}

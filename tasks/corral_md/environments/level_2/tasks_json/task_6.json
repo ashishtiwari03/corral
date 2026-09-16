@@ -12,12 +12,12 @@
       "keyword_log_extractor",
       "visualisation_tool"
     ],
-    "scoring_function": "cosine_similarity",
+    "scoring_function": "check_cosine_similarity",
     "submission_format": "string representing the absolute path to the output file (eg. '/path/to/vdos.csv')",
     "initial_input": {
     },
     "scoring_params": {
-      "target": "./ground_truths/task_6/",
+      "target": "ground_truth/level_2/task_6/",
       "threshold" : 0.90
     },
     "id": "level_2_task_6",

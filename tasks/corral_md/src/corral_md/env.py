@@ -6,21 +6,24 @@ from pathlib import Path
 from time import perf_counter
 from typing import ClassVar
 
-
 from corral_md.score import (
+    PACKAGE_DATA_ROOT,
+    check_cosine_similarity,
+    check_log,
+    check_msd,
+    check_multiple_trajectory_temp,
     check_numerical,
     check_phonon,
-    check_multiple_trajectory_temp,
-    check_trajectory_temperature,
-    check_cosine_similarity,
+    check_potential_file,
     check_r2,
-
+    check_structure,
+    check_trajectory_temperature,
 )
-
+from corral_md.submission import resolve_submission
 from corral_md.tools import (
+    build_execute_python_script_tool,
     build_run_lammps_tool,
     convert_structure_to_lammps_data,
-    build_execute_python_script_tool,
     get_nth_run_log,
     get_potential_metadata,
     get_structure_from_mp_text,
@@ -44,6 +47,10 @@ from corral.workspace import (
 BASE_WORK_DIR = os.environ.get("CORRAL_WORK_DIR", "../CORRAL_WORK_DIR/corral_md")
 
 SCORING_FUNCTIONS = {
+    "check_structure": check_structure,
+    "check_potential_file": check_potential_file,
+    "check_log": check_log,
+    "check_msd": check_msd,
     "check_numerical": check_numerical,
     "check_phonon": check_phonon,
     "check_multiple_trajectory_temp": check_multiple_trajectory_temp,
@@ -54,21 +61,17 @@ SCORING_FUNCTIONS = {
 
 
 def get_scoring_function(name: str, params: dict | None = None) -> Callable:
-    """Get a scoring function by name from the registry, with optional parameters"""
+    """Validate a scoring factory and its references before initializing it."""
     fn = SCORING_FUNCTIONS.get(name)
     if fn is None:
         raise ValueError(f"Scoring function '{name}' not found in the registry")
 
-    # If it's a factory function (i.e., takes arguments), call with params
-    if params:
-        try:
-            return fn(**params)
-        except Exception as e:
-            raise ValueError(
-                f"Error initializing scoring function '{name}' with params {params}: {e}"
-            ) from e
-    else:
-        return fn
+    try:
+        return fn(**({} if params is None else params))
+    except Exception as e:
+        raise ValueError(
+            f"Error initializing scoring function '{name}' with params {params}: {e}"
+        ) from e
 
 
 def load_tasks_from_json(json_path: Path, work_dir: str) -> dict[str, TaskDefinition]:
@@ -101,14 +104,12 @@ def load_tasks_from_json(json_path: Path, work_dir: str) -> dict[str, TaskDefini
             scoring_fn_name = task_info.get("scoring_function", "default")
             scoring_params = task_info.get("scoring_params", {})
 
-            # Resolve 'target' if it looks like a relative path
-            target = scoring_params.get("target")
-            scoring_params["target"] = target
-
-            # Optionally reassign if task_info is reused later
-            task_info["scoring_params"] = scoring_params
-
-            scoring_fn = get_scoring_function(scoring_fn_name, scoring_params)
+            try:
+                scoring_fn = get_scoring_function(scoring_fn_name, scoring_params)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid task '{task_id}' in {task_file}: {exc}"
+                ) from exc
             # Add work_dir to initial input if not already present
             initial_input = task_info.get("initial_input", {}).copy()
             if "work_dir" not in initial_input:
@@ -125,6 +126,11 @@ def load_tasks_from_json(json_path: Path, work_dir: str) -> dict[str, TaskDefini
                 initial_input=initial_input,
                 prompt_fn=_md_task_prompt,
                 resolve_answer=False,
+                submission_resolver=(
+                    resolve_submission
+                    if scoring_fn_name != "check_potential_file"
+                    else None
+                ),
             )
 
     return tasks
@@ -196,7 +202,7 @@ Required submission format:
 
     prompt += "\nAvailable input data:\n"
 
-    prompt += ("")
+    prompt += ""
 
     # Display resolved inputs from dependencies
     resolved = env.resolve_inputs(state)
@@ -283,19 +289,9 @@ def create_environments(
             subsystem="runtime",
             benchmark=name,
         )
-        json_path = (
-            Path(__file__).parent.parent.parent
-            / "environments"
-            / f"level_{level}"
-            / "subtasks_json"
-        )
+        json_path = PACKAGE_DATA_ROOT / f"level_{level}" / "subtasks_json"
     else:
-        json_path = (
-            Path(__file__).parent.parent.parent
-            / "environments"
-            / f"level_{level}"
-            / "tasks_json"
-        )
+        json_path = PACKAGE_DATA_ROOT / f"level_{level}" / "tasks_json"
 
     # Create environments for all tasks
     subtask_specific_tools = {

@@ -56,6 +56,8 @@ def _resolve_submission(
     workspace: str | Path | None,
 ) -> str:
     """Resolve file-backed submissions only for the evaluation call."""
+    if task.submission_resolver is not None and workspace is not None:
+        return task.submission_resolver(submission, workspace)
     if not task.resolve_answer:
         return submission
     if submission.startswith("{") and submission.endswith("}"):

@@ -16,7 +16,7 @@
     "initial_input": {
     },
     "scoring_params": {
-      "target": ".../../ground_truth/level_2/task_5/phonon.json",
+      "target": "ground_truth/level_2/task_5/phonon.json",
       "tolerance": 2e-2
     },
     "id": "level_2_task_5",

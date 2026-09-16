@@ -15,7 +15,7 @@
     "submission_format": "string representing the absolute path to the output file (eg. '/path/to/trained_model.pkl')",
     "initial_input": {},
     "scoring_params": {
-      "hidden_test_path" : "../../ground_truth/level_2/task_9/",
+      "hidden_test_path" : "ground_truth/level_2/task_9/",
       "threshold" : 0.98
     },
     "id": "level_2_task_9",

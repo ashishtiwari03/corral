@@ -16,7 +16,7 @@
     "initial_input": {
     },
     "scoring_params": {
-      "hidden_test_path" : "../../ground_truth/level_2/task_8/",
+      "hidden_test_path" : "ground_truth/level_2/task_8/",
       "threshold" : 0.98
 
     },
