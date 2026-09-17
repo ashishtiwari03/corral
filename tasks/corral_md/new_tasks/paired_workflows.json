@@ -1,0 +1,214 @@
+{
+  "status": "This page describes a plan. These new scoring checks are not active yet.",
+  "pairs": [
+    {
+      "id": 1,
+      "title": "Heat silicon, then measure how it moves",
+      "category": "Motion and heat",
+      "cutoff": "The silicon has reached 2500 K.",
+      "level_1_description": "Start with the supplied silicon crystal. Use the supplied Stillinger–Weber (SW) potential in LAMMPS. Make a 3 × 3 × 3 cell with 216 atoms. At zero pressure, heat it from 300 K to 2500 K over 1,000,000 steps of 1 femtosecond (fs) each. Save the final state and the temperature and density every 1,000 steps.",
+      "level_1_submission": "Turn in a JSON file that lists paths to the LAMMPS input, log, final restart state, and a table of 1,000 heating samples. Include the final energy and a file with the force on each of the 216 atoms.",
+      "level_1_checks": [
+        "Open the input and log. Check the starting cell, 216 silicon atoms, supplied SW potential, metal units, atom_style full, zero-pressure NPT setting, 1 fs step, heating rate of 2.2 K/ps, and final step 1,000,000. The run recorded in the log must match the input.",
+        "Read all 1,000 rows in the heating table. Steps must run from 1,000 to 1,000,000 in order. Target temperature must follow the heating plan. Measured temperature and density must be valid positive numbers. Compare every row with the raw values in the LAMMPS log.",
+        "Open the final state and force file. Check its 216 silicon atoms and velocities. Its density must be within 1% of the final log value, and the last 50 samples must average 2500 ± 250 K. Recalculate its energy and every atomic force with the supplied SW potential; compare with the saved values within 0.05 eV and 0.05 eV/Å per force component."
+      ],
+      "level_2_submission_addendum": "Also include the Level 1 final state, heating table, final energy, and force file so the heating stage can be checked.",
+      "level_2_checks": [
+        "Open the final state, production input, log, raw measurements, and 500-row table. Check that production starts at step 1,000,000 from the saved state and runs for 500 ps. Each table row must match the raw file and log at steps 1,001,000 through 1,500,000, 1,000 steps apart.",
+        "Calculate the slope of the last 250 movement rows and divide it by 6, with the unit conversion to m²/s. The reported answer must be within 1% of this file-derived result; that result must be within 13.2% of 1.4440806734590084 × 10⁻⁸ m²/s."
+      ],
+      "level_2_description": "Start with the supplied silicon crystal and complete the full Level 1 heating run, saving its final state and measurements. Then keep that same hot system running for 500 picoseconds (ps). Measure how far the atoms move every 1 ps, and use the last 250 measurements to calculate the liquid self-diffusion coefficient in m²/s.",
+      "level_2_submission": "Turn in a JSON file with the answer, a 500-row movement table, the raw LAMMPS measurements, and the input and log files."
+    },
+    {
+      "id": 2,
+      "title": "Cool glass, then find its change point",
+      "category": "Motion and heat",
+      "cutoff": "The liquid has cooled to 300 K.",
+      "level_1_description": "Start with the supplied molten sodium-silicate structure and potential. Cool it from 4000 K to 300 K at 10 K/ps, at zero pressure. Use 1 fs steps. Save the final cooled state and measure the target temperature and density every 1 ps for 370 ps.",
+      "level_1_submission": "Turn in a JSON file that lists the cooled state, a 370-row temperature and density table, the raw LAMMPS measurements, and the input and log files.",
+      "level_1_checks": [
+        "Open the input and log. Check the supplied BKS-type potential and PPPM setting, zero-pressure NPT run, 1 fs step, and 4000-to-300 K cooling at 10 K/ps over 370,000 steps. The log must show the run that the input requests.",
+        "Read the table, raw measurements, and log. There must be 370 samples at steps 1,000 through 370,000, 1,000 steps apart. Target temperatures must follow the cooling plan, densities must be valid positive numbers, and every table row must match its raw measurement and log row.",
+        "Open the cooled state. Check that it has the original atoms and a density and energy within 1% of the last log row. The measured temperature at step 370,000 must be 300 ± 30 K. Density may rise or fall during cooling."
+      ],
+      "level_2_submission_addendum": "Also include the cooled state and the log for the final 100 ps run.",
+      "level_2_checks": [
+        "Open the cooled state, final input, and final log. Check that the 100 ps run starts from the cooled state at 300 K, uses 5,000 fs pressure damping, and contains 100,000 more steps of 1 fs each.",
+        "Read the cooling table and fit one straight line using samples from 300–1200 K and another using 1800–2600 K, with at least ten rows in each range. The lines must meet between 300 and 2600 K.",
+        "The reported temperature must be within 1% of the value calculated from the submitted table. That calculated value must be within 18% of 1936.0049798765504 K."
+      ],
+      "level_2_description": "Start with the supplied molten sodium-silicate structure and complete the full Level 1 cooling run, saving the cooled state and density measurements. Then keep that glass at 300 K for another 100 ps. Use the cooling data to find where the low-temperature and high-temperature density trends meet, and report that temperature in kelvin.",
+      "level_2_submission": "Turn in a JSON file with the reported temperature, the 370-row cooling table, the raw measurements, and the LAMMPS input and log."
+    },
+    {
+      "id": 3,
+      "title": "Make silver training data, then test a model",
+      "category": "Learning from data",
+      "cutoff": "The 45 silver-pair examples and their train/test split are saved.",
+      "level_1_description": "Place two silver atoms at 45 distances from 0.6 to 5.0 Å, in 0.1 Å steps. Use the supplied MACE-MP-0b model to calculate energy and force for each pair. Set aside the nine specified examples for testing. Save all examples in distance order and save the split.",
+      "level_1_submission": "Turn in a JSON file with paths to the 45-frame extxyz dataset and a split file. The split file lists training indices, test indices, and the SHA-256 digest of the supplied model.",
+      "level_1_checks": [
+        "Open the dataset. It must contain exactly 45 ordered frames of two silver atoms, at positions [0, 0, 0] and [distance, 0, 0] for distances 0.6–5.0 Å in 0.1 Å steps. There must be no periodic cell. Each frame must contain valid energy and forces.",
+        "Open the split file. Test indices must be 4, 9, 14, 19, 24, 29, 34, 39, and 44. The other 36 indices must be the training set, with no repeats or overlap. Compare the saved model digest with the supplied model file.",
+        "Recalculate energy and force for all 45 saved geometries with the supplied model, using its required float64, CUDA, and dispersion settings. Each saved value must match within relative tolerance 10⁻⁵ and absolute tolerance 10⁻³."
+      ],
+      "level_2_submission_addendum": "No extra files are needed for this plan: the current dataset and evaluation files hold the Level 1 evidence.",
+      "level_2_checks": [
+        "Open the trained checkpoint and evaluation file in a separate worker. Verify its SHA-256 digest, load its tensor-only state_dict with weights_only=True into the supplied model architecture, and check at least two valid training losses. Recalculate the nine test predictions and compare them with the saved predictions.",
+        "From those nine test predictions, calculate energy and force error. Energy RMSE must be at most 0.1 eV per atom and force RMSE at most 0.2 eV/Å.",
+        "Open the silver trajectory. Check 108 atoms, 5,000 Langevin steps with frames every 100 steps, and the final frame. Frames must contain positions, momenta, energy, forces, and the checkpoint digest. Recalculate three selected frames with the submitted model. The last ten frames must average 300 ± 30 K."
+      ],
+      "level_2_description": "Start with the supplied MACE-MP-0b model. Make and save all 45 silver-pair examples and the same train/test split required in Level 1. Train the model on the 36 training pairs and check it on the nine test pairs. Then use the trained model for a 5,000-step simulation of 108 silver atoms at 300 K.",
+      "level_2_submission": "Turn in a JSON file with paths to the silver trajectory, trained-model checkpoint, full pair dataset, and evaluation file with the split, predictions, loss history, and model digests."
+    },
+    {
+      "id": 4,
+      "title": "Move palladium atoms, then study vibrations",
+      "category": "Vibrations",
+      "cutoff": "The seven force measurements are saved.",
+      "level_1_description": "Build the 125-atom palladium cell from a primitive FCC cell with lattice setting 3.89 Å. Use MACE-MP-0 to measure its energy and forces. Move the chosen atom by +0.05 Å and −0.05 Å along each of the x, y, and z axes, and save the energy and forces after each move.",
+      "level_1_submission": "Turn in a JSON file with a seven-frame extxyz file and a metadata file naming the cell, moved atom, directions, and 0.05 Å move.",
+      "level_1_checks": [
+        "Open the seven-frame file. It must contain the 125-atom palladium cell in this order: unchanged, +x, −x, +y, −y, +z, −z. Only the named atom may move, by the named 0.05 Å amount. Compare these values with the metadata file.",
+        "Read every frame, not just the metadata. Each one must contain valid energy and a 125 × 3 force array in the required units. Check the saved model name against the supplied MACE-MP-0 model.",
+        "Recalculate energy and forces for all seven saved structures with the supplied model. Differences must be at most 0.01 eV for energy and 0.02 eV/Å for force."
+      ],
+      "level_2_submission_addendum": "Save all seven displaced structures and their metadata. The current task asks for only three example structures.",
+      "level_2_checks": [
+        "Open the force-constant array and rebuild all 125 blocks from the six checked displacement-force sets. Check atom order, symmetry, and the acoustic sum rule (a force-balance check). The saved array must match the rebuilt result.",
+        "Open both CSV files. Rebuild three vibration branches at each of 100 GXULGK points and a 100-point density of states using the required 20 × 20 × 20 grid and 10⁻³ eV width. Every submitted row must agree with the rebuilt values.",
+        "Calculate zero-point energy from the submitted density-of-states rows. The reported value must be within 1% of that calculation, and the calculation must be within 2% of 0.025114020478915547 eV."
+      ],
+      "level_2_description": "Start with the original palladium cell. Make and save all seven structures and force measurements required in Level 1. Then use those measurements to find how the crystal vibrates. Save the force constants (numbers that describe how atoms push back when moved), a table of vibration energies, a table showing how common each energy is, and the zero-point energy.",
+      "level_2_submission": "Turn in a JSON file with the energy answer, a 125 × 3 × 3 NumPy force-constant array, a 300-row band CSV, a 100-row density-of-states CSV, and the saved structures."
+    },
+    {
+      "id": 5,
+      "title": "Stretch silicon, then predict a vibration",
+      "category": "Vibrations",
+      "cutoff": "Five evenly stretched silicon cells are measured.",
+      "level_1_description": "Start with the supplied diamond silicon cell and MACE-MP-0 model. Stretch or shrink all directions by −2%, −1%, 0%, 1%, or 2%, with no extra z-direction stretch. For each cell, move each atom by ±0.01 Å along each axis and use the measured forces to find its highest positive vibration frequency.",
+      "level_1_submission": "Turn in a JSON file with a five-row frequency CSV and a 65-frame extxyz file: one unchanged cell and 12 moved cells for each of the five stretch values.",
+      "level_1_checks": [
+        "Open the CSV and 65-frame file. Check the five required whole-cell stretch values, zero extra z stretch, and the actual cell shapes and atom positions in the frames. Each group must contain one reference and all 12 signed 0.01 Å moves in atom and axis order.",
+        "Read the forces in each frame and calculate the highest positive Γ-point frequency for each group. Each CSV frequency must be within 2% of the value calculated from those saved forces.",
+        "Use the supplied MACE-MP-0 model to recalculate energy and force for the reference and one positive/negative move pair at each stretch value. Differences must be at most 0.01 eV and 0.02 eV/Å."
+      ],
+      "level_2_submission_addendum": "For this plan, turn in a JSON manifest that links to the coefficient JSON, a 25-row strain and frequency CSV, and a 325-frame extxyz file with a reference and 12 moved structures for each row.",
+      "level_2_checks": [
+        "Open the CSV and frame file. Check that all 25 stretch combinations occur once, with the correct cell shapes and all required force measurements. Recalculate all 25 frequencies from the saved forces; each CSV value must be within 2% of its recalculated value. Independently check one row with nonzero z stretch for each whole-cell stretch value.",
+        "Fit a straight line to the two stretch values and 25 checked frequencies. Each saved coefficient must be within 1% of this new fit and within 2% of its reference value: −0.2671973681332281 for whole-cell stretch and −0.11081421171444082 for z stretch.",
+        "A missing or repeated row, invalid frequency, or coefficient file without the full CSV and frame file fails."
+      ],
+      "level_2_description": "Start with the original diamond silicon cell. Measure vibrations for all 25 combinations of whole-cell stretch and extra z-direction stretch; this includes the five Level 1 cases with no extra z stretch. Save the structures, forces, and frequencies. Then fit a straight-line model that predicts frequency from the two stretch values, and save its coefficients.",
+      "level_2_submission": "Turn in the JSON file with the two fitted coefficients."
+    },
+    {
+      "id": 6,
+      "title": "Settle aluminum, then measure vibrations",
+      "category": "Motion and heat",
+      "cutoff": "The 300 K settling run and its final state are saved.",
+      "level_1_description": "Build a 64-atom aluminum cell from the supplied 4.05 Å FCC cell. Use MACE-MP-0 and a Langevin thermostat to keep it near 300 K for 2,000 steps of 1 fs each. Save a frame every 100 steps and a final state that can start the next run.",
+      "level_1_submission": "Turn in a JSON file with paths to the 20-frame trajectory, the final state with positions and momenta, and a file of run settings and sample steps.",
+      "level_1_checks": [
+        "Open the trajectory and settings file. Check 20 frames at steps 100 through 2,000, 100 steps apart. Each frame must contain 64 periodic aluminum atoms, the required cell, 1 fs timing, Langevin NVT settings, momenta, energy, and forces. Check saved settings against the frames.",
+        "Calculate temperature from the last ten frames; its mean must be 300 ± 30 K. Recalculate energy and forces for three selected frames with the supplied MACE-MP-0 model; differences must be at most 0.01 eV and 0.02 eV/Å.",
+        "Open the final-state file. Its cell, positions, and momenta must equal the last trajectory frame. Repeated or out-of-order frames fail."
+      ],
+      "level_2_submission_addendum": "For this plan, submit a JSON file that links to vdos.csv, the Level 1 trajectory, final state, and settings, plus a second trajectory with the starting state and all 4,096 later frames. To calculate VDOS, subtract each velocity’s time average, apply rFFT, square its magnitude, and sum across atoms and directions. Do not add a window or normalize. Frequency bin k is k × 1000/4096 THz for k = 0–2048.",
+      "level_2_checks": [
+        "Open both trajectories and the final-state file. The later run must start from that state at step 2,000, have no thermostat, and include one frame at every step from 2,001 to 6,096. Every frame needs velocities, energy, and forces. Recalculate three selected energies and forces with the supplied model within 0.01 eV and 0.02 eV/Å.",
+        "Read the momenta from all 4,096 later frames, calculate velocities, and rebuild the VDOS using the specified FFT rule. Open vdos.csv and check exactly 2,049 finite, nonnegative rows on the 0–500 THz frequency grid; the spectrum must have a nonzero value.",
+        "Compare every saved VDOS row with the spectrum rebuilt from the trajectory: relative tolerance 1% and absolute tolerance 10⁻⁶ times the peak value. Its cosine similarity to a supplied reference spectrum must be at least 0.90."
+      ],
+      "level_2_description": "Start with the original 64-atom aluminum cell. Complete the full Level 1 run at 300 K and save its final state. Then run that same system for 4,096 more steps without a thermostat, saving every step. Turn the saved atom velocities into a vibration spectrum (VDOS).",
+      "level_2_submission": "Turn in the vdos.csv file with frequency_thz and vdos columns."
+    },
+    {
+      "id": 7,
+      "title": "Measure aluminum volume as it warms",
+      "category": "Motion and heat",
+      "cutoff": "The 300 K volume measurements are complete.",
+      "level_1_description": "Build the supplied 108-atom aluminum cell. At 300 K and 1.01325 bar, run 5,000 settling steps and 10,000 measuring steps, each lasting 1 fs. Save a frame every ten measuring steps and report the average cell volume.",
+      "level_1_submission": "Turn in a JSON file with the reported average volume and a 1,000-frame trajectory.",
+      "level_1_checks": [
+        "Open the trajectory. It must contain 108 periodic aluminum atoms in the required cell at steps 5,010 through 15,000, ten steps apart. Check the saved NPT settings against the frames: 1.01325 bar, 1 fs, 25 fs thermostat time, and 2 × 10⁶ GPa·fs² barostat factor.",
+        "Read cell, momenta, energy, and forces from every frame. All volumes must be valid and positive. Average the volumes: the reported answer must be within 1% of that mean, and that mean must be within 2% of the 1853.639642 Å³ reference.",
+        "Recalculate energy and forces for the first, last, and one middle frame with the supplied MACE-MP-0 model; differences must be at most 0.01 eV and 0.02 eV/Å. The first-half and second-half mean volumes must differ by no more than 1% of the full mean."
+      ],
+      "level_2_submission_addendum": "Also include stage_1_mean_volume_A3, the mean volume from the 300 K frames.",
+      "level_2_checks": [
+        "Open the trajectory and inspect the 400 K and 500 K blocks. Each needs 1,000 correctly timed frames, the required atoms and NPT settings, valid saved values, and first-half and second-half mean volumes within 1% of each other. Recalculate selected energies and forces with the supplied model. Saved energies and forces must agree within 0.01 eV and 0.02 eV/Å.",
+        "Calculate the three mean volumes from the saved frames. Fit a straight line of volume against 300, 400, and 500 K. Divide its slope by the 300 K mean. The reported expansion value must be within 1% of that result; the result must be within 10% of 9.543519374970703 × 10⁻⁵ K⁻¹."
+      ],
+      "level_2_description": "Start with the original 108-atom aluminum cell. Complete the 300 K volume run from Level 1, then run the same measurement at 400 K and 500 K. Use the three saved average volumes to calculate how much the aluminum expands per degree of warming.",
+      "level_2_submission": "Turn in a JSON file with the expansion answer and all 3,000 saved frames, grouped by temperature."
+    },
+    {
+      "id": 8,
+      "title": "Make silicon examples, then train a predictor",
+      "category": "Learning from data",
+      "cutoff": "The first 25 structures, energies, and feature rows are saved.",
+      "level_1_description": "Build the supplied 64-atom silicon cell. Use random seed 108 to make the first 25 slightly moved structures. For each one, calculate its energy with the supplied MACE model and its 147-number SOAP feature row. Save the structures, energies, and features in the same order.",
+      "level_1_submission": "Turn in a JSON file with paths to a 25-frame extxyz file, a 25-value NumPy energy file, a 25 × 147 NumPy feature file, and a settings file with the model digest, seed, and SOAP settings.",
+      "level_1_checks": [
+        "Open the 25-frame file and settings file. Every frame must have 64 periodic silicon atoms. Rebuild the seeded moves for indices 0–24, using standard deviation 0.01 + 0.001 × index Å, and compare each saved structure with its expected structure.",
+        "Open the energy and feature files. They must have 25 valid energies and 25 rows of 147 valid numbers. Check the SOAP settings in the settings file: Si, r_cut=5.0 Å, n_max=6, l_max=6, periodic=True, and average=inner.",
+        "Recalculate three selected energies with the supplied MACE model, within 0.01 eV. Recalculate three selected SOAP rows from their saved structures, with relative tolerance 10⁻⁶ and absolute tolerance 10⁻⁸. Labels and features must line up with the correct frames."
+      ],
+      "level_2_submission_addendum": "Also turn in a JSON file listing all 100 training structures, energies, SOAP features, and settings.",
+      "level_2_checks": [
+        "Open all training files. Check the 100 seeded structures, 100 energies, and 100 × 147 feature values in matching order. Recalculate three rows selected from indices 25–99 after submission to check their energy and SOAP values.",
+        "Open the pickle only in a separate worker. It must contain a fitted Ridge model with alpha=0.001 and 147 features. Its predictions on the saved features must match a fresh Ridge fit to the saved energies within relative tolerance 10⁻⁴ and absolute tolerance 10⁻⁶.",
+        "Use the saved model to predict 100 new, separately seeded silicon examples. Its R² score must be at least 0.98."
+      ],
+      "level_2_description": "Start with the original 64-atom silicon cell. Make all 100 seeded structures, including the first 25 required in Level 1, and save their energies and SOAP features. Train a Ridge model to predict energy from those features. Then check the model on 100 new examples.",
+      "level_2_submission": "Turn in the fitted Ridge model as a pickle file."
+    },
+    {
+      "id": 9,
+      "title": "Record moving copper, then train a predictor",
+      "category": "Learning from data",
+      "cutoff": "The 100 copper frames and their energies are saved.",
+      "level_1_description": "Build the supplied 32-atom copper cell. Use random seed 109 to start it moving, then run 1,000 Langevin steps of 1 fs at 800 K. Save a frame and its energy every ten steps, giving 100 frames in time order.",
+      "level_1_submission": "Turn in a JSON file with paths to the 100-frame trajectory and a settings file with the model digest, seed, thermostat, step time, and saved step numbers.",
+      "level_1_checks": [
+        "Open the trajectory and settings file. Check 32 periodic copper atoms, 100 frames at steps 10 through 1,000, 1 fs timing, 800 K Langevin target, friction 0.01 fs⁻¹, and the supplied model digest and seed 109. Read actual positions, momenta, energy, and forces from every frame.",
+        "Recalculate energy and forces for three selected frames with the supplied MACE model; differences must be at most 0.01 eV and 0.02 eV/Å. Frames with repeated positions or momenta fail.",
+        "Calculate temperature from the last 50 frames. Its mean must be 800 ± 160 K. A different random trajectory can pass if its saved data pass these checks."
+      ],
+      "level_2_submission_addendum": "Also turn in a JSON file listing the full training trajectory, energy labels, SOAP features, and Level 1 run settings.",
+      "level_2_checks": [
+        "Open the trajectory, energy file, and 100 × 147 SOAP feature file. Each energy and feature row must match the frame at the same position. Check the required Cu SOAP settings and recalculate three selected feature rows from their saved frames. The recalculated values must match within relative tolerance 10⁻⁶ and absolute tolerance 10⁻⁸.",
+        "Open the pickle only in a separate worker. It must contain a fitted Ridge model with alpha=0.0001 and 147 features. Its predictions on the saved feature rows must match a fresh Ridge fit to the saved energies within relative tolerance 10⁻⁴ and absolute tolerance 10⁻⁶.",
+        "Use the saved model to predict energies for 100 new copper frames from a separate run. Its R² score must be at least 0.98."
+      ],
+      "level_2_description": "Start with the original 32-atom copper cell. Complete the full Level 1 motion run and save its 100 frames and energies. Calculate SOAP features for those frames, train a Ridge model to predict their energies, and check the model on 100 new copper frames.",
+      "level_2_submission": "Turn in the fitted Ridge model as a pickle file."
+    },
+    {
+      "id": 10,
+      "title": "Warm aluminum in steps and check its motion",
+      "category": "Motion and heat",
+      "cutoff": "The 300 K run and its 1,000 measured frames are saved.",
+      "level_1_description": "Build the supplied 108-atom aluminum cell. Use the MACE-MP-0 model and a Langevin thermostat at 300 K. Run 4,000 settling steps, then save every one of the next 1,000 steps, including each frame’s motion, energy, and forces.",
+      "level_1_submission": "Turn in the path to the 300 K ASE trajectory file.",
+      "level_1_checks": [
+        "Open the trajectory. It must contain the 108-atom periodic aluminum cell and all production steps 4,001–5,000; one extra frame at step 4,000 is allowed. Check 1 fs timing, Langevin friction 0.01 fs⁻¹, and saved positions, momenta, energy, forces, and settings in each frame.",
+        "Recalculate energy and forces for three selected frames with the supplied MACE-MP-0 model; differences must be at most 0.01 eV and 0.02 eV/Å. Repeated frames or invalid numbers fail.",
+        "Calculate average motion-based temperature over the production frames, both overall and along each of the x, y, and z axes. Every average must be within 10% of 300 K."
+      ],
+      "level_2_submission_addendum": "No extra files are needed for this plan: the current JSON file already points to the 300 K run.",
+      "level_2_checks": [
+        "Open each of the six additional trajectory files. At each temperature, check 4,000 settling steps and all 1,000 production steps. Production ranges must run from 9,001–10,000 at 400 K through 34,001–35,000 at 900 K. A starting frame is allowed, but missing or repeated production steps fail.",
+        "Read every frame. Check 108 aluminum atoms, the required Langevin settings, momenta, energies, and forces. Recalculate energy and force for three selected frames per temperature with the supplied model, within 0.01 eV and 0.02 eV/Å.",
+        "For each temperature, calculate the overall average motion-based temperature and separate x, y, and z averages from the saved frames. All four averages must be within 10% of that temperature."
+      ],
+      "level_2_description": "Start with the original 108-atom aluminum cell. Complete the 300 K settling and measuring run from Level 1. Then do the same at 400, 500, 600, 700, 800, and 900 K. At each temperature, save the measured frames and check whether their atom motion matches the target temperature.",
+      "level_2_submission": "Turn in a JSON file that maps each temperature, 300 through 900 K, to its trajectory file."
+    }
+  ],
+  "scoring_rule": "The planned checker opens every required file and reads the data inside. It checks that related files agree and recalculates selected results. A file name, a written claim, or a reported answer alone cannot pass. Missing files, unreadable files, paths outside the task folder, or wrong data fail. Level 1 gets 1 point only if every Level 1 check passes. Level 2 gets 1 point only if every Level 1 and Level 2 check passes. Otherwise the score is 0."
+}
