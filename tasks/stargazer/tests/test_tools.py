@@ -162,3 +162,22 @@ def test_worker_exit_resets_session(analysis_session):
     assert analysis_session.snapshot() is None
     assert not analysis_session.protocol_acknowledged()
     assert "NameError" in analysis_session.execute("retained")
+
+
+def test_last_line_statements_run_instead_of_being_wrapped(analysis_session):
+    # A bare expression is still echoed, which is what the wrapper is for.
+    assert analysis_session.execute("candidate = 3.5\ncandidate") == "3.5\n"
+
+    # An unspaced assignment used to become `print(baseline_rms=candidate)`,
+    # which raised TypeError and silently dropped the assignment.
+    analysis_session.execute("baseline_rms=candidate")
+    assert analysis_session.execute("print(baseline_rms)") == "3.5\n"
+
+    # An augmented assignment used to become a SyntaxError, discarding every
+    # earlier line in the same cell.
+    analysis_session.execute("periods = [10.0, 20.0]\nn_peaks = len(periods)\nn_peaks+=1")
+    assert analysis_session.execute("print(periods, n_peaks)") == "[10.0, 20.0] 3\n"
+
+    # A variable named after a print keyword argument is an assignment too.
+    analysis_session.execute("end=times_days[-1]")
+    assert analysis_session.execute("print(end == times_days[-1])") == "True\n"

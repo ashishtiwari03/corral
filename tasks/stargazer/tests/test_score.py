@@ -196,3 +196,17 @@ def test_all_twenty_tasks_match_original_feedback(
         feedback = json.loads(submit_candidate(task, payload, session))
         assert_protocol_equal(feedback, expected["feedback"])
         assert_protocol_equal(session["history"][-1]["metrics"], expected["metrics"])
+
+
+def test_zero_time_of_periastron_is_not_discarded(simple_task, exact_submission):
+    planet = exact_submission["planets"][0]
+    base = {key: value for key, value in planet.items() if key != "l_rad"}
+
+    # Periastron times one period apart describe the same orbital phase, so a
+    # T0_days of exactly 0.0 must not fall through to the default phase.
+    zero = normalize_submission({"planets": [{**base, "T0_days": 0.0}]}, simple_task)
+    shifted = normalize_submission(
+        {"planets": [{**base, "T0_days": planet["P_days"]}]}, simple_task
+    )
+
+    assert zero.planets[0].l_rad == pytest.approx(shifted.planets[0].l_rad)
