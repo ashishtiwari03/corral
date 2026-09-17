@@ -8,6 +8,7 @@ analysis of simulation parameters.
 """
 
 # import modal
+import hashlib
 import json
 import pickle
 import re
@@ -15,10 +16,13 @@ from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+from zipfile import ZipFile
 
 import modal
 import numpy as np
 import pandas as pd
+from ase import units
+from ase.data import atomic_masses, atomic_numbers
 from ase.io import read
 from loguru import logger
 from modal.volume import FileEntryType
@@ -176,7 +180,7 @@ def check_phonon(target: str, tolerance: float) -> Callable[[Any], float]:
 
                 if not (lower_bound <= agent_val <= upper_bound):
                     logger.warning(
-                        f"Value for {k} ({agent_val}) is outside the {tolerance*100}% tolerance window."
+                        f"Value for {k} ({agent_val}) is outside the {tolerance * 100}% tolerance window."
                     )
                     return 0.0
 
@@ -192,8 +196,171 @@ def check_phonon(target: str, tolerance: float) -> Callable[[Any], float]:
     return score_fn
 
 
+def _validate_trajectory(images, requirements, start_step=0):
+    """Validate saved MD evidence before using any temperature statistic."""
+    stride = requirements["sample_interval"]
+    end_step = start_step + requirements["steps"]
+    expected_steps = np.arange(start_step, end_step + 1, stride)
+    # ASE observers may include the initial frame or start after one interval.
+    if len(images) == len(expected_steps) - 1:
+        expected_steps = expected_steps[1:]
+    if len(images) < 2 or len(images) != len(expected_steps):
+        raise ValueError("Trajectory does not cover the required sampling and duration")
+
+    previous = None
+    for atoms, step in zip(images, expected_steps, strict=True):
+        symbol = requirements["species"]
+        if len(atoms) != requirements["atom_count"] or not np.all(
+            atoms.numbers == atomic_numbers[symbol]
+        ):
+            raise ValueError("Unexpected trajectory composition or atom count")
+        if atoms.constraints or not np.all(atoms.pbc):
+            raise ValueError("Expected unconstrained atoms with periodic boundaries")
+        if not np.allclose(
+            atoms.cell @ atoms.cell.T,
+            np.eye(3) * requirements["cell_length"] ** 2,
+            rtol=1e-5,
+            atol=1e-6,
+        ):
+            raise ValueError("Unexpected simulation cell")
+        if not atoms.has("momenta") or not np.allclose(
+            atoms.get_masses(), atomic_masses[atomic_numbers[symbol]]
+        ):
+            raise ValueError("Missing momenta or unexpected atomic masses")
+        if atoms.info.get("step") != step or not np.isclose(
+            atoms.info.get("time_fs", np.nan),
+            step * requirements["timestep_fs"],
+            rtol=0,
+            atol=1e-6,
+        ):
+            raise ValueError("Missing or incorrect MD step/time metadata")
+        if (
+            atoms.info.get("model") != requirements["model"]
+            or atoms.info.get("thermostat") != "Langevin"
+        ):
+            raise ValueError("Missing or incorrect model/thermostat metadata")
+        if (
+            "friction_fs" in requirements
+            and atoms.info.get("friction_fs") != requirements["friction_fs"]
+        ):
+            raise ValueError("Incorrect Langevin friction")
+        if atoms.calc is None or atoms.calc.name.lower() not in {
+            "mace",
+            "macecalculator",
+        }:
+            raise ValueError("Expected saved MACE calculator results")
+        forces = atoms.get_forces()
+        if forces.shape != (len(atoms), 3) or not all(
+            np.isfinite(value).all()
+            for value in (
+                atoms.positions,
+                atoms.cell,
+                atoms.get_momenta(),
+                atoms.get_potential_energy(),
+                forces,
+                atoms.get_temperature(),
+            )
+        ):
+            raise ValueError("Non-finite or malformed trajectory data")
+        if previous is not None and (
+            np.array_equal(atoms.positions, previous.positions)
+            or np.array_equal(atoms.get_momenta(), previous.get_momenta())
+        ):
+            raise ValueError("Repeated configurations or momenta are not MD dynamics")
+        previous = atoms
+
+
+def _validate_finetuning(result, images, requirements):
+    """Check training artifacts and recompute held-out errors, not claimed metrics.
+
+    These are submitted evidence, not independent execution/provenance attestation.
+    Never deserialize an agent checkpoint in the grading process.
+    """
+    submission = json.loads(result) if isinstance(result, str) else result
+    checkpoint = Path(submission["checkpoint"])
+    if not checkpoint.is_file() or checkpoint.stat().st_size == 0:
+        raise ValueError("Missing fine-tuned checkpoint")
+    # Modern torch.save checkpoints contain metadata plus tensor storage. Check
+    # the container without executing pickle data from a submitted model.
+    with ZipFile(checkpoint) as archive:
+        entries = {
+            entry.filename.partition("/")[2]: entry.file_size
+            for entry in archive.infolist()
+        }
+        if (
+            not entries.get("data.pkl")
+            or not entries.get("version")
+            or not any(
+                name.startswith("data/") and size > 0 for name, size in entries.items()
+            )
+        ):
+            raise ValueError("Expected a PyTorch checkpoint with tensor storage")
+    digest = hashlib.sha256()
+    with checkpoint.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    checkpoint_hash = digest.hexdigest()
+    evaluation = json.loads(Path(submission["evaluation"]).read_text())
+    if evaluation["checkpoint_sha256"] != checkpoint_hash or any(
+        atoms.info.get("checkpoint_sha256") != checkpoint_hash for atoms in images
+    ):
+        raise ValueError(
+            "Evaluation and trajectory must identify the submitted checkpoint"
+        )
+    base_hash = evaluation["base_checkpoint_sha256"]
+    if not re.fullmatch(r"[0-9a-f]{64}", base_hash) or base_hash == checkpoint_hash:
+        raise ValueError("Checkpoint must differ from the base model")
+    losses = np.asarray(evaluation["training_loss"], dtype=float)
+    if (
+        losses.ndim != 1
+        or len(losses) < 2
+        or not np.isfinite(losses).all()
+        or np.any(losses < 0)
+    ):
+        raise ValueError("Missing finite training history")
+
+    dataset = read(submission["dataset"], index=":")
+    distances = np.round(np.arange(0.6, 5.01, 0.1), 1)
+    if len(dataset) != len(distances):
+        raise ValueError("Expected the complete 45-configuration Ag2 dataset")
+    energies, forces = [], []
+    for atoms, distance in zip(dataset, distances, strict=True):
+        if (
+            atoms.get_chemical_symbols() != ["Ag", "Ag"]
+            or not np.isfinite(atoms.positions).all()
+            or not np.isclose(atoms.get_distance(0, 1), distance, rtol=0, atol=1e-6)
+        ):
+            raise ValueError("Incorrect Ag2 distance grid")
+        energies.append(atoms.get_potential_energy())
+        forces.append(atoms.get_forces())
+    energies, forces = np.asarray(energies), np.asarray(forces)
+    if (
+        forces.shape != (45, 2, 3)
+        or not np.isfinite(energies).all()
+        or not np.isfinite(forces).all()
+    ):
+        raise ValueError("Invalid proxy energy/force labels")
+    # Fixed disjoint split; evaluate every fifth distance, in grid order.
+    test = np.arange(4, 45, 5)
+    train = np.setdiff1d(np.arange(45), test)
+    if not np.array_equal(evaluation["train_indices"], train) or not np.array_equal(
+        evaluation["test_indices"], test
+    ):
+        raise ValueError("Incorrect or overlapping training/held-out split")
+    for key, reference, limit, divisor in (
+        ("energies", energies[test], requirements["energy_rmse_per_atom"], 2),
+        ("forces", forces[test], requirements["force_rmse"], 1),
+    ):
+        prediction = np.asarray(evaluation[key], dtype=float)
+        if prediction.shape != reference.shape or not np.isfinite(prediction).all():
+            raise ValueError(f"Invalid held-out {key} predictions")
+        rmse = np.sqrt(np.mean(((prediction - reference) / divisor) ** 2))
+        if not np.isfinite(rmse) or rmse > limit:
+            raise ValueError(f"Held-out {key} RMSE exceeds {limit}")
+
+
 def check_multiple_trajectory_temp(
-    target: list[float], tolerance_factor: float
+    target: list[float], tolerance_factor: float, trajectory: dict
 ) -> Callable[[Any], float]:
     """
     Create a scoring function that validates a dictionary mapping temperatures
@@ -202,12 +369,14 @@ def check_multiple_trajectory_temp(
     The function verifies that:
     1. The submitted JSON/dict contains keys for all required target temperatures.
     2. Every file path points to an existing .traj file.
-    3. The mean temperature of all frames in each trajectory matches the target
-       temperature within the specified relative tolerance.
+    3. Every trajectory satisfies the task's artifact and timing requirements.
+    4. The mean temperature and each Cartesian kinetic temperature match the
+       target within the specified relative tolerance.
 
     Args:
         target (List[float]): List of target temperatures (e.g., [300, 400, 500...]).
         tolerance_factor (float): Relative tolerance factor (e.g., 1e-1 for 10%).
+        trajectory (dict): Required composition, cell, sampling, and MD metadata.
 
     Returns:
         Callable[[Any], float]: A scoring function returning 1.0 if all targets pass, else 0.0.
@@ -260,7 +429,7 @@ def check_multiple_trajectory_temp(
             }
 
             # 2) Iterate through each required target temperature
-            for t in target:
+            for plateau, t in enumerate(target):
                 t_key = str(t).split(".")[0]  # E.g., 300.0 -> '300'
 
                 if t_key not in normalized_submission:
@@ -280,12 +449,34 @@ def check_multiple_trajectory_temp(
                 # Load trajectory and calculate mean temperature
                 try:
                     images = read(traj_path, index=":")
-                    if len(images) == 0:
-                        logger.warning(f"Trajectory file for {t} K is empty.")
-                        return 0.0
+                    start = (
+                        plateau
+                        * (trajectory["equilibration_steps"] + trajectory["steps"])
+                        + trajectory["equilibration_steps"]
+                    )
+                    _validate_trajectory(images, trajectory, start_step=start)
 
                     temperatures = [atoms.get_temperature() for atoms in images]
                     mean_temp = float(np.mean(temperatures))
+                    # Equipartition requires balanced kinetic energy across axes.
+                    component_temperatures = np.mean(
+                        [
+                            np.mean(
+                                atoms.get_momenta() ** 2 / atoms.get_masses()[:, None],
+                                axis=0,
+                            )
+                            / units.kB
+                            for atoms in images
+                        ],
+                        axis=0,
+                    )
+                    if not np.all(
+                        np.abs(component_temperatures - t) <= tolerance_factor * t
+                    ):
+                        logger.warning(
+                            f"Kinetic energy is not equipartitioned at {t} K"
+                        )
+                        return 0.0
                 except Exception as e:
                     logger.warning(f"Failed to read/process trajectory for {t} K: {e}")
                     return 0.0
@@ -319,19 +510,26 @@ def check_multiple_trajectory_temp(
 
 
 def check_trajectory_temperature(
-    target: float, window_size: float, tolerance: float
+    target: float,
+    window_size: float,
+    tolerance: float,
+    trajectory: dict,
+    finetuning: dict | None = None,
 ) -> Callable[[Any], float]:
     """
     Create a scoring function that validates a molecular dynamics trajectory file (.traj)
     by calculating the mean temperature of the last N frames.
 
-    Validation succeeds if the mean temperature is within the relative tolerance of the target.
+    Validate task-specific artifacts before checking the final mean temperature.
+    Fine-tuning tasks additionally require checkpoint and held-out evaluation artifacts.
     Formula: |mean_temp - target| <= tolerance * abs(target)
 
     Args:
         target (float): The target temperature in Kelvin (e.g., 300.0).
         window_size (float): The number of frames at the end of the trajectory to average over (e.g., 10.0).
         tolerance (float): Relative tolerance factor (e.g., 1e-1 means +/- 10%).
+        trajectory (dict): Required composition, cell, sampling, and MD metadata.
+        finetuning (dict | None): Held-out energy and force RMSE limits, when required.
 
     Returns:
         Callable[[Any], float]: A scoring function that takes a result object
@@ -401,6 +599,9 @@ def check_trajectory_temperature(
             # 3) Load the trajectory using ASE
             try:
                 images = read(agent_path, index=":")
+                _validate_trajectory(images, trajectory)
+                if finetuning is not None:
+                    _validate_finetuning(result, images, finetuning)
             except Exception as e:
                 logger.warning(f"Failed to read trajectory with ASE: {e}")
                 return 0.0
@@ -412,11 +613,11 @@ def check_trajectory_temperature(
                 logger.warning("Trajectory file is empty.")
                 return 0.0
 
-            if num_frames < win_size:
+            if win_size < 1 or num_frames < win_size:
                 logger.warning(
-                    f"Trajectory has only {num_frames} frames, but window_size is {win_size}. Using all frames."
+                    f"Trajectory has {num_frames} frames, but requires a window of {win_size}."
                 )
-                win_size = num_frames
+                return 0.0
 
             # 4) Extract temperatures from the final window
             last_images = images[-win_size:]
@@ -938,6 +1139,21 @@ def check_structure(target, atom_style):
     return score_fn
 
 
+def _read_spectrum(path):
+    data = pd.read_csv(path)
+    if list(data.columns) != ["frequency_thz", "vdos"]:
+        raise ValueError("Expected exactly frequency_thz and vdos columns")
+    values = data.to_numpy(dtype=float)
+    if len(values) < 2 or not np.isfinite(values).all() or np.any(values < 0):
+        raise ValueError(
+            "Spectrum must contain finite, nonnegative frequencies and values"
+        )
+    frequencies, spectrum = values.T
+    if not np.all(np.diff(frequencies) > 0) or not np.any(spectrum > 0):
+        raise ValueError("Expected increasing frequencies and a nonzero spectrum")
+    return frequencies, spectrum
+
+
 def check_cosine_similarity(target: str, threshold: float) -> Callable[[Any], float]:
     """
     Create a scoring function that validates a generated spectrum (e.g., VDOS)
@@ -946,8 +1162,8 @@ def check_cosine_similarity(target: str, threshold: float) -> Callable[[Any], fl
     The returned function evaluates an input `result` (which should contain the
     path to a generated CSV file) and returns a score in {0.0, 1.0}.
 
-    Validation succeeds if the maximum cosine similarity between the agent's
-    spectrum and any of the ground truth spectra is >= threshold.
+    Validation requires finite, nonnegative spectra on matching frequency grids,
+    and maximum cosine similarity with a ground truth spectrum >= threshold.
 
     Args:
         target (str): Path to the directory containing ground truth CSV files.
@@ -1024,15 +1240,7 @@ def check_cosine_similarity(target: str, threshold: float) -> Callable[[Any], fl
 
             # 3) Load agent's VDOS data
             try:
-                agent_df = pd.read_csv(agent_path)
-                # Look for 'vdos' column; fallback to the second column if headers are malformed
-                if "vdos" in agent_df.columns:
-                    agent_vdos = agent_df["vdos"].values
-                elif len(agent_df.columns) >= 2:
-                    agent_vdos = agent_df.iloc[:, 1].values
-                else:
-                    logger.warning("Agent's CSV does not contain enough columns.")
-                    return 0.0
+                agent_frequencies, agent_vdos = _read_spectrum(agent_path)
             except Exception as e:
                 logger.warning(f"Failed to read agent's CSV: {e}")
                 return 0.0
@@ -1048,22 +1256,19 @@ def check_cosine_similarity(target: str, threshold: float) -> Callable[[Any], fl
             max_sim = 0.0
             for gt_file in gt_files:
                 try:
-                    gt_df = pd.read_csv(gt_file)
-                    if "vdos" in gt_df.columns:
-                        gt_vdos = gt_df["vdos"].values
-                    else:
-                        gt_vdos = gt_df.iloc[:, 1].values
+                    gt_frequencies, gt_vdos = _read_spectrum(gt_file)
                 except Exception as e:
                     logger.warning(f"Failed to read ground truth CSV {gt_file}: {e}")
                     continue
 
-                # Truncate to the minimum length in case of a minor step discrepancy
-                min_len = min(len(agent_vdos), len(gt_vdos))
-                if min_len == 0:
+                if agent_frequencies.shape != gt_frequencies.shape or not np.allclose(
+                    agent_frequencies, gt_frequencies, rtol=1e-7, atol=1e-8
+                ):
                     continue
 
-                v1 = agent_vdos[:min_len]
-                v2 = gt_vdos[:min_len]
+                # Rescale before normalization to avoid overflow on finite inputs.
+                v1 = agent_vdos / np.max(agent_vdos)
+                v2 = gt_vdos / np.max(gt_vdos)
 
                 norm1 = np.linalg.norm(v1)
                 norm2 = np.linalg.norm(v2)

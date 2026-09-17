@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_2 - Task_3",
-    "description": "Finetune the MACE-MP-0b machine learning interatomic potential for a diatomic Ag₂ system. First, generate a dataset of Ag₂ configurations using an interatomic-distance grid spanning from 0.6 Å to 5.0 Å with a uniform spacing of 0.1 Å. Use the base MACE-MP foundation model as an ASE calculator to compute the potential energies and forces for all configurations, and store these as proxy labels. Next, use these generated pseudo-labels to fine-tune the MACE-MP-0b foundation model. Once fine-tuning is complete, load the resulting checkpoint as an ASE calculator. Construct a conventional cubic FCC unit cell of Silver (4 Ag atoms) and expand it into a 3×3×3 supercell (108 atoms). Perform a molecular dynamics (MD) simulation on this supercell using a Langevin thermostat at 300 K with a 1.0 fs timestep for 5,000 steps, logging the atomic configurations every 100 steps into a trajectory file. Return a JSON dictionary mapping the temperature integer (in K) to the absolute file path of its corresponding trajectory file.",
+    "description": "Finetune the MACE-MP-0b machine learning interatomic potential for a diatomic Ag₂ system. First, generate a dataset of Ag₂ configurations using an interatomic-distance grid spanning from 0.6 Å to 5.0 Å with a uniform spacing of 0.1 Å. Use the base MACE-MP foundation model as an ASE calculator to compute the potential energies and forces for all configurations, and store these as proxy labels. Reserve zero-based grid indices 4, 9, 14, 19, 24, 29, 34, 39 and 44 for held-out evaluation only. Next, use the remaining generated pseudo-labels to fine-tune the MACE-MP-0b foundation model. Once fine-tuning is complete, load the resulting checkpoint as an ASE calculator. Construct a conventional cubic FCC unit cell of Silver (a = 4.09 Å, 4 Ag atoms) and expand it into a 3×3×3 supercell (108 atoms). Perform a molecular dynamics (MD) simulation on this supercell using a Langevin thermostat at 300 K with a 1.0 fs timestep for 5,000 steps, logging the atomic configurations every 100 steps into a trajectory file. Return a JSON dictionary containing the trajectory and supporting artifacts described below. Save momenta, potential energy and forces from the MACE calculator in every trajectory frame. Set each frame's atoms.info fields step (cumulative MD step), time_fs (step times 1.0 fs), thermostat (\"Langevin\"), and model (\"MACE-MP-0b-finetuned\"). The initial frame at step zero (or the start of production) is optional; include the final step. Submit the resulting checkpoint in the default torch.save ZIP format, the full labeled Ag2 dataset in increasing distance order as ASE extxyz, and an evaluation JSON file. The evaluation must contain sorted train_indices and test_indices, held-out checkpoint predictions energies (9 total energies in eV) and forces (9 x 2 x 3 in eV/Å), training_loss (at least two finite nonnegative epoch losses), and SHA-256 digests checkpoint_sha256 and base_checkpoint_sha256. Also save checkpoint_sha256 in each MD frame. Held-out RMSE must not exceed 0.1 eV/atom for energies or 0.2 eV/Å for forces.",
     "tools": [
       "get_potential_metadata",
       "get_structure_from_mp_text",
@@ -12,13 +12,25 @@
       "visualisation_tool"
     ],
     "scoring_function": "check_trajectory_temperature",
-    "submission_format": "json dictionary mapping temperature (int) to trajectory file path (string) (eg. {'300': '/path/to/300K.traj'})",
+    "submission_format": "JSON dictionary with keys \"300\" (trajectory path), \"checkpoint\" (fine-tuned model path), \"dataset\" (labeled Ag2 extxyz path), and \"evaluation\" (held-out evaluation JSON path). All values are file paths.",
     "initial_input": {},
     "scoring_params": {
       "target": 300.0,
-      "window_size" : 10.0,
-      "tolerance" : 1e-1
-
+      "window_size": 10.0,
+      "tolerance": 0.1,
+      "trajectory": {
+        "species": "Ag",
+        "atom_count": 108,
+        "cell_length": 12.27,
+        "steps": 5000,
+        "sample_interval": 100,
+        "timestep_fs": 1.0,
+        "model": "MACE-MP-0b-finetuned"
+      },
+      "finetuning": {
+        "energy_rmse_per_atom": 0.1,
+        "force_rmse": 0.2
+      }
     },
     "id": "level_2_task_3",
     "uuid": "a82b49d3-6e1c-4b55-87d2-7c3a9f1b4a6e"

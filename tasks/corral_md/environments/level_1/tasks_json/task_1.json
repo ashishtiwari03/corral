@@ -1,7 +1,7 @@
 [
   {
     "name": "Level_1 - Task_1",
-    "description": "Generate a finite-temperature molecular dynamics trajectory for bulk Silver (Ag). Construct a conventional face-centered cubic (FCC) unit cell of Silver (a = 4.09 \u00c5) and replicate it into a 4 \u00d7 4 \u00d7 4 supercell. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at a target temperature of 300 K with a 1.0 fs timestep and a friction coefficient of 0.01 fs\u207b\u00b9. Execute the simulation for 5,000 steps, recording the atomic configuration to an ASE trajectory file every 100 steps. Return the absolute path to the resulting trajectory file as a string.",
+    "description": "Generate a finite-temperature molecular dynamics trajectory for bulk Silver (Ag). Construct a conventional face-centered cubic (FCC) unit cell of Silver (a = 4.09 Å) and replicate it into a 4 × 4 × 4 supercell. The MACE-MP-0 foundation model should be used as the ASE-compatible calculator to describe interatomic interactions. Conduct molecular dynamics simulations in the canonical (NVT) ensemble using a Langevin thermostat at a target temperature of 300 K with a 1.0 fs timestep and a friction coefficient of 0.01 fs⁻¹. Execute the simulation for 5,000 steps, recording the atomic configuration to an ASE trajectory file every 100 steps. Return the absolute path to the resulting trajectory file as a string. Save momenta, potential energy and forces from the MACE calculator in every trajectory frame. Set each frame's atoms.info fields step (cumulative MD step), time_fs (step times 1.0 fs), thermostat (\"Langevin\"), and model (\"MACE-MP-0\"). The initial frame at step zero (or the start of production) is optional; include the final step. Also store friction_fs = 0.01 in atoms.info.",
     "tools": [
       "get_potential_metadata",
       "get_structure_from_mp_text",
@@ -16,9 +16,18 @@
     "initial_input": {},
     "scoring_params": {
       "target": 300.0,
-      "window_size" : 10.0,
-      "tolerance" : 1e-1
-
+      "window_size": 10.0,
+      "tolerance": 0.1,
+      "trajectory": {
+        "species": "Ag",
+        "atom_count": 256,
+        "cell_length": 16.36,
+        "steps": 5000,
+        "sample_interval": 100,
+        "timestep_fs": 1.0,
+        "model": "MACE-MP-0",
+        "friction_fs": 0.01
+      }
     },
     "id": "level_1_task_1",
     "uuid": "f2c4b8e9-3d1a-4f5c-8b2a-1e9d7c6b5a4f"

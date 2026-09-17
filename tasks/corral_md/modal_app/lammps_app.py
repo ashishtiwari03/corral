@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import log_lammps_reader
 import modal
 from loguru import logger
 from modal import App, Image
-import sys
+
+APP_DIR = Path(__file__).resolve().parent if modal.is_local() else Path("/opt/corral-md")
+ASSETS = json.loads((APP_DIR / "assets.json").read_text())
 
 lammps_image = (
-    Image.debian_slim(python_version="3.12")
+    Image.debian_slim(python_version=ASSETS["python_version"])
     .apt_install(
         "git",
         "wget",
@@ -23,24 +27,14 @@ lammps_image = (
         "openmpi-bin",
         "libssl-dev",
     )
-    .pip_install("cmake>=3.20")
-    .pip_install(
-        "loguru",
-        "fsspec",
-        "numpy",
-        "matplotlib",
-        "pymatgen",
-        "MDAnalysis",
-        "tidynamics",
-        "ase",
-        "log-lammps-reader",
-        "polars",
-        "mace-torch",
-        "scikit-learn",
-        "dscribe", 
-    )
+    .pip_install_from_requirements(str(APP_DIR / "requirements.txt"))
+    .add_local_file(APP_DIR / "assets.json", "/opt/corral-md/assets.json", copy=True)
+    .add_local_file(APP_DIR / "requirements.txt", "/opt/corral-md/requirements.txt", copy=True)
     .run_commands(
-        "git clone --depth 1 https://github.com/lammps/lammps.git /root/lammps",
+        "git init /root/lammps",
+        "git -C /root/lammps remote add origin https://github.com/lammps/lammps.git",
+        f"git -C /root/lammps fetch --depth 1 origin {ASSETS['lammps_commit']}",
+        f"git -C /root/lammps checkout --detach {ASSETS['lammps_commit']}",
         (
             "cmake -S /root/lammps/cmake -B /root/lammps/build "
             "-C /root/lammps/cmake/presets/most.cmake "
@@ -49,6 +43,7 @@ lammps_image = (
         ),
         "cmake --build /root/lammps/build --parallel 4",
         "cmake --install /root/lammps/build",
+        "python -m pip freeze > /opt/corral-md/installed-packages.txt",
     )
 )
 
@@ -60,6 +55,7 @@ app = App(f"simagent{simagent_name}")
 volume_potential = modal.Volume.from_name("potentials", create_if_missing=True)
 volume_sim = modal.Volume.from_name("simulations", create_if_missing=True)
 volume_struct = modal.Volume.from_name("structures", create_if_missing=True)
+volume_models = modal.Volume.from_name("models", create_if_missing=True)
 volume_test_files = modal.Volume.from_name("test_files", create_if_missing=True)
 
 CPUS = 2
@@ -176,6 +172,7 @@ def run_lammps(
         "/potentials": volume_potential.read_only(),
         "/results": volume_sim,
         "/structures": volume_struct.read_only(),
+        "/models": volume_models.read_only(),
         "/test_files": volume_test_files,
     },
 )
