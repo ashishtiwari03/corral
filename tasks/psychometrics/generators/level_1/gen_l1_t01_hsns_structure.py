@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 01: recover the factor structure of the HSNS.
+"""Task 01: how many traits does the HSNS measure?
 
-The generating model is two correlated factors. Two rival structures fit the
-data better and are inadmissible; a third is rejected by the chi-square test
-that also rejects the true model at this sample size.
+The answers come from two related traits. Two rival models fit the data better
+than the true one and are both unusable, for reasons no fit index reports. A
+third is rejected by a test that rejects the true model too, because the sample
+is large enough to notice any imperfection.
 
-    python gen_l1_t01_hsns_structure.py            # write artifacts
-    python gen_l1_t01_hsns_structure.py --verify    # check the task is solvable
-    python gen_l1_t01_hsns_structure.py --naive     # check the default analysis fails
+    python gen_l1_t01_hsns_structure.py             # write the task
+    python gen_l1_t01_hsns_structure.py --verify    # check it is solvable
+    python gen_l1_t01_hsns_structure.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -30,7 +30,8 @@ TASK_JSON = C.PKG_ROOT / "environments" / "level_1" / "tasks_json" / "task_01.js
 ITEMS = C.HSNS_ITEMS
 F1, F2 = "egocentrism", "oversensitivity"
 
-# Item -> (factor, standardised loading). HSNS4 is deliberately weak.
+# Item -> (trait, loading). A loading is how strongly the item tracks the
+# trait, 0 to 1. HSNS4 is a weak item by design.
 LOADINGS = {
     "HSNS1": (F1, 0.55), "HSNS4": (F1, 0.30), "HSNS5": (F1, 0.70),
     "HSNS6": (F1, 0.48), "HSNS8": (F1, 0.71), "HSNS10": (F1, 0.66),
@@ -39,9 +40,8 @@ LOADINGS = {
 }
 PHI = 0.35
 
-# Small secondary terms. They keep the two-factor model an approximation of the
-# population rather than an exact reproduction of it, which is what makes the
-# chi-square test reject at this sample size.
+# Two small extras, so that the true model is a close approximation of the
+# data rather than an exact match. Real data never match a model exactly.
 CROSS_LOADING = ("HSNS9", F1, 0.15)
 RESIDUAL_CORR = (("HSNS5", "HSNS10"), 0.10)
 
@@ -49,11 +49,11 @@ RESIDUAL_CORR = (("HSNS5", "HSNS10"), 0.10)
 LOADING_SCALE_NON_US = 0.72
 PHI_NON_US = 0.68
 
-# Threshold shift applied to women on these items. Used by Level 2; too small to
-# affect the structural answer here, which --verify confirms.
+# These two items are answered slightly differently by women at the same trait
+# level. Too small to change the answer to this task.
 GENDER_DIF = {"HSNS3": -0.18, "HSNS8": 0.18}
 
-# The Dark Triad block is present in the file but is not part of this task.
+# The Dark Triad items are in the file but are not part of this task.
 DD_LOADINGS = {
     "DDM1": ("mach", 0.74), "DDM2": ("mach", 0.71),
     "DDM3": ("mach", 0.58), "DDM4": ("mach", 0.77),
@@ -153,7 +153,7 @@ def population_correlation_matrix():
     big = C.correlated_block(
         POP_REFERENCE_N, rng, LOADINGS, np.array([[1.0, PHI], [PHI, 1.0]]),
         [F1, F2], C.THRESHOLDS, cross=CROSS_LOADING, resid_corr=RESIDUAL_CORR)[ITEMS]
-    return np.corrcoef(big.values.T.astype(float))
+    return C.population_matrix(big, list(big.columns))
 
 
 def build_truth(floor, pop, data_sha, rows):
@@ -252,7 +252,7 @@ def verify(df, pop):
         ("unidimensional is clearly rejected",
          criteria["unidimensional"]["CFI"] < 0.90),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, pop):
@@ -276,34 +276,20 @@ def naive(df, pop):
         outcome[label] = abs(phi - PHI) <= 0.06
         print(f"{label:22s} {len(X):7,} {phi:7.3f}  "
               f"{'yes' if outcome[label] else 'NO'}")
-    return _report([("the pooled analysis reports a phi outside tolerance",
+    return C.report([("the pooled analysis reports a phi outside tolerance",
                      outcome["US only (correct)"]
                      and not outcome["pooled (no filter)"])])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
+    if action != "build":
         pop = population_correlation_matrix()
-        return verify(df, pop) if args.verify else naive(df, pop)
+        return verify(df, pop) if action == "verify" else naive(df, pop)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
@@ -311,7 +297,7 @@ def main():
                              ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

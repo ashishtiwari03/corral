@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Check that each task scores the way it is meant to.
 
-For every task: the generating model scores 1.0, every rival scores 0.0 and
-names the stage it failed at, and a set of malformed or dishonest submissions
-are rejected.
+For every task: the right answer scores 1.0, every wrong one scores 0.0 and says
+which stage it failed at, and malformed or dishonest submissions are rejected.
 
     uv run --with numpy --with pandas --with scipy --with semopy \
       python tests/test_scoring.py
@@ -74,7 +73,7 @@ def load_generator(path):
 
 
 def build_submission(spec, X, items):
-    """The submission an agent would make if it genuinely fitted `spec`."""
+    """The submission an agent would make if it really did fit this model."""
     if "gender" in items:
         return _group_submission(spec, X, items, _BIASED)
     model = semopy.Model(spec)
@@ -93,7 +92,7 @@ def build_submission(spec, X, items):
 
 
 def _group_submission(spec, X, items, truth=None):
-    """Level 2: the model, the difference it implies, and the rejected instrument."""
+    """A submission for the tasks that compare two groups."""
     used = [c for c in X.columns if c in spec]
     model = semopy.Model(spec)
     model.fit(X[used + ["gender"]] if "gender" not in used else X[used])

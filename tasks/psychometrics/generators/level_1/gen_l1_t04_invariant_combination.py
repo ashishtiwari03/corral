@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 04: which instrument supports a gender comparison?
+"""Task 04: which questionnaire supports a comparison between men and women?
 
-Two instruments were administered. One is genuinely biased against women on four
-items. The other is perfectly fair - but only visible as fair once its
-measurement model is right: fitted with its nominal subscale structure it
-appears biased on three items that are not biased at all.
+Two questionnaires were given. One really is unfair to women on four items. The
+other is fair, but only looks fair once it is modelled correctly: under its
+published subscale structure it appears unfair on three items that are not. So
+taking each questionnaire at face value suggests neither can be used.
 
-So an analyst who takes each instrument at face value concludes that neither
-supports the comparison.
-
-    python gen_l1_t04_invariant_combination.py            # write artifacts
+    python gen_l1_t04_invariant_combination.py             # write the task
     python gen_l1_t04_invariant_combination.py --verify    # check it is solvable
-    python gen_l1_t04_invariant_combination.py --naive     # check the default fails
+    python gen_l1_t04_invariant_combination.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -221,7 +217,7 @@ def population_reference():
     big["gender"] = np.where(female, 2, 1)
     target = latent_difference(reference_syntax(), big, MODEL_VARS)
     pop = np.corrcoef(big[MODEL_VARS].values.T.astype(float))
-    return target, pop
+    return target, pop.round(3)
 
 
 # --------------------------------------------------------------------------
@@ -234,7 +230,7 @@ def build_truth(target, floor, pop, data_sha, rows):
         "scored": {
             "instrument": "dirty_dozen",
             "model_family": "bifactor_general_plus_specifics",
-            "latent_difference": round(target, 4),
+            "latent_difference": round(target, 3),
             "biased_items": sorted(HSNS_BIASED_ITEMS),
             "spurious_bias_in_selected_instrument": [],
         },
@@ -388,7 +384,7 @@ def verify(df, target, pop):
         ("the correct route lands on the calibrated target",
          abs(estimates["DD, bifactor (CORRECT)"] - target) <= 0.06),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, target, pop):
@@ -403,7 +399,7 @@ def naive(df, target, pop):
     print(f"    Dirty Dozen (3 subscales) -> {len(dd)} biased items {dd}")
     print(f"    conclusion: neither instrument supports the comparison")
     print(f"  truth: the Dirty Dozen does, and the difference is {target:+.3f}")
-    return _report([
+    return C.report([
         ("the face-value analysis rejects both instruments",
          len(hs) > 0 and len(dd) > 0),
         ("the items it flags in the Dirty Dozen are not really biased",
@@ -411,36 +407,22 @@ def naive(df, target, pop):
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
     print(f"Calibrating the target (population draw N={POP_REFERENCE_N:,}) ...")
     target, pop = population_reference()
 
-    if args.verify or args.naive:
-        return verify(df, target, pop) if args.verify else naive(df, target, pop)
+    if action != "build":
+        return verify(df, target, pop) if action == "verify" else naive(df, target, pop)
 
     floor = C.evaluate_model(reference_syntax(),
                              comparison_sample(df, MODEL_VARS), MODEL_VARS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(target, floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(target, floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

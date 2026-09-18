@@ -1,63 +1,38 @@
-# Level 1 / Task 05 — Which gender comparisons are defensible?
+# Task 05 — which comparisons between men and women can be defended?
 
-**Ask.** Work out how far the HSNS measures the same thing in men and women, then
-decide which of six between-group comparisons that licenses — and carry out the
-ones that are licensed.
+## The idea
 
-**Generator.** `gen_l1_t05_defensible_comparisons.py`
+The items relate to the trait identically in both groups. That makes several
+comparisons sound: the structure itself, how much the trait varies, and how it
+relates to other traits. But six of the ten items are answered differently by
+men and women at the same trait level, in both directions.
 
-## Generating model
+## What goes wrong
 
-Two correlated traits: the HSNS (10 items) and Dark Triad narcissism (4 items).
+- Because the shifts run both ways and no item is known to be clean, there is
+  no fixed point to anchor a comparison of averages. The group means are the
+  one comparison everybody wants and the one that cannot be made.
+- Comparing the raw totals looks fine and is not: the totals differ because of
+  how the items behave, not because of the trait.
+- The mixed directions roughly cancel in the totals, so the bias does not
+  announce itself as a large obvious gap.
 
-- **Loadings are identical in both groups.** The items relate to the trait the
-  same way, so the construct means the same thing in each — comparisons of
-  structure, spread and association are all sound.
-- **Six of the ten HSNS items are answered differently at the same trait level**,
-  three shifted one way and three the other. Four items are clean, but nothing in
-  the data says which four.
-- Women's trait level really is +0.30 higher. That is **not recoverable**.
-- The two traits correlate **.50 in men** and **.30 in women** — a real
-  difference, and a comparison that *is* licensed.
+## Scoring
 
-## The answer
+Stage 3 checks a yes-or-no verdict on each kind of comparison, plus the
+reported correlation between the two traits in each group, which is one of the
+comparisons that does hold.
 
-| comparison | defensible | because |
-|---|---|---|
-| factor structure | yes | same items, same factor in both groups |
-| loadings | yes | identical across groups |
-| factor variances | yes | licensed once loadings are invariant |
-| association with the other trait | yes | same |
-| **latent means** | **no** | intercepts differ, with no trustworthy reference items |
-| **observed score means** | **no** | strictly weaker than the latent comparison |
+The submission is the model, a verdict per comparison, and the trait
+correlation in each group. Anything else the scorer needs it works out by re-
+fitting the submitted model, so the agent is not asked for it.
 
-## Why "no" is the hard part
+## Rebuild
 
-The mean difference is right there and significant. Refusing to report it is the
-whole task — and it is not a rule of thumb here, it is a fact about the data:
-
-```
-latent mean difference, by which items are assumed unbiased:
-  the truly clean four         +0.145
-  four shifted one way         -0.054
-  four shifted the other       +0.355
-  all ten (assume no bias)     +0.169
-  spread across anchor choices  0.409
+```bash
+uv run --with numpy --with pandas --with scipy --with semopy \
+  python generators/level_1/gen_l1_t05_defensible_comparisons.py [--verify|--naive]
 ```
 
-The answer swings from negative to substantially positive depending on an
-assumption the data cannot test. Meanwhile the association comparison is stable
-and recovers cleanly — men +0.492 against a target of +0.494, women +0.304
-against +0.295.
-
-Both failure directions are scored: an agent that compares the means anyway
-fails, and so does one that refuses every comparison.
-
-## Scored
-
-The reported correlations are what stop the judgement panel being answered from
-textbook knowledge without touching the data — a submission with the right panel
-and pooled correlations fails.
-
-Submission: `model_syntax`, `comparisons` (six judgements),
-`trait_correlation_men`, `trait_correlation_women`.
+`--verify` prints the numbers behind everything above and checks the intended
+answer wins. `--naive` checks that the obvious analysis fails.

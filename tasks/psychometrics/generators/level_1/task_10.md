@@ -1,56 +1,47 @@
-# Level 1 / Task 10 — Which items are bad, and which is the data?
+# Task 10 — which items are bad, and which is the data?
 
-**Ask.** Select US participants and classify every HSNS item as `sound`,
-`mis_keyed`, `missing_as_neutral`, `truncated_scale` or `weak_item`.
+## The idea
 
-**Generator.** `gen_l1_t10_item_integrity.py`
+Four of the ten HSNS items misbehave. Three are good items whose recorded
+answers were damaged somewhere between the respondent and the file; only one is
+genuinely a poor item. The task is to say which is which.
+
+## What goes wrong
+
+- One item was stored with its scale flipped. It is the only fault the model
+  output shows, and the tempting response, dropping it, is wrong: it is a good
+  item and recoding restores it.
+- For another item, people who declined to answer were recorded as having
+  picked the middle option. There is now no way to tell a real neutral from a
+  refusal.
+- A third item's top answer was never recorded, so its scale runs 1 to 4 while
+  every other item runs 1 to 5. It still looks healthy in the model, better
+  than several genuinely sound items. Only its range gives it away.
+- The two items that need opposite treatment differ by a hundredth. The
+  damaged item and the genuinely weak one have all but identical loadings, so
+  no fit measure, residual or model comparison can separate them. What
+  separates them is that the damaged item is answered with the middle option
+  far more often than any real trait would produce.
+- Analysing all countries together makes a perfectly sound item look like the
+  weakest of the ten.
+
+## Scoring
+
+Stage 3 checks all ten verdicts at once, so every item has to be right. The
+scorer undoes the flipped item before fitting; otherwise the reversed loading
+would trip a stage 1 constraint and reject every submission, including the
+correct one.
+
+The submission is the model and a verdict per item. Anything else the scorer
+needs it works out by re-fitting the submitted model, so the agent is not
+asked for it.
+
+## Rebuild
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t10_item_integrity.py [--verify|--naive]
 ```
 
-## Generating model
-
-One trait behind ten ordinal items, loadings .48–.70. Three recording faults
-from the survey platform, and one item that is simply poor:
-
-| item | fault | generated | as stored | after recode | max | excess P(3) |
-|---|---|---|---|---|---|---|
-| HSNS4 | stored with its scale reversed | .62 | **−.581** | .581 | 5 | +.003 |
-| HSNS7 | 45% of non-responses written as the midpoint | .66 | .444 | .444 | 5 | **+.383** |
-| HSNS2 | the 5 was never recorded | .70 | .630 | .630 | **4** | +.001 |
-| HSNS6 | none — the item measures poorly | .48 | .430 | .430 | 5 | +.001 |
-| others | — | .59–.68 | .558–.651 | | 5 | ±.005 |
-
-Outside the United States every item is measured worse and HSNS9 runs backwards
-(λ = −.45), as a mistranslated item would.
-
-## Why it is not a one-liner
-
-- **Only one of the four faults is visible in the model.** The mis-keyed item
-  announces itself with a loading of −.581. The other three do not.
-- **The two items that matter are a hundredth apart.** HSNS6 loads .430 and
-  HSNS7 loads .444 — no fit statistic, residual or modification can separate
-  them, and they need opposite treatment. One is a bad item; the other is a
-  good item whose non-responses were written as 3. The only thing that
-  distinguishes them is that HSNS7 is answered 3 thirty-eight percentage points
-  more often than a normal trait allows, while every other item is within ±.005.
-- **The truncated item looks healthy.** It loads .630, inside the sound range
-  of .558–.651. Nothing but its maximum value gives it away.
-- **Reading the loadings misclassifies two of ten items** — enough to fail,
-  since every item must be right.
-- **Skipping the US filter makes a sound item the weakest.** Pooled, HSNS9
-  drops to .249, well below the genuinely weak item.
-
-## Scored
-
-Three stages, all must pass; see `psychometrics/score.py`. Stage 3 is the
-ten-item classification.
-
-The scorer undoes the reversal on HSNS4 before fitting, so every submission is
-judged on the same responses whether or not it noticed. Without that, a loading
-of −.581 would trip the sign-reversal constraint and stage 1 would reject
-everyone, including the correct answer.
-
-Submission: `model_syntax`, `item_quality`.
+`--verify` prints the numbers behind everything above and checks the intended
+answer wins. `--naive` checks that the obvious analysis fails.

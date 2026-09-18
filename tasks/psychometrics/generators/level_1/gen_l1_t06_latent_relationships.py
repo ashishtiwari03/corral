@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 06: how do the two instruments' traits relate?
+"""Task 06: how do the traits behind the two questionnaires relate?
 
-Relating the instruments through scale scores makes every relationship look
-weaker than it is, and not by a constant amount: badly measured dimensions
-shrink furthest. The picture that results is uniform and mild, where the real
-one has a pair of dimensions that are barely distinguishable at all.
+Adding up item scores and correlating the totals makes every relationship look
+weaker than it is, and not by a constant amount: the worst-measured traits
+shrink furthest. That leaves a picture of mild, even relationships, where the
+real one has a pair of traits that can barely be told apart.
 
-    python gen_l1_t06_latent_relationships.py            # write artifacts
+    python gen_l1_t06_latent_relationships.py             # write the task
     python gen_l1_t06_latent_relationships.py --verify    # check it is solvable
-    python gen_l1_t06_latent_relationships.py --naive     # check the default fails
+    python gen_l1_t06_latent_relationships.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -61,8 +60,8 @@ PHI = {
 CROSS_PAIRS = [("VULN", "MACH"), ("VULN", "PSYCH"), ("VULN", "NARC"),
                ("EGO", "MACH"), ("EGO", "PSYCH"), ("EGO", "NARC")]
 
-# Above this, two dimensions are not telling apart. Stated in the prompt so the
-# judgement is checkable rather than a matter of taste.
+# Above this, two traits count as indistinguishable. The prompt gives the same
+# number, so the judgement has one right answer.
 REDUNDANCY_THRESHOLD = 0.80
 
 LOADING_SCALE_NON_US = 0.80
@@ -158,13 +157,13 @@ def population_reference():
     big = simulate(POP_REFERENCE_N, rng)
     targets = latent_correlations(big)
     pop = np.corrcoef(big[ITEMS].values.T.astype(float))
-    return targets, pop
+    return targets, pop.round(3)
 
 
 def build_truth(targets, floor, pop, data_sha, rows):
     """Assemble the hidden ground truth, scoring reference and provenance."""
     cross = [{"a": ITEMS_OF[a], "b": ITEMS_OF[b],
-              "r": round(targets[frozenset((a, b))], 4)} for a, b in CROSS_PAIRS]
+              "r": round(targets[frozenset((a, b))], 3)} for a, b in CROSS_PAIRS]
     redundant = [[ITEMS_OF[a], ITEMS_OF[b]] for a, b in CROSS_PAIRS
                  if targets[frozenset((a, b))] >= REDUNDANCY_THRESHOLD]
     return {
@@ -232,7 +231,7 @@ def candidate_submissions(X):
     scores = scale_score_correlations(X)
 
     def payload(source):
-        corr = [[a, b, round(source[frozenset((a, b))], 4)] for a, b in CROSS_PAIRS]
+        corr = [[a, b, round(source[frozenset((a, b))], 3)] for a, b in CROSS_PAIRS]
         redundant = [[a, b] for a, b in CROSS_PAIRS
                      if source[frozenset((a, b))] >= REDUNDANCY_THRESHOLD]
         return {"model_syntax": reference_syntax(), "correlations": corr,
@@ -279,7 +278,7 @@ def verify(df, targets, pop):
         ("but looks distinguishable through scale scores",
          ego_narc_scores < REDUNDANCY_THRESHOLD),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, targets, pop):
@@ -293,7 +292,7 @@ def naive(df, targets, pop):
     print(f"  the real ones span            {min(true):.2f} to {max(true):.2f}")
     print(f"  every pair is understated, by {min(t - v for t, v in zip(true, values)):.2f}"
           f" to {max(t - v for t, v in zip(true, values)):.2f}")
-    return _report([
+    return C.report([
         ("every scale-score correlation is outside tolerance",
          all(abs(scores[frozenset(p)] - PHI[p]) > 0.06 for p in CROSS_PAIRS)),
         ("and the real spread is wider than the apparent one",
@@ -301,36 +300,22 @@ def naive(df, targets, pop):
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
     print(f"Calibrating targets (population draw N={POP_REFERENCE_N:,}) ...")
     targets, pop = population_reference()
 
-    if args.verify or args.naive:
-        return verify(df, targets, pop) if args.verify else naive(df, targets, pop)
+    if action != "build":
+        return verify(df, targets, pop) if action == "verify" else naive(df, targets, pop)
 
     floor = C.evaluate_model(reference_syntax(), C.analysis_sample(df, ITEMS),
                              ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(targets, floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(targets, floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

@@ -1,47 +1,90 @@
 # Psychometrics Task Environment
 
-Agents recover the latent measurement model behind questionnaire data and decide
-what it supports. Every dataset is simulated from a known model, so the true
-structure is exact; each task is built so the default analysis produces a
-specific wrong answer.
+Questionnaire data, and the job of working out what is really behind it.
+
+Every dataset here is simulated from a known model, so the right answer is
+exact rather than a matter of opinion. Each task is built so that the obvious
+analysis produces a specific wrong answer.
+
+## Layout
 
 ```
-generators/common.py                 shared simulation, fitting and artifact code
-generators/level_*/gen_*.py          one script per task: its generating model
-generators/level_*/task_*.md         what that task generates and tests
-artifacts/level_*/task_*/            data.csv, codebook.md (agent-visible)
-                                     truth.json (hidden)
-environments/level_*/tasks_json/     Corral task definitions
-psychometrics/score.py               scorer
-tests/test_scoring.py                every task scores as intended
+build.py                          rebuild and check the whole environment
+generators/common.py              simulation, fitting and artifact code shared by all tasks
+generators/level_*/gen_*.py       one script per task: the model its data come from
+generators/level_*/task_*.md      what that task is about and how it is scored
+artifacts/level_*/task_*/         data.csv and codebook.md, which the agent sees;
+                                  truth.json, which it does not
+environments/level_*/tasks_json/  the task definitions
+psychometrics/score.py            the scorer
+tests/test_scoring.py             checks every task scores as intended
 ```
 
-Generators are seed-deterministic and read nothing external. Run one with
-`--verify` to check the intended answer wins and each rival fails for its own
-reason, or `--naive` to check the default analysis fails; both run in CI.
+## Building
 
-Submissions carry a lavaan model specification plus the estimates it produced;
-anything else the scorer needs it derives by re-fitting. Scoring runs in three
-stages — constraints, then Pareto dominance over the generating model as a
-floor, then the reported estimates against the generative parameters — and
-criteria are never combined into a weighted sum. Reported: `score_binary`,
-`score_partial` (diagnostic), `checks_vector`.
+Everything under `artifacts/` and `environments/` is generated, and a rebuild
+reproduces it byte for byte.
 
-The task description never says which columns belong to which instrument, or
-how they group into subscales. Working that out from the item text is part of
-the task.
+```bash
+uv run --with numpy --with pandas --with scipy --with semopy \
+  --with factor_analyzer python build.py --clean   # rebuild from nothing
+uv run ... python build.py --check                 # build, then check everything
+uv run ... python build.py --tasks 3 7             # only these
+```
 
-| task | question | generating model |
-|---|---|---|
-| [L1-T1](generators/level_1/task_01.md) | HSNS factor structure | two correlated factors |
-| [L1-T2](generators/level_1/task_02.md) | Dirty Dozen factor structure | general factor + specifics |
-| [L1-T3](generators/level_1/task_03.md) | HSNS: one trait or two? | one factor + two duplicate item pairs |
-| [L1-T4](generators/level_1/task_04.md) | Which instrument supports a gender comparison? | HSNS biased on four items; Dirty Dozen invariant, but only under its real structure |
-| [L1-T5](generators/level_1/task_05.md) | Which gender comparisons are defensible? | loadings invariant, six items shifted, means not identified |
-| [L1-T6](generators/level_1/task_06.md) | How do the two instruments' dimensions relate? | five correlated dimensions, one pair near-redundant |
-| [L1-T7](generators/level_1/task_07.md) | Which instrument travels across countries? | HSNS holds up; the Dirty Dozen's general factor is US-specific |
-| [L1-T8](generators/level_1/task_08.md) | What may each instrument's scores be used for? | HSNS one factor; Dirty Dozen's total is reliable but not interpretable |
-| [L1-T9](generators/level_1/task_09.md) | How strongly are the two instruments related? | five dimensions, barely related across instruments; 8% of respondents straight-lined |
-| [L1-T10](generators/level_1/task_10.md) | Which items are bad, and which is the data? | one trait, three recording faults and one genuinely poor item |
+`--check` runs three things for every task: that the intended answer wins
+(`--verify`), that the obvious analysis fails (`--naive`), and that the scorer
+gives the intended verdicts. Generators read nothing external and depend only on
+their seed.
 
-Level 2 is not yet defined; the boundary between the levels is being reworked.
+## Scoring
+
+A submission gives a model plus the numbers that model produced. Anything else
+the scorer needs, it works out by re-fitting that model, so nothing is asked for
+that the answer does not require.
+
+Scoring runs in three stages, all of which must pass. They are never added up
+into a weighted total.
+
+1. **Constraints.** Is the model usable at all? A negative variance, or two
+   factors too alike to tell apart, make a model invalid rather than worse. It
+   is dropped here however well it fits.
+2. **Comparison.** The model the data came from sets a floor. A submission must
+   be at least as good on fit, on how many parameters it spends, and on how
+   close the correlations it implies come to the truth. Beating the floor is
+   fine and never counts against it.
+3. **Claims.** The numbers reported, checked against the values the data were
+   built from.
+
+Reported: `score_binary`, `score_partial` (for diagnosis only) and
+`checks_vector`.
+
+## Level 1
+
+The task description never says which columns belong to which questionnaire, or
+how they group into subscales. Working that out from the item wording is part of
+every task.
+
+| task | question |
+|---|---|
+| [1](generators/level_1/task_01.md) | How many traits does the HSNS measure? |
+| [2](generators/level_1/task_02.md) | How many traits does the Dirty Dozen measure? |
+| [3](generators/level_1/task_03.md) | Does the HSNS measure one trait or two? |
+| [4](generators/level_1/task_04.md) | Which questionnaire supports a comparison between men and women? |
+| [5](generators/level_1/task_05.md) | Which comparisons between men and women can be defended? |
+| [6](generators/level_1/task_06.md) | How do the traits behind the two questionnaires relate? |
+| [7](generators/level_1/task_07.md) | Which questionnaire travels to other countries? |
+| [8](generators/level_1/task_08.md) | What may each questionnaire's scores be used for? |
+| [9](generators/level_1/task_09.md) | How strongly are the two questionnaires related? |
+| [10](generators/level_1/task_10.md) | Which items are bad, and which is the data? |
+
+## Level 2
+
+Not built yet. A Level 1 task has one analysis to get right: the obvious
+approach gives a specific wrong answer, and the evidence that corrects it is
+there in the analysis itself.
+
+A Level 2 task is meant to be different in kind. Two analyses, both defensible,
+give opposite answers, and doing either one better does not help. The agent has
+to notice the conflict, work out what would settle it, and run a test the task
+never asked for.

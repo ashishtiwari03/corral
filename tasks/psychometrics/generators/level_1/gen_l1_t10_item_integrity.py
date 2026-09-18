@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 10: which items are bad, and which is the data?
+"""Task 10: which items are bad, and which is the data?
 
-Four of the ten HSNS items misbehave and only one of them is actually a poor
-item. Two of the other three are invisible in the model output, and the two
-that look most alike - a corrupted item and a genuinely weak one - differ in
-their loadings by a hundredth.
+Four of the ten HSNS items misbehave and only one of them is genuinely a poor
+item. Two of the other three leave no trace in the model output at all, and the
+two that look most alike - one with damaged data, one genuinely weak - differ
+by a hundredth.
 
-    python gen_l1_t10_item_integrity.py            # write artifacts
+    python gen_l1_t10_item_integrity.py             # write the task
     python gen_l1_t10_item_integrity.py --verify    # check it is solvable
-    python gen_l1_t10_item_integrity.py --naive     # check the default fails
+    python gen_l1_t10_item_integrity.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -179,7 +178,7 @@ def population_correlation_matrix():
     big = corrupt(honest_responses(POP_REFERENCE_N, rng, 1.0), rng)
     big = big[ITEMS].astype(float)
     big[MIS_KEYED] = 6 - big[MIS_KEYED]
-    return np.corrcoef(big.values.T)
+    return np.corrcoef(big.values.T).round(3)
 
 
 # --------------------------------------------------------------------------
@@ -317,7 +316,7 @@ def verify(df, pop):
         ("skipping the US filter makes a sound item look like the weak one",
          pooled_sound_min < pooled[WEAK]),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, pop):
@@ -337,7 +336,7 @@ def naive(df, pop):
               f"{'   <- wrong' if verdict != TRUTH[item] else ''}")
     print(f"\n  the loadings alone misclassify {len(wrong)} of {len(ITEMS)} "
           f"items: {wrong}")
-    return _report([
+    return C.report([
         ("a corrupted item is mistaken for a weak one",
          NEUTRAL_CODED in wrong),
         ("a truncated item passes as sound", TRUNCATED in wrong),
@@ -345,35 +344,21 @@ def naive(df, pop):
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
-        return verify(df, None) if args.verify else naive(df, None)
+    if action != "build":
+        return verify(df, None) if action == "verify" else naive(df, None)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
     floor = C.evaluate_model(reference_syntax(), analysis_sample(df), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

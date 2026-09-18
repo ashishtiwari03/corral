@@ -1,71 +1,39 @@
-# Level 1 / Task 07 — Which instrument travels?
+# Task 07 — which questionnaire travels to other countries?
 
-**Ask.** Calibrate a measurement model for each instrument on the US sample, then
-classify how far each carries over to six other countries: `exact`,
-`approximate`, `substantive_only`, or `none`.
+## The idea
 
-**Generator.** `gen_l1_t07_cross_country_replication.py`
+Both questionnaires are calibrated on the US sample and then tested in six
+other countries. Each one in each country is sorted into one of four classes,
+from holding exactly to not holding at all.
 
-## Generating model
+## What goes wrong
 
-| country | N | HSNS | Dirty Dozen |
-|---|---|---|---|
-| US | 24000 | two factors, φ = .35 | general factor + three specifics |
-| GB | 6200 | unchanged → `exact` | unchanged → `exact` |
-| CA | 3800 | loadings ×0.85 → `approximate` | general ×0.5 → `substantive_only` |
-| AU | 3000 | unchanged → `exact` | general ×0.3 → `substantive_only` |
-| IN | 660 | loadings ×0.85 → `approximate` | no general factor → `substantive_only` |
-| BR | 510 | φ → .95 → `substantive_only` | no general factor → `substantive_only` |
-| DE | 830 | loadings ×0.85 → `approximate` | scrambled, weakened → `none` |
+- The questionnaire that measures better at home is the one that does not
+  transfer, and it does not announce itself. The US model keeps fitting those
+  countries perfectly well; it has simply stopped being the best model there.
+  Judging by fit alone gets most of the grid wrong.
+- One country's answers are strong but its two traits have merged into one,
+  which is a different kind of failure from measuring badly.
+- Another country's items have moved between subscales, so the questionnaire
+  measures something, just not what it does elsewhere.
+- Sample sizes vary from 510 to 6,200, so the same real difference is
+  statistically obvious in one country and invisible in another.
 
-## Why it is not a one-liner
+## Scoring
 
-**The instrument that measures better at home is the one that does not travel.**
-In the US the Dirty Dozen's structure is beyond dispute — its general factor beats
-the three-subscale alternative by 578 BIC units. It holds in exactly one other
-country.
+Stage 3 checks the whole grid of twelve verdicts at once. Every cell has to be
+right, so there is no credit for getting the easy countries.
 
-**And it never stops fitting.** Judging replication the obvious way, by asking
-whether the calibrated model still fits, gets four of six countries wrong:
+The submission is the US model and a class for each questionnaire in each
+country. Anything else the scorer needs it works out by re-fitting the
+submitted model, so the agent is not asked for it.
 
+## Rebuild
+
+```bash
+uv run --with numpy --with pandas --with scipy --with semopy \
+  python generators/level_1/gen_l1_t07_cross_country_replication.py [--verify|--naive]
 ```
-country  HSNS CFI   DD CFI   verdict from fit alone
-CA         1.0014   0.9951   Dirty Dozen replicates   (truth: substantive_only)
-AU         0.9971   1.0065   Dirty Dozen replicates   (truth: substantive_only)
-IN         0.9936   1.0028   Dirty Dozen replicates   (truth: substantive_only)
-BR         1.0103   0.9890   Dirty Dozen replicates   (truth: substantive_only)
-```
 
-The US model fits those countries perfectly well. It has simply stopped being the
-*best* model there — the three-subscale structure now wins on BIC, because the
-general factor is a feature of the US sample. Only a per-country model
-*comparison* shows this; a per-country fit check cannot.
-
-This is why an earlier design failed: a bifactor fitted to data with no general
-factor still returns a healthy-looking general factor with excellent fit, because
-the two structures are alternative parameterisations of the same shared variance.
-There is nothing to see unless you compare them.
-
-**Both columns vary,** so neither can be filled in by pattern: the HSNS is
-`exact` twice, `approximate` three times and `substantive_only` once; the Dirty
-Dozen is `exact` once, `substantive_only` four times and `none` once.
-
-Every country's verdict was checked over 20 seeds and never flips; the tightest
-margin is Canada's, at 21 BIC units minimum.
-
-## Scored
-
-- **Stages 1–2** re-fit the submitted model on the US sample. An agent that
-  calibrates the wrong US model fails here and never reaches the countries —
-  correctly, since replication of a model that does not hold at home is not a
-  finding. This is also why `model_syntax` is required: Brazil is
-  `substantive_only` under a two-factor HSNS and `exact` under a one-factor one,
-  so the labels are meaningless without knowing what was tested.
-- **Stage 3** checks the twelve labels. All must be right.
-
-Nothing else is asked for. The labels cannot be produced without fitting in every
-country, so no auxiliary quantity is needed to force the work — and asking for
-one (a factor correlation, say) would point straight at the diagnostic that
-cracks Brazil.
-
-Submission: `model_syntax`, `replication`.
+`--verify` prints the numbers behind everything above and checks the intended
+answer wins. `--naive` checks that the obvious analysis fails.

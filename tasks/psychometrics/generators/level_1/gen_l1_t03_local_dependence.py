@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 03: one trait, or two? The HSNS with duplicate items.
+"""Task 03: does the HSNS measure one trait or two?
 
-The generating model is unidimensional. Two pairs of items are worded so
-similarly that respondents answer them alike beyond what the trait explains,
-which is enough to make the usual dimensionality check report two factors. A
-third pair reads just as similarly and has no such dependence.
+The answers come from a single trait. Two pairs of items are worded so alike
+that people answer them alike for reasons the trait does not explain, which is
+enough to make the usual check report two traits. A third pair reads just as
+alike and has no such link, so it is a decoy.
 
-    python gen_l1_t03_local_dependence.py            # write artifacts
-    python gen_l1_t03_local_dependence.py --verify    # check the task is solvable
-    python gen_l1_t03_local_dependence.py --naive     # check the default analysis fails
+    python gen_l1_t03_local_dependence.py             # write the task
+    python gen_l1_t03_local_dependence.py --verify    # check it is solvable
+    python gen_l1_t03_local_dependence.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -31,9 +30,8 @@ TASK_JSON = C.PKG_ROOT / "environments" / "level_1" / "tasks_json" / "task_03.js
 ITEMS = C.HSNS_ITEMS
 TRAIT = "vulnerability"
 
-# HSNS1 and HSNS8 carry high loadings deliberately. That makes them the second
-# most correlated pair in the matrix without any dependence between them, so
-# ranking raw correlations points at the decoy.
+# HSNS1 and HSNS8 track the trait strongly. That alone makes them one of the
+# most correlated pairs, so sorting raw correlations points at them first.
 LOADINGS = {
     "HSNS1": (TRAIT, 0.82), "HSNS2": (TRAIT, 0.58), "HSNS3": (TRAIT, 0.66),
     "HSNS4": (TRAIT, 0.55), "HSNS5": (TRAIT, 0.49), "HSNS6": (TRAIT, 0.61),
@@ -41,22 +39,20 @@ LOADINGS = {
     "HSNS10": (TRAIT, 0.53),
 }
 
-# Pairs whose residuals covary. Both are near-paraphrases in the real instrument:
-# HSNS2/HSNS7 are both about "the remarks of others", HSNS5/HSNS10 are both about
-# other people's troubles.
+# Pairs that agree beyond what the trait explains. Both read as near-
+# paraphrases: HSNS2 and HSNS7 are about other people's remarks, HSNS5 and
+# HSNS10 about other people's troubles.
 RESIDUAL_PAIRS = [(("HSNS2", "HSNS7"), 0.38), (("HSNS5", "HSNS10"), 0.33)]
 
-# HSNS1 ("absorbed in thinking about my personal affairs") and HSNS8 ("wrapped up
-# in my own interests") are the most similar-reading pair in the instrument and
-# have no residual dependence at all. Nothing is done to create the decoy; it
-# exists because the item text is real.
+# HSNS1 and HSNS8 read as the most similar pair of all and have no such
+# agreement between them. They are the decoy.
 DECOY_PAIR = ("HSNS1", "HSNS8")
 
-# Respondents outside the US are measured less well and have no duplicate-item
-# dependence, so pooling attenuates the loadings.
+# Outside the US the items are measured worse and no pair agrees beyond the
+# trait, so analysing everyone together weakens every loading.
 LOADING_SCALE_NON_US = 0.75
 
-# The Dark Triad block is present in the file but is not part of this task.
+# The Dark Triad items are in the file but are not part of this task.
 DD_LOADINGS = {
     "DDM1": ("mach", 0.74), "DDM2": ("mach", 0.71),
     "DDM3": ("mach", 0.58), "DDM4": ("mach", 0.77),
@@ -164,7 +160,7 @@ def candidate_models():
 def population_correlation_matrix():
     """Correlation matrix a perfectly specified model would reproduce."""
     rng = np.random.default_rng(SEED + 999)
-    return np.corrcoef(simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float))
+    return np.corrcoef(simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float)).round(3)
 
 
 def build_truth(floor, pop, data_sha, rows):
@@ -224,9 +220,8 @@ def build_task_json(data_sha):
                 {"key": "loadings", "fn": "score_vector",
                  "truth_key": "scored.loadings", "tol": 0.08,
                  "all_must_be_within": True, "criterion": "parameter_quality"},
-                # The answer to this task: which item pairs agree beyond the
-                # trait. Read off the `~~` terms of the re-fitted model, so it
-                # costs the submission no extra field.
+                # The answer: which pairs agree beyond the trait. Read from the
+                # submitted model rather than asked for separately.
                 {"key": "residual_pairs", "fn": "score_pair_set",
                  "derive_from": "refit_residual_covariances",
                  "truth_key": "scored.residual_pairs",
@@ -283,7 +278,7 @@ def verify(df, pop):
          abs(res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]) * 5
          < min(abs(res.loc[a, b]) for (a, b), _ in RESIDUAL_PAIRS)),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def _implied(unidim_spec, X):
@@ -323,42 +318,29 @@ def naive(df, pop):
                        ("pooled (no filter)", df)):
         Xs = sub[ITEMS]
         Xs = Xs[(Xs != 0).all(axis=1)].astype(float)
-        fitted = C.primary_loadings_from_fit(reference_syntax(), Xs, ITEMS)
+        fitted = {k: abs(v) for k, v in
+                  C.loadings(C.fit(reference_syntax(), Xs, ITEMS)).items()}
         worst = max(abs(fitted[i] - truth[i]) for i in ITEMS)
         outcome[label] = worst <= 0.08
         print(f"{label:22s} {len(Xs):7,} {worst:14.3f}  "
               f"{'yes' if outcome[label] else 'NO'}")
 
-    return _report([
+    return C.report([
         ("the usual dimensionality check reports two factors", n_factors == 2),
         ("the pooled analysis reports loadings outside tolerance",
          outcome["US only (correct)"] and not outcome["pooled (no filter)"]),
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
+    if action != "build":
         pop = population_correlation_matrix()
-        return verify(df, pop) if args.verify else naive(df, pop)
+        return verify(df, pop) if action == "verify" else naive(df, pop)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
@@ -366,7 +348,7 @@ def main():
                              ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

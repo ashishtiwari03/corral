@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 07: which instrument travels?
+"""Task 07: which questionnaire travels to other countries?
 
-Two instruments are calibrated on the US sample and tested in six other
+Both questionnaires are calibrated on the US sample and tested in six other
 countries. The one that measures better at home is the one that does not
-transfer - and it does not announce itself, because the US model keeps fitting
-those countries perfectly well. It has simply stopped being the best model there.
+transfer, and it does not announce itself: the US model keeps fitting those
+countries perfectly well, it has just stopped being the best model there.
 
-    python gen_l1_t07_cross_country_replication.py            # write artifacts
+    python gen_l1_t07_cross_country_replication.py             # write the task
     python gen_l1_t07_cross_country_replication.py --verify    # check it is solvable
-    python gen_l1_t07_cross_country_replication.py --naive     # check the default fails
+    python gen_l1_t07_cross_country_replication.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -215,7 +214,7 @@ def population_correlation_matrix():
     n, scale, phi, gen, scram = COUNTRIES["US"]
     big = pd.concat([simulate_hsns(POP_REFERENCE_N, rng, scale, phi),
                      simulate_dd(POP_REFERENCE_N, rng, gen, scram)], axis=1)
-    return np.corrcoef(big[ITEMS].values.T.astype(float))
+    return C.population_matrix(big, ITEMS)
 
 
 def _bic(spec, X, items):
@@ -372,7 +371,7 @@ def verify(df, pop):
          all(by_country[c][1] > 0.06 for c in ("CA", "IN", "DE"))
          and by_country["GB"][1] < 0.06),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, pop):
@@ -399,38 +398,24 @@ def naive(df, pop):
               f"   (truth: {truth})")
     print(f"\n  fit alone misclassifies {wrong} of {len(REPLICATION_COUNTRIES)} "
           f"countries for the Dirty Dozen")
-    return _report([("fit alone gets most of the Dirty Dozen wrong", wrong >= 3)])
-
-
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
+    return C.report([("fit alone gets most of the Dirty Dozen wrong", wrong >= 3)])
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
-        return verify(df, None) if args.verify else naive(df, None)
+    if action != "build":
+        return verify(df, None) if action == "verify" else naive(df, None)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
     floor = C.evaluate_model(reference_syntax(), country_sample(df, "US"), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

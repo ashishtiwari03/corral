@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 02: recover the factor structure of the Dirty Dozen.
+"""Task 02: how many traits does the Dirty Dozen measure?
 
-The generating model is a general factor plus three orthogonal specific factors.
-The instrument's nominal three-subscale structure fits these data well enough to
-pass every conventional cutoff, and is wrong.
+The answers come from one broad trait plus a narrow one per subscale. The three
+subscales the questionnaire was published with fit well enough to pass every
+usual cutoff and are still the wrong answer. Only comparing models shows it.
 
-    python gen_l1_t02_dd_structure.py            # write artifacts
-    python gen_l1_t02_dd_structure.py --verify    # check the task is solvable
-    python gen_l1_t02_dd_structure.py --naive     # check the default analysis fails
+    python gen_l1_t02_dd_structure.py             # write the task
+    python gen_l1_t02_dd_structure.py --verify    # check it is solvable
+    python gen_l1_t02_dd_structure.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -29,9 +28,9 @@ TASK_JSON = C.PKG_ROOT / "environments" / "level_1" / "tasks_json" / "task_02.js
 
 ITEMS = C.DD_ITEMS
 
-# Every item measures a broad antagonistic disposition and, on top of that, the
-# narrower trait its subscale is named for. The two sources are independent, so
-# an item's reliable variance splits between them.
+# Every item measures one broad trait and, on top of that, the narrower trait
+# its subscale is named for. The two are unrelated to each other, so what an
+# item explains is split between them.
 SPECIFIC_OF = {
     "DDM1": "M", "DDM2": "M", "DDM3": "M", "DDM4": "M",
     "DDP1": "P", "DDP2": "P", "DDP3": "P", "DDP4": "P",
@@ -48,12 +47,13 @@ SPECIFIC_LOADINGS = {
     "DDN1": 0.58, "DDN2": 0.56, "DDN3": 0.45, "DDN4": 0.30,
 }
 
-# Respondents outside the US have no general factor: for them the three traits
-# are merely correlated, and more weakly measured. Pooling recovers neither.
+# Outside the US there is no broad trait at all, only three related ones, and
+# all of them are measured worse. Analysing everyone together recovers
+# neither picture.
 NON_US_LOADING = {"M": 0.52, "P": 0.48, "N": 0.50}
 NON_US_PHI = {("M", "P"): 0.35, ("M", "N"): 0.25, ("P", "N"): 0.20}
 
-# The HSNS block is present in the file but is not part of this task.
+# The HSNS items are in the file but are not part of this task.
 HSNS_LOADINGS = {
     "HSNS1": ("ego", 0.55), "HSNS4": ("ego", 0.30), "HSNS5": ("ego", 0.70),
     "HSNS6": ("ego", 0.48), "HSNS8": ("ego", 0.71), "HSNS10": ("ego", 0.66),
@@ -145,7 +145,7 @@ def population_correlation_matrix():
     rng = np.random.default_rng(SEED + 999)
     big = C.bifactor_block(POP_REFERENCE_N, rng, GENERAL_LOADINGS,
                            SPECIFIC_LOADINGS, SPECIFIC_OF, ITEMS, C.THRESHOLDS)
-    return np.corrcoef(big.values.T.astype(float))
+    return C.population_matrix(big, list(big.columns))
 
 
 def primary_loadings():
@@ -245,10 +245,9 @@ def verify(df, pop):
         ("on parsimony", truth["BIC"] < three["BIC"] - 10),
         ("and on accuracy",
          truth["sigma_max_abs_deviation"] < three["sigma_max_abs_deviation"] - 0.01),
-        # With exactly three first-order factors the second-order model imposes
-        # no constraint, so the two are the same model. The residual difference
-        # is optimiser tolerance: the gap to the next model is ~500 chi-square
-        # units, this one is under 1.
+        # With exactly three subscales these two are the same model written two
+        # ways, so no fit measure can separate them. The tolerance allows for
+        # the solver stopping in slightly different places.
         ("second-order is statistically equivalent to three correlated factors",
          abs(second["CFI"] - three["CFI"]) < 1e-3
          and abs(second["chi2"] - three["chi2"]) < 1.0
@@ -256,7 +255,7 @@ def verify(df, pop):
         ("unidimensional is clearly rejected",
          criteria["unidimensional"]["CFI"] < 0.90),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, pop):
@@ -271,39 +270,25 @@ def naive(df, pop):
                        ("pooled (no filter)", df)):
         X = sub[ITEMS]
         X = X[(X != 0).all(axis=1)].astype(float)
-        fitted = C.primary_loadings_from_fit(spec, X, ITEMS)
+        fitted = {k: abs(v) for k, v in C.loadings(C.fit(spec, X, ITEMS)).items()}
         worst = max(abs(fitted[i] - truth[i]) for i in ITEMS)
         outcome[label] = worst <= 0.08
         print(f"{label:22s} {len(X):7,} {worst:14.3f}  "
               f"{'yes' if outcome[label] else 'NO'}")
-    return _report([("the pooled analysis reports loadings outside tolerance",
+    return C.report([("the pooled analysis reports loadings outside tolerance",
                      outcome["US only (correct)"]
                      and not outcome["pooled (no filter)"])])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
+    if action != "build":
         pop = population_correlation_matrix()
-        return verify(df, pop) if args.verify else naive(df, pop)
+        return verify(df, pop) if action == "verify" else naive(df, pop)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
@@ -311,7 +296,7 @@ def main():
                              ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

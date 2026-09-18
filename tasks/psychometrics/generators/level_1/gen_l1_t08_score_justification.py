@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 08: what may each instrument's scores be used for?
+"""Task 08: what may each questionnaire's scores be used for?
 
-Two instruments, and the reliability coefficient everyone reports ranks them
-backwards. The instrument with the higher alpha is the one whose total score
-means nothing, because its items agree without sharing a common trait.
+The reliability figure almost every paper reports ranks the two questionnaires
+backwards. The one with the higher figure is the one whose total score means
+nothing, because its items agree with each other without sharing a common
+trait.
 
-    python gen_l1_t08_score_justification.py            # write artifacts
+    python gen_l1_t08_score_justification.py             # write the task
     python gen_l1_t08_score_justification.py --verify    # check it is solvable
-    python gen_l1_t08_score_justification.py --naive     # check the default fails
+    python gen_l1_t08_score_justification.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -39,14 +39,14 @@ HSNS_LOADINGS = {
     "HSNS1": 0.48, "HSNS2": 0.52, "HSNS3": 0.44, "HSNS4": 0.40, "HSNS5": 0.50,
     "HSNS6": 0.42, "HSNS7": 0.49, "HSNS8": 0.45, "HSNS9": 0.47, "HSNS10": 0.43,
 }
-# Two items share wording about how others' remarks land, and so share a little
-# variance the single factor does not explain. Small enough to leave the total
-# score sound, large enough that the one-factor model is an approximation.
+# Two items are worded alike and agree a little beyond the trait. Small enough
+# to leave the total score sound, large enough that the model is an
+# approximation rather than an exact match.
 HSNS_RESIDUAL_CORR = (("HSNS2", "HSNS7"), 0.10)
 
-# A weak general factor under three strong specifics. The general-to-specific
-# ratio varies within each subscale, which is what keeps the bifactor from
-# being a relabelling of three correlated factors.
+# A weak broad trait under three strong narrow ones. The balance between the
+# two varies from item to item within a subscale. Without that variation the
+# model would be three related traits written a different way.
 DD_GENERAL = {
     "DDM1": 0.46, "DDM2": 0.38, "DDM3": 0.22, "DDM4": 0.44,
     "DDP1": 0.40, "DDP2": 0.30, "DDP3": 0.44, "DDP4": 0.24,
@@ -209,7 +209,7 @@ def population_correlation_matrix():
     rng = np.random.default_rng(SEED + 999)
     big = pd.concat([simulate_hsns(POP_REFERENCE_N, rng, True),
                      simulate_dd(POP_REFERENCE_N, rng, True)], axis=1)
-    return np.corrcoef(big[ITEMS].values.T.astype(float))
+    return C.population_matrix(big, ITEMS)
 
 
 # --------------------------------------------------------------------------
@@ -237,7 +237,7 @@ def build_truth(floor, pop, data_sha, rows):
             "item_order": ITEMS,
         },
         "generative_parameters": {
-            "hsns": {"loadings": HSNS_LOADINGS, "omega": hsns_omega(),
+            "hsns": {"loadings": HSNS_LOADINGS, "omega": round(hsns_omega(), 3),
                      "residual_correlation": {"items": list(HSNS_RESIDUAL_CORR[0]),
                                               "covariance": HSNS_RESIDUAL_CORR[1]},
                      "non_us_loading": NON_US_HSNS_LOADING,
@@ -247,8 +247,8 @@ def build_truth(floor, pop, data_sha, rows):
             "dirty_dozen": {"general_loadings": DD_GENERAL,
                             "specific_loadings": DD_SPECIFIC,
                             "specific_of_item": SPECIFIC_OF,
-                            "omega_hierarchical": omega_h,
-                            "omega_total": omega_total,
+                            "omega_hierarchical": round(omega_h, 3),
+                            "omega_total": round(omega_total, 3),
                             "non_us_general": NON_US_DD_GENERAL,
                             "non_us_specific": NON_US_DD_SPECIFIC},
             "omega_h_floor": OMEGA_H_FLOOR,
@@ -390,7 +390,7 @@ def verify(df, pop):
         ("neither generating model recovers its data exactly",
          fits["unidimensional"][3] < 0.001 and fits["bifactor"][3] < 0.001),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def _fitted(spec, X, items):
@@ -414,34 +414,20 @@ def naive(df, pop):
     print(f"  truth: {TRUTH['hsns']} and {TRUTH['dirty_dozen']}")
     wrong = sum(TRUTH[k] != "total_only" for k in TRUTH)
     print(f"  alpha gets {wrong} of {len(TRUTH)} instruments wrong")
-    return _report([
+    return C.report([
         ("alpha prefers the instrument whose total means least", a_dd > a_hsns),
         ("and so licenses a score the data do not support", wrong >= 1),
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
 
-    if args.verify or args.naive:
-        return verify(df, None) if args.verify else naive(df, None)
+    if action != "build":
+        return verify(df, None) if action == "verify" else naive(df, None)
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
@@ -449,7 +435,7 @@ def main():
                              ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

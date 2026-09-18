@@ -1,31 +1,29 @@
 """Scoring for the psychometrics environment.
 
-A submission names a MODEL, not a number, so scoring cannot be a comparison of
-scalars. Three different kinds of judgement are involved and they are never
-combined into a weighted sum:
+A submission gives a model, not a number, so scoring is not a comparison of
+scalars. It runs in three stages. All three must pass, and they are never
+added up into a weighted total.
 
-  TIER 1  CONSTRAINTS   Feasibility. A model with a negative variance, a factor
-                        correlation above .90 or a collapsed factor is not a
-                        worse model, it is an invalid one. Non-compensatory:
-                        excluded before any comparison, whatever its fit.
+  Stage 1, constraints. Is the model usable at all? A negative variance, two
+  factors correlated above .90, or a factor no item really loads on make a
+  model invalid rather than merely worse. Such a model is dropped here,
+  however well it fits.
 
-  TIER 2  COMPARATIVE   Pareto dominance against a FLOOR. The submission must be
-                        at least as good as the reference model on every
-                        criterion (CFI, RMSEA, SRMR, BIC, and the deviation of
-                        the model-implied correlation matrix from the true
-                        population matrix), within eps for sampling noise.
-                        Being strictly better can never hurt, so a model that
-                        beats the generating model is accepted.
+  Stage 2, comparison. The model that generated the data sets a floor. The
+  submission has to be at least as good as it on every measure - three of fit,
+  one of how many parameters it spends, and one of how close the correlations
+  it implies come to the truth - allowing a small margin for sampling noise.
+  Beating the floor is fine and never counts against a submission.
 
-  TIER 3  CLAIMS        The estimates the agent reported, checked against the
-                        GENERATIVE parameters - not against the reference
-                        model's estimates. A better-specified model recovers
-                        those values more accurately, so this tier also rewards
-                        quality rather than conformity.
+  Stage 3, claims. The numbers the agent reported, checked against the values
+  the data were generated from. Not against what the reference model happens to
+  estimate, so a better model is rewarded rather than penalised.
 
-    score_binary  = 1.0 iff all three tiers pass
-    score_partial = fraction of applicable checks passed (diagnostic only)
-    checks_vector = {name: "PASS" | "FAIL" | "n/a"}
+Results:
+
+    score_binary   1.0 only if all three stages pass
+    score_partial  share of applicable checks passed; for diagnosis only
+    checks_vector  {name: "PASS" | "FAIL" | "n/a"}
 """
 
 from __future__ import annotations
@@ -51,11 +49,14 @@ _ALLOWED_OPS = ("=~", "~~", "~")
 
 
 class InvalidSubmission(ValueError):
-    """The submitted model specification is not admissible input."""
+    """The submitted model cannot be accepted as input."""
 
 
 def validate_syntax(spec: str, items: list[str], max_factors: int = 6) -> str:
-    """Whitelist-validate a submitted model specification before fitting it.
+    """Check a submitted model before fitting it.
+
+    Only known variables and a few operators are allowed, so a submission
+    cannot smuggle in code or refer to columns it was not given.
 
     lavaan syntax is declarative rather than executable, but agent output is
     still untrusted input: only the listed observed variables, the three
@@ -94,13 +95,13 @@ def validate_syntax(spec: str, items: list[str], max_factors: int = 6) -> str:
 # Fitting
 # --------------------------------------------------------------------------
 def observed_in_spec(spec: str, known: list[str]) -> set:
-    """Observed variables the specification actually uses."""
+    """The data columns a model actually refers to."""
     return {tok for tok in _TOKEN.findall(spec) if tok in set(known)}
 
 
 def evaluate_model(spec: str, X: pd.DataFrame, items: list[str],
                    pop: np.ndarray | None = None) -> tuple[dict, Any]:
-    """Fit one specification and return its full criteria vector."""
+    """Fit a model and measure it. Returns (measures, fitted model)."""
     import semopy
 
     model = semopy.Model(spec)
@@ -132,7 +133,10 @@ def evaluate_model(spec: str, X: pd.DataFrame, items: list[str],
         criteria["sigma_max_abs_deviation"] = float(np.abs(implied[iu] - pop[iu]).max())
         criteria["sigma_rms_deviation"] = float(
             np.sqrt(((implied[iu] - pop[iu]) ** 2).mean()))
-    return criteria, model
+    # Matched to the precision the reference criteria are stored at, so both
+    # sides of every comparison are measured the same way.
+    return {k: (round(v, 3) if isinstance(v, float) else v)
+            for k, v in criteria.items()}, model
 
 
 # --------------------------------------------------------------------------
@@ -207,10 +211,10 @@ def _partition(mapping: dict) -> set[frozenset]:
 
 
 def primary_assignment(model) -> dict:
-    """Item -> factor with that item's largest standardised loading.
+    """Which factor each item belongs to.
 
-    Derived from the fitted model rather than asked for, and tolerant of
-    cross-loadings: an item loading on two factors is assigned to its stronger one.
+    Read from the submitted model rather than asked for. An item that loads on
+    two factors is assigned to the stronger one.
     """
     ins = model.inspect(std_est=True)
     loadings = ins[ins.op == "~"].copy()
@@ -220,11 +224,11 @@ def primary_assignment(model) -> dict:
 
 
 def biased_items_from_fit(model, items, covariate: str = "gender") -> set:
-    """Items the model lets `covariate` predict directly.
+    """Items the model says are answered differently between groups.
 
-    In a model where the covariate already predicts the latent trait, a direct
-    path to an item is the claim that the item behaves differently between
-    groups for reasons the trait does not explain - item bias.
+    The model already lets the covariate, usually gender, predict the trait. A
+    direct path to an item on top of that is a claim that the item behaves
+    differently for reasons the trait does not explain.
     """
     ins = model.inspect(std_est=True)
     rows = ins[(ins.op == "~") & (ins.rval == covariate) & ins.lval.isin(items)]
@@ -232,10 +236,10 @@ def biased_items_from_fit(model, items, covariate: str = "gender") -> set:
 
 
 def factor_composition(model, items) -> dict:
-    """Map each latent factor to the set of items it loads on.
+    """Which items each factor covers.
 
-    Lets a submission name its factors whatever it likes: dimensions are matched
-    to the truth by which items they cover, not by what they are called.
+    A submission can name its factors anything: they are matched to the answers
+    by the items they cover, not by name.
     """
     ins = model.inspect(std_est=True)
     rows = ins[(ins.op == "~") & ins.lval.isin(items)]
@@ -246,10 +250,11 @@ def factor_composition(model, items) -> dict:
 
 
 def _match_correlations(reported, target, model, items, tol) -> bool:
-    """Check reported factor correlations against the truth, matched by items.
+    """Check reported correlations between factors, matched by items.
 
-    `reported` is a list of [factor, factor, correlation]; `target` is a list of
-    {"a": [items], "b": [items], "r": value}.
+    reported  [[factor, factor, correlation], ...]
+    target    [{"a": [items], "b": [items], "r": value}, ...]
+    tol       how far a reported value may be from the answer
     """
     if not isinstance(reported, list) or not target:
         return False
@@ -271,7 +276,7 @@ def _match_correlations(reported, target, model, items, tol) -> bool:
 
 
 def residual_pairs_from_fit(model, items) -> set:
-    """Item pairs the model lets covary beyond the factors, as unordered pairs.
+    """Pairs of items the model says agree beyond the trait.
 
     These are the `~~` terms between two observed items: the model's claim that
     those two items agree for a reason the common factors do not explain.
@@ -378,7 +383,14 @@ def _dig(obj: dict, dotted: str):
 # --------------------------------------------------------------------------
 def score_model_criteria(submission: str | dict, params: dict,
                          base_dir: str | Path = ".") -> dict:
-    """Score one submission. Returns the full result; `score_binary` is the metric."""
+    """Score one submission.
+
+    submission  the agent's JSON answer, or the object already parsed
+    params      the task's scoring rules
+    base_dir    where the dataset and answers live
+
+    Returns the full result. score_binary is the metric.
+    """
     base = Path(base_dir)
     if isinstance(submission, str):
         try:
@@ -462,7 +474,7 @@ def _fmt(v) -> str:
 
 
 def _recorded(criteria: dict) -> dict:
-    """Diagnostics kept for later analysis. Never affects the score."""
+    """Extra numbers kept for later analysis. Never affects the score."""
     from scipy.stats import chi2 as chi2_dist
 
     record = {}

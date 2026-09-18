@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 05: which gender comparisons are defensible?
+"""Task 05: which comparisons between men and women can be defended?
 
-The scale measures the same construct in both groups and its items relate to it
-identically, so comparisons of structure, of variances and of how the trait
-relates to other traits are all sound. But six of the ten items are answered
-differently by men and women at the same trait level, in both directions, which
-leaves no trustworthy set of reference items - so the one comparison everybody
-wants, the group means, is the one that cannot be made.
+The items relate to the trait the same way in both groups, so comparing the
+structure, the spread, and how the trait relates to other traits are all sound.
+But six of the ten items are answered differently by men and women at the same
+trait level, and in both directions, so no item can be trusted as a fixed point
+of reference. The comparison everyone wants, the group averages, is the one
+that cannot be made.
 
-    python gen_l1_t05_defensible_comparisons.py            # write artifacts
+    python gen_l1_t05_defensible_comparisons.py             # write the task
     python gen_l1_t05_defensible_comparisons.py --verify    # check it is solvable
-    python gen_l1_t05_defensible_comparisons.py --naive     # check the default fails
+    python gen_l1_t05_defensible_comparisons.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -204,7 +203,7 @@ def population_reference():
     pooled = simulate(POP_REFERENCE_N, rng2, female)
     pooled["gender"] = np.where(female, 2, 1)
     pop = np.corrcoef(pooled[MODEL_VARS].values.T.astype(float))
-    return targets, pop
+    return targets, pop.round(3)
 
 
 def build_truth(targets, floor, pop, data_sha, rows):
@@ -213,8 +212,8 @@ def build_truth(targets, floor, pop, data_sha, rows):
         "task_id": TASK_ID,
         "scored": {
             "comparisons": COMPARISONS,
-            "trait_correlation_men": round(targets["men"], 4),
-            "trait_correlation_women": round(targets["women"], 4),
+            "trait_correlation_men": round(targets["men"], 3),
+            "trait_correlation_women": round(targets["women"], 3),
             "highest_invariance_level": "metric",
         },
         "scoring_reference": {
@@ -348,7 +347,7 @@ def verify(df, targets, pop):
         ("the latent mean difference is not identified "
          "(anchor choice moves it by more than 0.20)", spread > 0.20),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, targets, pop):
@@ -365,43 +364,29 @@ def naive(df, targets, pop):
     print(f"  t-test on total scores: d = {d:+.3f}, p = {p:.2e}")
     print(f"  a significant difference is available to report, and it is not")
     print(f"  interpretable: the items are not answered the same way by the groups.")
-    return _report([
+    return C.report([
         ("the observed difference is statistically significant", p < 0.05),
         ("so the tempting comparison is the one that must be refused",
          COMPARISONS["observed_score_means"] is False),
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
     print(f"Calibrating targets (population draw N={POP_REFERENCE_N:,}) ...")
     targets, pop = population_reference()
 
-    if args.verify or args.naive:
-        return verify(df, targets, pop) if args.verify else naive(df, targets, pop)
+    if action != "build":
+        return verify(df, targets, pop) if action == "verify" else naive(df, targets, pop)
 
     floor = C.evaluate_model(reference_syntax(), comparison_sample(df),
                              MODEL_VARS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(targets, floor, pop.round(6).tolist(), sha, len(df)),
+        lambda sha: build_truth(targets, floor, pop.tolist(), sha, len(df)),
         build_task_json)
     return 0
 

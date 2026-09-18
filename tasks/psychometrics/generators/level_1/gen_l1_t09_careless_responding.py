@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Level 1 / Task 09: how strongly are the two instruments related?
+"""Task 09: how strongly are the two questionnaires related?
 
 A twelfth of the respondents were not reading the questions. Nothing in the
-model output says so - the factor structure survives intact and fits well - but
-every correlation in the matrix is pulled upward, and the weak ones, which is
-where the answer lives, are pulled the furthest.
+model output says so: the structure survives intact and fits well. But every
+correlation is pulled upward, and the weak ones, which is where the answer
+lives, are pulled the furthest.
 
-    python gen_l1_t09_careless_responding.py            # write artifacts
+    python gen_l1_t09_careless_responding.py             # write the task
     python gen_l1_t09_careless_responding.py --verify    # check it is solvable
-    python gen_l1_t09_careless_responding.py --naive     # check the default fails
+    python gen_l1_t09_careless_responding.py --naive     # check the obvious answer fails
 """
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -196,7 +195,7 @@ def population_reference(rng):
     clean = honest_responses(POP_REFERENCE_N, rng, True)
     targets = latent_correlations(clean.astype(float))
     spoiled, _, _ = contaminate(clean.copy(), rng)
-    return targets, np.corrcoef(spoiled[ITEMS].values.T.astype(float))
+    return targets, C.population_matrix(spoiled, ITEMS)
 
 
 # --------------------------------------------------------------------------
@@ -209,7 +208,7 @@ def build_truth(targets, floor, pop, data_sha, rows):
         "scored": {
             "correlations": [
                 {"a": sorted(ITEMS_OF[a]), "b": sorted(ITEMS_OF[b]),
-                 "r": round(targets[frozenset((a, b))], 4)}
+                 "r": round(targets[frozenset((a, b))], 3)}
                 for a, b in CROSS_PAIRS],
             "calibration_country": "US",
         },
@@ -268,7 +267,7 @@ def build_task_json(data_sha):
 
 def _submission(values):
     return {"model_syntax": reference_syntax(),
-            "correlations": [[a, b, round(values[frozenset((a, b))], 4)]
+            "correlations": [[a, b, round(values[frozenset((a, b))], 3)]
                              for a, b in CROSS_PAIRS]}
 
 
@@ -352,7 +351,7 @@ def verify(df, targets):
         ("and skipping the US filter is wrong even after screening",
          pooled_worst > CORRELATION_TOLERANCE),
     ]
-    return _report(checks)
+    return C.report(checks)
 
 
 def naive(df, targets):
@@ -368,7 +367,7 @@ def naive(df, targets):
         print(f"  {a} x {b:9s} {got[key]:9.3f} {targets[key]:7.3f} {error:+7.3f}")
     print(f"\n  {overstated} of {len(CROSS_PAIRS)} associations overstated "
           f"by more than {CORRELATION_TOLERANCE}")
-    return _report([
+    return C.report([
         ("the ordinary analysis overstates the association", overstated >= 4),
         ("including the pair that is really near zero",
          got[frozenset(("V", "P"))] - targets[frozenset(("V", "P"))]
@@ -376,35 +375,21 @@ def naive(df, targets):
     ])
 
 
-def _report(checks):
-    print("\nChecks")
-    ok = True
-    for label, passed in checks:
-        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
-        ok &= bool(passed)
-    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
-    return 0 if ok else 1
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--naive", action="store_true")
-    args = parser.parse_args()
-
+    action = C.mode()
     rng = np.random.default_rng(SEED)
     print("Simulating ...")
     df = build_dataset(rng)
     print(f"Fitting the reference (population draw N={POP_REFERENCE_N:,}) ...")
     targets, pop = population_reference(np.random.default_rng(SEED + 999))
 
-    if args.verify or args.naive:
-        return verify(df, targets) if args.verify else naive(df, targets)
+    if action != "build":
+        return verify(df, targets) if action == "verify" else naive(df, targets)
 
     floor = C.evaluate_model(reference_syntax(), analysis_sample(df), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(targets, floor, pop.round(6).tolist(),
+        lambda sha: build_truth(targets, floor, pop.tolist(),
                                 sha, len(df)),
         build_task_json)
     return 0

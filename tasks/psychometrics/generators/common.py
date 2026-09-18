@@ -1,13 +1,13 @@
-"""Shared building blocks for the psychometrics task generators.
+"""Pieces every task generator uses.
 
-Each task generator supplies its own generating model and prompt; everything
-that is the same across tasks - the response scale, the survey scaffolding, the
-model-fitting used to build the scoring reference, and the artifact writing -
-lives here.
+A generator supplies its own model and prompt. The survey scaffolding, the
+model fitting and the artifact writing are the same for all of them and live
+here.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import subprocess
@@ -33,8 +33,9 @@ N_BY_COUNTRY = {
 }
 ITEM_MISSING_RATE = 0.012
 
-# Category thresholds on the latent response variate, four per item. Chosen to
-# give asymmetric, realistic-looking Likert distributions.
+# Four cut points per item. A respondent's unobserved score is cut at these to
+# give the 1-5 answer, which is what makes the answers skewed rather than
+# symmetric.
 THRESHOLDS = {
     "HSNS1": [-1.701, -0.923, -0.487, 0.509], "HSNS2": [-0.948, -0.253, 0.109, 0.984],
     "HSNS3": [-1.351, -0.568, -0.189, 0.737], "HSNS4": [-1.057, -0.032, 0.44, 1.18],
@@ -79,24 +80,31 @@ ITEM_TEXT = {
 # Simulation
 # --------------------------------------------------------------------------
 def categorize(ystar, tau):
-    """Cut a continuous latent response into 1-5 categories at the thresholds."""
+    """Turn unobserved scores into 1-5 answers.
+
+    ystar  one unobserved score per respondent
+    tau    the four cut points for this item
+    """
     return np.searchsorted(np.asarray(tau), ystar).astype(int) + 1
 
 
 def correlated_block(n, rng, loadings, phi_matrix, factor_names, taus,
                      scale=1.0, cross=None, resid_corr=None, dif=None, female=None):
-    """Draw `n` ordinal responses from a correlated-factors model.
+    """Answers from respondents whose traits are correlated with each other.
 
-    Latent traits are drawn from a multivariate normal with correlation
-    `phi_matrix`; each item's latent response is a loading-weighted trait plus
-    normal error scaled so the response has unit variance; the result is cut at
-    the item's thresholds.
-
-    loadings    {item: (factor_name, loading)}
-    scale       multiplies every loading, for generating a weaker population
-    cross       (item, factor, loading) giving one item a secondary loading
-    resid_corr  ((item, item), covariance) correlating two items' residuals
-    dif         {item: threshold shift} applied where `female` is True
+    n            how many respondents
+    rng          random generator
+    loadings     {item: (factor, loading)}; loading is how strongly the item
+                 tracks that factor, 0 to 1
+    phi_matrix   correlations between the factors
+    factor_names names in the order phi_matrix uses
+    taus         {item: cut points}
+    scale        multiplies every loading, to make a worse-measured group
+    cross        (item, factor, loading): give one item a second loading
+    resid_corr   ((item, item), covariance): let two items agree beyond the
+                 factor, as near-duplicate wording makes them
+    dif          {item: shift}: move an item's cut points for one group
+    female       which respondents `dif` applies to
     """
     eta = rng.multivariate_normal(np.zeros(len(factor_names)), phi_matrix, size=n)
     index = {f: i for i, f in enumerate(factor_names)}
@@ -126,11 +134,16 @@ def correlated_block(n, rng, loadings, phi_matrix, factor_names, taus,
 
 
 def bifactor_block(n, rng, general, specific, specific_of, items, taus):
-    """Draw `n` ordinal responses from a general factor plus orthogonal specifics.
+    """Answers driven by one broad trait plus a narrow one per subscale.
 
-    general      {item: loading on the general factor}
-    specific     {item: loading on its specific factor}
-    specific_of  {item: name of its specific factor}
+    The broad and narrow traits are uncorrelated, so an item's explainable
+    variance splits between them.
+
+    general      {item: loading on the broad trait}
+    specific     {item: loading on its narrow trait}
+    specific_of  {item: which narrow trait}
+    items        column order of the result
+    taus         {item: cut points}
     """
     g = rng.normal(size=n)
     # dict.fromkeys keeps first-appearance order; iterating a set here would
@@ -146,7 +159,7 @@ def bifactor_block(n, rng, general, specific, specific_of, items, taus):
 
 
 def demographics(n, rng, country):
-    """Age, gender, self-rated accuracy and country for one block of respondents."""
+    """The non-item columns for one country's respondents."""
     return pd.DataFrame({
         "age": np.clip(rng.lognormal(np.log(22), 0.38, n).round(), 13, 89).astype(int),
         "gender": rng.choice([1, 2, 3, 0], size=n, p=[0.61, 0.37, 0.01, 0.01]),
@@ -156,7 +169,10 @@ def demographics(n, rng, country):
 
 
 def finalize(frames, rng, seed):
-    """Shuffle the country blocks together and apply item-level missingness."""
+    """Shuffle the per-country blocks together and drop a few answers at random.
+
+    A dropped answer is written as 0.
+    """
     df = pd.concat(frames, ignore_index=True).sample(frac=1.0, random_state=seed)
     df[ALL_ITEMS] = df[ALL_ITEMS].mask(
         rng.random((len(df), len(ALL_ITEMS))) < ITEM_MISSING_RATE, 0)
@@ -164,7 +180,7 @@ def finalize(frames, rng, seed):
 
 
 def analysis_sample(df, items, country="US"):
-    """Respondents from one country with complete responses on `items`."""
+    """One country's respondents who answered every item."""
     X = df[df.country == country][items]
     return X[(X != 0).all(axis=1)].astype(float)
 
@@ -173,15 +189,19 @@ def analysis_sample(df, items, country="US"):
 # Model fitting
 # --------------------------------------------------------------------------
 def evaluate_model(spec, X, items, pop):
-    """Fit one specification and return its fit, parsimony and accuracy criteria.
+    """Fit a model and measure it.
 
-    `pop` is the population correlation matrix a perfectly specified model would
-    reproduce; the returned sigma deviations say how close this model comes.
+    Returns how well it fits (CFI, RMSEA, SRMR), how many parameters it spends
+    (BIC), and how close the correlations it implies come to `pop`.
+
+    spec   model in lavaan notation
+    X      one row per respondent
+    items  columns to fit on
+    pop    correlations a perfectly specified model would reproduce
     """
     import semopy
 
-    model = semopy.Model(spec)
-    model.fit(X[items])
+    model = fit(spec, X, items)
     stats = semopy.calc_stats(model)
 
     sigma = model.calc_sigma()[0]
@@ -195,7 +215,7 @@ def evaluate_model(spec, X, items, pop):
 
     chi2 = float(stats["chi2"].iloc[0])
     n_par = len(model.param_vals)
-    return {
+    return _rounded({
         "df": float(stats["DoF"].iloc[0]),
         "chi2": chi2,
         "CFI": float(stats["CFI"].iloc[0]),
@@ -206,31 +226,77 @@ def evaluate_model(spec, X, items, pop):
         "sigma_max_abs_deviation": float(np.abs(implied[upper] - pop[upper]).max()),
         "sigma_rms_deviation": float(
             np.sqrt(((implied[upper] - pop[upper]) ** 2).mean())),
-    }
+    })
 
 
-def primary_loadings_from_fit(spec, X, items):
-    """Largest absolute standardised loading per item, as a fitted model gives it."""
+def _rounded(criteria, places=3):
+    """Round to a precision a rebuild reproduces and the tolerances can tell apart."""
+    return {k: (round(v, places) if isinstance(v, float) else v)
+            for k, v in criteria.items()}
+
+
+def fit(spec, X, items=None):
+    """Fit a model and return it.
+
+    spec   model in lavaan notation
+    X      one row per respondent
+    items  columns to fit on; all of X by default
+    """
     import semopy
 
     model = semopy.Model(spec)
-    model.fit(X[items])
-    ins = model.inspect(std_est=True)
-    load = ins[ins.op == "~"].copy()
-    load["abs"] = pd.to_numeric(load["Est. Std"], errors="coerce").abs()
-    best = load.loc[load.groupby("lval")["abs"].idxmax()]
-    return {row.lval: float(row.abs) for row in best.itertuples()}
+    model.fit(X if items is None else X[items])
+    return model
+
+
+def estimates(model):
+    """A fitted model's standardised estimates, as a table."""
+    return model.inspect(std_est=True)
+
+
+def loadings(model, factors=None):
+    """How strongly each item tracks its factor, signed.
+
+    An item that loads on two factors is reported under the stronger one.
+
+    factors  restrict to these factors; all of them by default
+    """
+    rows = estimates(model)
+    rows = rows[rows.op == "~"].copy()
+    if factors is not None:
+        rows = rows[rows.rval.isin(factors)]
+    rows["value"] = pd.to_numeric(rows["Est. Std"], errors="coerce")
+    best = rows.loc[rows["value"].abs().groupby(rows.lval).idxmax()]
+    return {row.lval: float(row.value) for row in best.itertuples()}
+
+
+def factor_correlations(model, factors):
+    """Correlations between the latent factors, keyed by the pair of names."""
+    rows = estimates(model)
+    rows = rows[(rows.op == "~~") & (rows.lval != rows.rval)
+                & rows.lval.isin(factors) & rows.rval.isin(factors)]
+    return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"])
+            for _, r in rows.iterrows()}
+
+
+def population_matrix(frame, items):
+    """Correlations in a very large draw from the generating model.
+
+    This is what a perfectly specified model would reproduce, so it is the
+    target the scorer measures a submission's implied correlations against.
+    """
+    return np.corrcoef(frame[items].values.T.astype(float)).round(3)
 
 
 # --------------------------------------------------------------------------
 # Artifacts
 # --------------------------------------------------------------------------
 def write_codebook(path, df):
-    """Write the respondent-facing description of the dataset.
+    """Write the description of the dataset that the agent can see.
 
-    Deliberately documents the items and the response scale only. Which items
-    belong to which instrument, and how they group into subscales, is what the
-    task asks the agent to work out.
+    It lists the items and the response scale. Which items belong to which
+    questionnaire, and how they group into subscales, is left out: working that
+    out is part of every task.
     """
     lines = [
         "# Codebook - online personality survey",
@@ -260,7 +326,7 @@ def write_codebook(path, df):
 
 
 def provenance(generator, seed, rows, data_sha):
-    """Record of how the dataset was produced, stored inside truth.json."""
+    """How this dataset was produced, for the record."""
     try:
         rev = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
                                       cwd=PKG_ROOT, text=True).strip()
@@ -276,10 +342,14 @@ def provenance(generator, seed, rows, data_sha):
 
 
 def scoring_contract(truth_path, items, tier_3_claims):
-    """The scoring block of a task JSON.
+    """The scoring rules for a task.
 
-    Stages one and two are identical for every model-discovery task; only the
-    claims a task asks about differ.
+    Stages 1 and 2 are the same for every task. Only stage 3, the claims a task
+    asks about, differs.
+
+    truth_path     where the hidden answers live
+    items          variables the model must cover
+    tier_3_claims  what to check the submission's answers against
     """
     return {
         "truth_path": truth_path,
@@ -293,8 +363,8 @@ def scoring_contract(truth_path, items, tier_3_claims):
         "method": "constraints_then_pareto_then_claims",
         "aggregation": "all_tiers_must_pass",
         "emit": ["score_binary", "score_partial", "checks_vector"],
-        # Feasibility. Violating any of these makes a model invalid rather than
-        # merely worse, so it is rejected before any comparison.
+        # Stage 1: is the model usable at all? Breaking one of these makes a
+        # model invalid rather than worse, so it is dropped before comparison.
         "tier_1_constraints": [
             {"key": "converged"},
             {"key": "no_negative_variance"},
@@ -304,8 +374,8 @@ def scoring_contract(truth_path, items, tier_3_claims):
             {"key": "no_collapsed_factor", "min_salient_loading": 0.30,
              "min_salient_per_factor": 2, "sign_reversal_at": -0.10},
         ],
-        # Pareto dominance over the generating model, which acts as a floor: the
-        # submission must be no worse on any criterion, and may be better.
+        # Stage 2: the generating model sets a floor. A submission must be no
+        # worse than it on any of these, and is allowed to be better.
         "reference_role": "floor",
         "tier_2_comparative": [
             {"key": "CFI", "direction": "higher", "eps": 0.005,
@@ -325,10 +395,10 @@ def scoring_contract(truth_path, items, tier_3_claims):
 
 
 def write_artifacts(out_dir, task_json_path, df, truth_fn, task_json_fn):
-    """Write the dataset, codebook, ground truth and task definition.
+    """Write the dataset, codebook, hidden answers and task definition.
 
-    `truth_fn` and `task_json_fn` each take the dataset's SHA-256, which is only
-    known once the file has been written.
+    truth_fn and task_json_fn are each called with the dataset's checksum,
+    which is only known once the file exists.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     task_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -347,5 +417,33 @@ def write_artifacts(out_dir, task_json_path, df, truth_fn, task_json_fn):
 
 
 def data_sha256(out_dir):
-    """SHA-256 of the written dataset, recorded for reproducibility."""
+    """Checksum of the written dataset."""
     return hashlib.sha256((out_dir / "data.csv").read_bytes()).hexdigest()
+
+
+# --------------------------------------------------------------------------
+# Command line
+# --------------------------------------------------------------------------
+def mode():
+    """Read the command line. Returns "verify", "naive" or "build"."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verify", action="store_true",
+                        help="check the intended answer wins")
+    parser.add_argument("--naive", action="store_true",
+                        help="check the obvious analysis fails")
+    args = parser.parse_args()
+    return "verify" if args.verify else "naive" if args.naive else "build"
+
+
+def report(checks):
+    """Print each check and return an exit code.
+
+    checks  list of (description, passed)
+    """
+    print("\nChecks")
+    ok = True
+    for label, passed in checks:
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
+        ok &= bool(passed)
+    print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
+    return 0 if ok else 1
