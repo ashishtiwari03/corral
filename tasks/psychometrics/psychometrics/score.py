@@ -250,6 +250,40 @@ def _standardised(model, items):
     return loadings, phi
 
 
+def deduplicate_and_refit(spec, items, data, key, identity):
+    """Collapse rows the submitted key treats as one respondent, then refit.
+
+    The key is the submission's claim about which columns identify a record as
+    the same respondent as another. Applying it is what turns that claim into
+    something measurable: too narrow a key merges people who merely answered
+    alike, too broad a key merges nobody.
+
+    spec      the submitted model, unchanged
+    items     variables the model covers
+    data      every delivered row, metadata included
+    key       columns the submission says identify a respondent
+    identity  columns that actually do, from the task definition
+
+    Returns retained row count, repeats the key failed to remove, and the trait
+    correlation on what is left. Returns None values when the key is unusable.
+    """
+    if not isinstance(key, (list, tuple)) or not key:
+        return None, None, None
+    if any(column not in data.columns for column in key):
+        return None, None, None
+
+    kept = data[~data.duplicated(subset=list(key), keep="first")]
+    repeats = int(kept.duplicated(subset=list(identity), keep="first").sum())
+    X = kept[items]
+    X = X[(X != 0).all(axis=1)].astype(float)
+    try:
+        _, model = evaluate_model(spec, X, items)
+    except Exception:  # noqa: BLE001
+        return len(kept), repeats, None
+    _, phi = _standardised(model, items)
+    return len(kept), repeats, (round(phi, 3) if phi is not None else None)
+
+
 def diagnose_holdouts(spec, items, train_fit, holdouts, thresholds):
     """Refit the submitted model in each holdout and say how far it travels.
 
@@ -376,7 +410,7 @@ def check_claims(
             reported = biased_items_from_fit(model, items, item.get("covariate", "gender"))
         elif item.get("derive_from") == "refit_latent_group_difference":
             reported = latent_group_difference(model, items, item.get("covariate", "gender"))
-        elif item.get("derive_from") == "refit_holdouts":
+        elif item.get("derive_from") in ("refit_holdouts", "dedup_by_key"):
             reported = (derived or {}).get(key)
         else:
             reported = submission.get(key)
@@ -414,6 +448,8 @@ def check_claims(
 
             want, got = _flat(target), _flat(reported)
             out[key] = bool(want) and want == got
+        elif fn == "score_label":
+            out[key] = reported is not None and reported == target
         elif fn == "score_boolean_panel":
             try:
                 out[key] = all(bool(reported[k]) == bool(v) for k, v in target.items())
@@ -473,6 +509,9 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
 
     Returns the full result. score_binary is the metric.
     """
+    if params.get("task_type") == "population_classification":
+        return score_population_classification(submission, params, base_dir)
+
     base = Path(base_dir)
     if isinstance(submission, str):
         try:
@@ -561,6 +600,14 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
         derived["holdout_diagnosis"] = labels
         criteria["holdout_detail"] = detail
 
+    if params.get("identity_columns"):
+        retained, repeats, phi = deduplicate_and_refit(
+            spec, items, data, submission.get("duplicate_key"), params["identity_columns"]
+        )
+        derived["retained_respondents"] = retained
+        derived["repeats_remaining"] = repeats
+        derived["corrected_factor_correlation"] = phi
+
     n_latents = len({ln.split("=~")[0].strip() for ln in spec.splitlines() if "=~" in ln})
     claims = check_claims(
         submission,
@@ -626,3 +673,53 @@ def _zero(reason: str) -> dict:
         "criteria": {},
         "reason": reason,
     }
+
+
+def score_population_classification(
+    submission: str | dict, params: dict, base_dir: str | Path = "."
+) -> dict:
+    """Score a process-agnostic classification of anonymised respondents.
+
+    These tasks deliberately do not require the agent to submit its fitted
+    models.  The observable answer is the set of populations compatible with
+    each person; the hidden answer may contain one or several populations.
+    Candidate order is irrelevant, but missing, extra, or unknown people are
+    errors.
+    """
+    base = Path(base_dir)
+    if isinstance(submission, str):
+        try:
+            submission = json.loads(submission.strip().strip("`").removeprefix("json"))
+        except json.JSONDecodeError:
+            return _zero("submission is not valid JSON")
+    if not isinstance(submission, dict):
+        return _zero("submission must be a JSON object")
+
+    truth = json.loads((base / params["truth_path"]).read_text())
+    target = truth["scored"]["classifications"]
+    reported = submission.get("classifications")
+    if not isinstance(reported, dict):
+        return _zero("missing classifications")
+
+    allowed = set(params["populations"])
+    checks = {}
+    for person, want in target.items():
+        got = reported.get(person)
+        valid = (
+            isinstance(got, list)
+            and len(got) == len(set(got))
+            and all(isinstance(name, str) and name in allowed for name in got)
+        )
+        checks[person] = "PASS" if valid and set(got) == set(want) else "FAIL"
+    extra = set(reported) - set(target)
+    if extra:
+        checks["unexpected_people"] = "FAIL"
+    applicable = list(checks.values())
+    passed = sum(value == "PASS" for value in applicable)
+    complete = passed == len(target) and not extra
+    return _result(
+        1.0 if complete else 0.0,
+        checks,
+        {"n_people": len(target), "n_exact": passed},
+        "all classifications pass" if complete else "classification mismatch",
+    )

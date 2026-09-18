@@ -103,6 +103,24 @@ TASKS = [
         "artifacts/level_2/task_02/data.csv",
         "correct",
     ),
+    (
+        "generators/level_2/gen_l2_t03_ddm_population_classification.py",
+        "environments/level_2/tasks_json/task_03.json",
+        "artifacts/level_2/task_03/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_2/gen_l2_t04_hsns_population_classification.py",
+        "environments/level_2/tasks_json/task_04.json",
+        "artifacts/level_2/task_04/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_2/gen_l2_t05_duplicate_records.py",
+        "environments/level_2/tasks_json/task_05.json",
+        "artifacts/level_2/task_05/data.csv",
+        "correct",
+    ),
 ]
 
 
@@ -155,6 +173,8 @@ def _group_submission(spec, X, items, truth=None):
 def run_task(gen_path, task_path, data_path, expected_winner):
     gen = load_generator(gen_path)
     params = json.loads((ROOT / task_path).read_text())[0]["scoring_params"]
+    if params.get("task_type") == "population_classification":
+        return run_population_task(gen, params, expected_winner)
     items = params["items"]
     data = pd.read_csv(ROOT / data_path, sep="\t")
     keep = params["syntax_whitelist"]["items"]
@@ -208,6 +228,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if "affected_items" in good
         else "holdout_conclusions"
         if "holdout_conclusions" in good
+        else "diagnosis"
+        if "diagnosis" in good
         else "latent_difference"
         if "gender" in items
         else "loadings"
@@ -231,6 +253,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if key == "affected_items"
         else {k: "generalizes" for k in good["holdout_conclusions"]}
         if key == "holdout_conclusions"
+        else "duplicate_records_only"
+        if key == "diagnosis"
         else 0.9
         if key == "latent_difference"
         else {k: 0.55 for k in items}
@@ -259,6 +283,40 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         print(
             f"  {name:38s} {result['score_binary']:6.1f} "
             f"{result['score_partial']:7.2f}  {result['reason']}"
+        )
+    return failures
+
+
+def run_population_task(gen, params, expected_winner):
+    failures = []
+    cases = gen.candidate_submissions()
+    print(f"\n{gen.TASK_ID}")
+    print(f"  {'submission':38s} {'binary':>6s} {'partial':>7s}  reason")
+    for name, submission in cases.items():
+        result = score_model_criteria(submission, params, base_dir=ROOT)
+        want = 1.0 if name == expected_winner else 0.0
+        if result["score_binary"] != want:
+            failures.append(f"{name}: expected {want}, got {result['score_binary']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} {result['score_partial']:7.2f}  {result['reason']}"
+        )
+    good = cases["correct"]
+    adversarial = {
+        "missing classifications": {},
+        "unknown population": {
+            "classifications": {**good["classifications"], "person_1": ["population_z"]}
+        },
+        "extra person": {
+            "classifications": {**good["classifications"], "person_6": ["population_a"]}
+        },
+        "not JSON": "the populations are unclear",
+    }
+    for name, submission in adversarial.items():
+        result = score_model_criteria(submission, params, base_dir=ROOT)
+        if result["score_binary"] != 0.0:
+            failures.append(f"adversarial {name} scored {result['score_binary']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} {result['score_partial']:7.2f}  {result['reason']}"
         )
     return failures
 
