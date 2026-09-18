@@ -399,6 +399,12 @@ def score_model_criteria(submission: str | dict, params: dict,
         data = data[data[col].isin(val)] if isinstance(val, list) else data[data[col] == val]
     X = data[[c for c in known if c in data.columns]]
     X = X[(X != 0).all(axis=1)].astype(float)
+    # A dataset may carry a recording fault that the task is about. Repairing it
+    # here keeps every submission judged on the same responses, whether or not
+    # the submission noticed.
+    for name, total in ref.get("repairs", {}).get("reverse_scored", {}).items():
+        if name in X.columns:
+            X[name] = total - X[name]
 
     try:
         spec = validate_syntax(submission.get("model_syntax", ""), known,
