@@ -107,3 +107,4 @@ assumptions, and report a calibrated conclusion.
 | [3](generators/level_2/task_03.md) | Which population did each case sample come from? |
 | [4](generators/level_2/task_04.md) | Which HSNS population fits each case sample? |
 | [5](generators/level_2/task_05.md) | Duplicate records or chance collisions? |
+| [6](generators/level_2/task_06.md) | Is the group difference real or an export artifact? |

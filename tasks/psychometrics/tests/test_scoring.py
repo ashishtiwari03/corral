@@ -122,6 +122,12 @@ TASKS = [
         "artifacts/level_2/task_05/data.csv",
         "correct",
     ),
+    (
+        "generators/level_2/gen_l2_t06_gender_item_integrity.py",
+        "environments/level_2/tasks_json/task_06.json",
+        "artifacts/level_2/task_06/data.csv",
+        "correct",
+    ),
 ]
 
 
@@ -176,6 +182,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
     params = json.loads((ROOT / task_path).read_text())[0]["scoring_params"]
     if params.get("task_type") == "population_classification":
         return run_population_task(gen, params, expected_winner)
+    if params.get("task_type") == "gender_item_integrity":
+        return run_gender_integrity_task(gen, params, expected_winner)
     items = params["items"]
     data = pd.read_csv(ROOT / data_path, sep="\t")
     keep = params["syntax_whitelist"]["items"]
@@ -311,6 +319,36 @@ def run_population_task(gen, params, expected_winner):
             "classifications": {**good["classifications"], "person_6": ["population_a"]}
         },
         "not JSON": "the populations are unclear",
+    }
+    for name, submission in adversarial.items():
+        result = score_model_criteria(submission, params, base_dir=ROOT)
+        if result["score_binary"] != 0.0:
+            failures.append(f"adversarial {name} scored {result['score_binary']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} {result['score_partial']:7.2f}  {result['reason']}"
+        )
+    return failures
+
+
+def run_gender_integrity_task(gen, params, expected_winner):
+    failures = []
+    cases = gen.candidate_submissions()
+    print(f"\n{gen.TASK_ID}")
+    print(f"  {'submission':38s} {'binary':>6s} {'partial':>7s}  reason")
+    for name, submission in cases.items():
+        result = score_model_criteria(submission, params, base_dir=ROOT)
+        want = 1.0 if name == expected_winner else 0.0
+        if result["score_binary"] != want:
+            failures.append(f"{name}: expected {want}, got {result['score_binary']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} {result['score_partial']:7.2f}  {result['reason']}"
+        )
+    good = cases["correct"]
+    adversarial = {
+        "item diagnoses omitted": {k: v for k, v in good.items() if k != "item_diagnoses"},
+        "comparison omitted": {k: v for k, v in good.items() if k != "comparison"},
+        "model omitted": {k: v for k, v in good.items() if k != "model_syntax"},
+        "not JSON": "the comparison is uncertain",
     }
     for name, submission in adversarial.items():
         result = score_model_criteria(submission, params, base_dir=ROOT)

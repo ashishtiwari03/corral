@@ -511,6 +511,8 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
     """
     if params.get("task_type") == "population_classification":
         return score_population_classification(submission, params, base_dir)
+    if params.get("task_type") == "gender_item_integrity":
+        return score_gender_item_integrity(submission, params, base_dir)
 
     base = Path(base_dir)
     if isinstance(submission, str):
@@ -722,4 +724,104 @@ def score_population_classification(
         checks,
         {"n_people": len(target), "n_exact": passed},
         "all classifications pass" if complete else "classification mismatch",
+    )
+
+
+def score_gender_item_integrity(
+    submission: str | dict, params: dict, base_dir: str | Path = "."
+) -> dict:
+    """Score item-integrity diagnoses made before a gender comparison.
+
+    The item diagnoses and final comparison are the observable conclusions.
+    The submitted model is additionally checked for coverage, a gender path,
+    and successful fitting, but the scorer does not require a particular
+    analysis workflow.
+    """
+    base = Path(base_dir)
+    if isinstance(submission, str):
+        try:
+            submission = json.loads(submission.strip().strip("`").removeprefix("json"))
+        except json.JSONDecodeError:
+            return _zero("submission is not valid JSON")
+    if not isinstance(submission, dict):
+        return _zero("submission must be a JSON object")
+
+    truth = json.loads((base / params["truth_path"]).read_text())
+    target_items = truth["scored"]["item_diagnoses"]
+    target_comparison = truth["scored"]["comparison"]
+    reported_items = submission.get("item_diagnoses")
+    reported_comparison = submission.get("comparison")
+    checks = {}
+
+    if isinstance(reported_items, dict):
+        checks.update(
+            {
+                item: "PASS" if reported_items.get(item) == label else "FAIL"
+                for item, label in target_items.items()
+            }
+        )
+        checks["item_set"] = "PASS" if set(reported_items) == set(target_items) else "FAIL"
+    else:
+        checks.update({item: "FAIL" for item in target_items})
+        checks["item_set"] = "FAIL"
+    checks["comparison"] = "PASS" if reported_comparison == target_comparison else "FAIL"
+
+    known = params["items"] + [params["covariate"]]
+    try:
+        spec = validate_syntax(submission.get("model_syntax", ""), known, params["max_factors"])
+        observed = observed_in_spec(spec, known)
+        if set(params["items"]) - observed:
+            checks["model_coverage"] = "FAIL"
+        else:
+            checks["model_coverage"] = "PASS"
+        has_covariate_path = any(
+            "~" in line and params["covariate"] in line.split("~", 1)[1].split()
+            for line in spec.splitlines()
+        )
+        checks["gender_path"] = "PASS" if has_covariate_path else "FAIL"
+        folder = base / params["truth_path"].rsplit("/", 1)[0]
+        items, covariate = params["items"], params["covariate"]
+        frame = pd.read_csv(folder / params["dataset"], sep="\t")
+        X = frame[(frame[items] != 0).all(axis=1)][items + [covariate]].astype(float).copy()
+
+        # The submission's own diagnoses decide what gets repaired, so a wrong
+        # diagnosis is carried into the model the comparison is read from.
+        total = truth.get("repairs", {}).get("reverse_scored", {})
+        for item, label in (reported_items or {}).items():
+            if label == "mis_keyed" and item in X.columns:
+                X[item] = total.get(item, 6) - X[item]
+
+        _, model = evaluate_model(spec, X, items + [covariate])
+        checks["model_fit"] = "PASS"
+
+        # Which items the model lets differ between the groups, and what group
+        # difference it leaves on the trait once they do.
+        freed = biased_items_from_fit(model, items, covariate)
+        checks["group_dependent_items"] = (
+            "PASS" if freed == set(truth["scored"]["group_dependent_items"]) else "FAIL"
+        )
+        effect = latent_group_difference(model, items + [covariate], covariate)
+        target_effect = truth["scored"]["repaired_gender_effect"]
+        within = effect is not None and abs(effect - target_effect) <= params.get(
+            "effect_tolerance", 0.05
+        )
+        checks["repaired_gender_effect"] = "PASS" if within else "FAIL"
+        # The comparison label is only granted when the submitted model supports it.
+        if reported_comparison == "reportable_after_repair" and not within:
+            checks["comparison"] = "FAIL"
+    except (InvalidSubmission, Exception) as exc:  # noqa: BLE001
+        checks["model_coverage"] = "FAIL"
+        checks["gender_path"] = "FAIL"
+        checks["model_fit"] = "FAIL"
+        checks["group_dependent_items"] = "FAIL"
+        checks["repaired_gender_effect"] = "FAIL"
+        return _result(0.0, checks, {}, f"model failed: {type(exc).__name__}: {exc}")
+
+    applicable = list(checks.values())
+    complete = all(value == "PASS" for value in applicable)
+    return _result(
+        1.0 if complete else 0.0,
+        checks,
+        {"n_items": len(target_items)},
+        "all claims and model checks pass" if complete else "item-integrity comparison mismatch",
     )
