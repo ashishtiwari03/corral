@@ -484,9 +484,14 @@ def write_artifacts(out_dir, task_json_path, df, truth_fn, task_json_fn):
     print(f"           {task_json_path}")
 
 
+def file_sha256(path):
+    """Checksum of one written file."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def data_sha256(out_dir):
     """Checksum of the written dataset."""
-    return hashlib.sha256((out_dir / "data.csv").read_bytes()).hexdigest()
+    return file_sha256(out_dir / "data.csv")
 
 
 # --------------------------------------------------------------------------

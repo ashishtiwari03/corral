@@ -104,6 +104,6 @@ assumptions, and report a calibrated conclusion.
 |---|---|
 | [1](generators/level_2/task_01.md) | Can this questionnaire compare the two groups? |
 | [2](generators/level_2/task_02.md) | Does the HSNS model generalize out of sample? |
-| [3](generators/level_2/task_03.md) | Which DDM populations fit each respondent? |
-| [4](generators/level_2/task_04.md) | Which HSNS populations fit each respondent? |
+| [3](generators/level_2/task_03.md) | Which population did each case sample come from? |
+| [4](generators/level_2/task_04.md) | Which HSNS population fits each case sample? |
 | [5](generators/level_2/task_05.md) | Duplicate records or chance collisions? |
