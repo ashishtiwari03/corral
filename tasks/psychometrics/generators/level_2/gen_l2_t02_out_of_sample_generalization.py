@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 02, out-of-sample psychometric validation.
+"""Build Level 2 Task 02: validate a frozen measurement model in holdouts.
 
-A model is developed in a labelled training population and refitted, unchanged,
-in three anonymised holdouts. One holdout replicates. One keeps the measurement
-structure intact while the factors relate differently. One breaks the structure
-itself. Global fit alone cannot tell the first two apart.
+The generator writes the training data, anonymised holdouts, task definition,
+hidden truth, and scoring artifacts. Use ``--verify`` and ``--naive`` to check
+the construction and its intended shortcut failure.
 
     python gen_l2_t02_out_of_sample_generalization.py
     python gen_l2_t02_out_of_sample_generalization.py --verify

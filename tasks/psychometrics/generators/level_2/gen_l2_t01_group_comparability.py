@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 01, the group-comparability investigation.
+"""Build Level 2 Task 01: assess whether an HSNS group comparison is defensible.
 
-The two groups do not differ on either trait. Four items are simply easier for
-group 2 to endorse, which manufactures a large score gap. A memo recommends
-reporting that gap. Allowing the four items to differ removes it entirely, so
-the memo's conclusion reverses rather than merely weakens.
+The generator writes the synthetic data, task definition, hidden truth, and
+scoring artifacts. Use ``--verify`` to check the intended construction and
+``--naive`` to check the obvious shortcut.
 
     python gen_l2_t01_group_comparability.py
     python gen_l2_t01_group_comparability.py --verify

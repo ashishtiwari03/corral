@@ -513,6 +513,10 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
         return score_population_classification(submission, params, base_dir)
     if params.get("task_type") == "gender_item_integrity":
         return score_gender_item_integrity(submission, params, base_dir)
+    if params.get("task_type") == "behavioral_validity":
+        return score_behavioral_validity(submission, params, base_dir)
+    if params.get("task_type") == "misfit_replication":
+        return score_misfit_replication(submission, params, base_dir)
 
     base = Path(base_dir)
     if isinstance(submission, str):
@@ -675,6 +679,488 @@ def _zero(reason: str) -> dict:
         "criteria": {},
         "reason": reason,
     }
+
+
+def _outcome_coefficient(model, outcome: str, predictor: str) -> float | None:
+    """Read a standardised behavioural regression from a fitted model."""
+    ins = model.inspect(std_est=True)
+    rows = ins[(ins.op == "~") & (ins.lval == outcome) & (ins.rval == predictor)]
+    if not len(rows):
+        return None
+    value = pd.to_numeric(rows["Est. Std"], errors="coerce").iloc[0]
+    return float(value) if pd.notna(value) else None
+
+
+def _measurement_only(spec: str, outcome: str) -> str:
+    """Keep the submitted measurement/residual structure for subgroup refits."""
+    kept = []
+    for line in spec.splitlines():
+        stripped = line.strip()
+        if not stripped or "=~" in stripped or "~~" in stripped:
+            kept.append(stripped)
+        elif "~" in stripped and stripped.split("~", 1)[0].strip() != outcome:
+            # Structural paths for the outcome are replaced for each check;
+            # other paths are not needed for the within-group measurement refit.
+            continue
+    return "\n".join(line for line in kept if line)
+
+
+def _within_outcome_syntax(spec: str, outcome: str, group: str) -> str:
+    """Keep outcome predictors but remove the between-group adjustment."""
+    measurement = _measurement_only(spec, outcome)
+    predictors = []
+    for line in spec.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{outcome} ~"):
+            predictors = [token.strip() for token in stripped.split("~", 1)[1].split("+")]
+            predictors = [token for token in predictors if token and token != group]
+    if not predictors:
+        raise InvalidSubmission("outcome has no predictors for within-group refit")
+    return f"{measurement}\n{outcome} ~ {' + '.join(predictors)}"
+
+
+def _fit_outcome_model(spec: str, frame: pd.DataFrame, items: list[str], outcome: str, group: str):
+    import semopy
+
+    model = semopy.Model(spec)
+    model.fit(frame[items + [group, outcome]])
+    return model
+
+
+def _item_outcome_effect(
+    measurement: str,
+    frame: pd.DataFrame,
+    items: list[str],
+    outcome: str,
+    group: str,
+    item: str,
+) -> float | None:
+    spec = f"{measurement}\n{outcome} ~ F + {group} + {item}"
+    model = _fit_outcome_model(spec, frame, items, outcome, group)
+    return _outcome_coefficient(model, outcome, item)
+
+
+def score_behavioral_validity(
+    submission: str | dict, params: dict, base_dir: str | Path = "."
+) -> dict:
+    """Score compositional evidence for a questionnaire's behavioural validity."""
+    base = Path(base_dir)
+    if isinstance(submission, str):
+        try:
+            submission = json.loads(submission.strip().strip("`").removeprefix("json"))
+        except json.JSONDecodeError:
+            return _zero("submission is not valid JSON")
+    if not isinstance(submission, dict):
+        return _zero("submission must be a JSON object")
+
+    truth = json.loads((base / params["truth_path"]).read_text())
+    target = truth["scored"]
+    reported_association = submission.get("association")
+    reported_items = submission.get("unstable_items")
+    checks = {}
+    if not isinstance(reported_association, dict):
+        return _zero("missing association panel")
+    if not isinstance(reported_items, list) or not all(
+        isinstance(item, str) for item in reported_items
+    ):
+        return _zero("missing unstable_items")
+
+    folder = base / params["truth_path"].rsplit("/", 1)[0]
+    train = pd.read_csv(folder / params["dataset"], sep="\t")
+    holdout = pd.read_csv(folder / params["holdout_dataset"], sep="\t")
+    items = params["items"]
+    outcome, group = params["outcome"], params["covariate"]
+    known = items + [outcome, group]
+
+    try:
+        spec = validate_syntax(submission.get("model_syntax", ""), known, params["max_factors"])
+        observed = observed_in_spec(spec, known)
+        if set(known) - observed:
+            return _result(0.0, {"model_coverage": "FAIL"}, {}, "model omits required variables")
+        latent_names = {
+            line.split("=~", 1)[0].strip() for line in spec.splitlines() if "=~" in line
+        }
+        if len(latent_names) != 1:
+            return _result(
+                0.0, {"one_latent_factor": "FAIL"}, {}, "task requires one latent factor"
+            )
+        latent = next(iter(latent_names))
+        model = _fit_outcome_model(spec, train, items, outcome, group)
+        if _outcome_coefficient(model, outcome, latent) is None:
+            return _result(
+                0.0, {"outcome_latent_path": "FAIL"}, {}, "model has no outcome-to-latent path"
+            )
+        if _outcome_coefficient(model, outcome, group) is None:
+            return _result(0.0, {"group_adjustment": "FAIL"}, {}, "model has no group adjustment")
+
+        complete_train = train[(train[items] != 0).all(axis=1)].copy()
+        complete_holdout = holdout[(holdout[items] != 0).all(axis=1)].copy()
+        train_model = _fit_outcome_model(spec, complete_train, items, outcome, group)
+        holdout_model = _fit_outcome_model(spec, complete_holdout, items, outcome, group)
+        train_effect = _outcome_coefficient(train_model, outcome, latent)
+        holdout_effect = _outcome_coefficient(holdout_model, outcome, latent)
+        if train_effect is None or holdout_effect is None:
+            raise InvalidSubmission("could not estimate the latent outcome coefficient")
+
+        measurement = _measurement_only(spec, outcome)
+        within_syntax = _within_outcome_syntax(spec, outcome, group)
+        within = {}
+        for value in sorted(complete_train[group].dropna().unique()):
+            subgroup = complete_train[complete_train[group] == value]
+            within_model = _fit_outcome_model(within_syntax, subgroup, items, outcome, group)
+            within[str(int(value))] = _outcome_coefficient(within_model, outcome, latent)
+        if len(within) != 2 or any(value is None for value in within.values()):
+            raise InvalidSubmission("could not estimate both within-group coefficients")
+
+        threshold = params["min_effect"]
+        tolerance = params["effect_tolerance"]
+        adjusted_label = (
+            "supported"
+            if min(abs(train_effect), abs(holdout_effect)) >= threshold
+            else "not_supported"
+        )
+        within_values = list(within.values())
+        within_label = (
+            "replicates"
+            if min(abs(value) for value in within_values) >= threshold
+            and np.sign(within_values[0]) == np.sign(within_values[1])
+            and abs(within_values[0] - within_values[1]) <= tolerance
+            else "does_not_replicate"
+        )
+        holdout_label = (
+            "generalizes"
+            if min(abs(train_effect), abs(holdout_effect)) >= threshold
+            and abs(train_effect - holdout_effect) <= tolerance
+            else "does_not_generalize"
+        )
+        derived_association = {
+            "group_adjusted": adjusted_label,
+            "within_group": within_label,
+            "holdout": holdout_label,
+        }
+        checks["model_coverage"] = "PASS"
+        checks["one_latent_factor"] = "PASS"
+        checks["outcome_latent_path"] = "PASS"
+        checks["group_adjustment"] = "PASS"
+        checks["association"] = (
+            "PASS"
+            if reported_association == derived_association == target["association"]
+            else "FAIL"
+        )
+
+        unstable = []
+        for item in items:
+            train_item = _item_outcome_effect(
+                measurement, complete_train, items, outcome, group, item
+            )
+            holdout_item = _item_outcome_effect(
+                measurement, complete_holdout, items, outcome, group, item
+            )
+            if (
+                train_item is not None
+                and holdout_item is not None
+                and abs(train_item) >= params["item_train_min"]
+                and abs(holdout_item) <= params["item_holdout_max"]
+            ):
+                unstable.append(item)
+        checks["unstable_items"] = (
+            "PASS"
+            if set(reported_items) == set(unstable) == set(target["unstable_items"])
+            else "FAIL"
+        )
+        checks["holdout_effect"] = (
+            "PASS" if abs(train_effect - holdout_effect) <= tolerance else "FAIL"
+        )
+        recorded = {
+            "train_group_adjusted": round(train_effect, 3),
+            "holdout_group_adjusted": round(holdout_effect, 3),
+            "within_group": {key: round(value, 3) for key, value in within.items()},
+            "derived_unstable_items": unstable,
+        }
+    except (InvalidSubmission, Exception) as exc:  # noqa: BLE001
+        checks.update(
+            {
+                "model_coverage": "FAIL",
+                "model_fit": "FAIL",
+                "association": "FAIL",
+                "unstable_items": "FAIL",
+            }
+        )
+        return _result(0.0, checks, {}, f"model failed: {type(exc).__name__}: {exc}")
+
+    complete = all(value == "PASS" for value in checks.values())
+    return _result(
+        1.0 if complete else 0.0,
+        checks,
+        {
+            "train_group_adjusted": round(train_effect, 3),
+            "holdout_group_adjusted": round(holdout_effect, 3),
+        },
+        "all behavioural validity claims pass" if complete else "behavioural validity mismatch",
+        recorded,
+    )
+
+
+def _measurement_item_map(spec: str) -> dict[str, set[str]]:
+    """Map observed items to the latent factors named in a specification."""
+    mapping: dict[str, set[str]] = {}
+    for line in spec.splitlines():
+        if "=~" not in line:
+            continue
+        factor, rhs = line.split("=~", 1)
+        for item in rhs.replace("*", " ").split("+"):
+            item = item.strip().split()[0] if item.strip() else ""
+            if item:
+                mapping.setdefault(item, set()).add(factor.strip())
+    return mapping
+
+
+def _model_fit_summary(spec: str, frame: pd.DataFrame, variables: list[str]) -> dict:
+    import semopy
+
+    model = semopy.Model(spec)
+    model.fit(frame[variables])
+    stats = semopy.calc_stats(model).iloc[0]
+    return {
+        "model": model,
+        "CFI": float(stats["CFI"]),
+        "RMSEA": float(stats["RMSEA"]),
+    }
+
+
+def _drop_line(spec: str, line: str) -> str:
+    """The same model without one line."""
+    return "\n".join(ln for ln in spec.splitlines() if ln.strip() != line.strip())
+
+
+def _drop_residual_pair(spec: str, pair: list[str] | tuple[str, str]) -> str:
+    """Remove an observed-item residual covariance regardless of order."""
+    wanted = set(pair)
+    kept = []
+    for line in spec.splitlines():
+        if "~~" in line:
+            left, right = (part.strip() for part in line.split("~~", 1))
+            if {left, right} == wanted:
+                continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _drop_cross_loading(spec: str, item: str, item_map: dict, model=None) -> str:
+    """The same model with `item` left on only one factor."""
+    factors = item_map.get(item, set())
+    keep = sorted(factors)[:1]
+    if model is not None:
+        ins = model.inspect(std_est=True)
+        rows = ins[(ins.op == "~") & (ins.lval == item) & ins.rval.isin(factors)].copy()
+        if len(rows):
+            rows["abs_std"] = pd.to_numeric(rows["Est. Std"], errors="coerce").abs()
+            keep = [str(rows.loc[rows["abs_std"].idxmax(), "rval"])]
+    out = []
+    for line in spec.splitlines():
+        if "=~" in line:
+            factor, rhs = line.split("=~", 1)
+            factor = factor.strip()
+            members = [m.strip() for m in rhs.replace("+", " ").split()]
+            if item in members and factor not in keep:
+                members = [m for m in members if m != item]
+                if not members:
+                    continue
+                line = f"{factor} =~ {'+'.join(members)}"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _modification_worth(spec, reduced, frame, variables):
+    """CFI the modification buys in this sample, or None if either fit fails."""
+    try:
+        full = _model_fit_summary(spec, frame, variables)["CFI"]
+        less = _model_fit_summary(reduced, frame, variables)["CFI"]
+    except Exception:  # noqa: BLE001
+        return None
+    return round(full - less, 4)
+
+
+def score_misfit_replication(
+    submission: str | dict, params: dict, base_dir: str | Path = "."
+) -> dict:
+    """Score item-level modifications against an independent replication."""
+    base = Path(base_dir)
+    if isinstance(submission, str):
+        try:
+            submission = json.loads(submission.strip().strip("`").removeprefix("json"))
+        except json.JSONDecodeError:
+            return _zero("submission is not valid JSON")
+    if not isinstance(submission, dict):
+        return _zero("submission must be a JSON object")
+
+    truth = json.loads((base / params["truth_path"]).read_text())
+    target = truth["scored"]
+    findings = submission.get("findings")
+    replication = submission.get("replication")
+    if not isinstance(findings, dict) or not isinstance(replication, dict):
+        return _zero("missing findings or replication conclusions")
+
+    folder = base / params["truth_path"].rsplit("/", 1)[0]
+    development = pd.read_csv(folder / params["dataset"], sep="\t")
+    replicate = pd.read_csv(folder / params["replication_dataset"], sep="\t")
+    items, group = params["items"], params["covariate"]
+    known = items + [group]
+    checks = {}
+    try:
+        spec = validate_syntax(submission.get("model_syntax", ""), known, params["max_factors"])
+        reported_poor = findings.get("poor_items", [])
+        if not isinstance(reported_poor, list):
+            raise InvalidSubmission("poor_items must be a list")
+        expected_items = set(items) - set(reported_poor)
+        observed = observed_in_spec(spec, known)
+        model_items = observed & set(items)
+        if model_items != expected_items:
+            checks["item_coverage"] = "FAIL"
+        else:
+            checks["item_coverage"] = "PASS"
+
+        dev = development[(development[list(model_items)] != 0).all(axis=1)]
+        rep = replicate[(replicate[list(model_items)] != 0).all(axis=1)]
+        variables = [item for item in items if item in model_items] + [group]
+        fitted_dev = _model_fit_summary(spec, dev, variables)
+        fitted_rep = _model_fit_summary(spec, rep, variables)
+        factor_names = {
+            line.split("=~", 1)[0].strip() for line in spec.splitlines() if "=~" in line
+        }
+        estimates = fitted_dev["model"].inspect(std_est=True)
+        factor_group_paths = set(
+            estimates.loc[
+                (estimates.op == "~")
+                & (estimates.rval == group)
+                & estimates.lval.isin(factor_names),
+                "lval",
+            ]
+        )
+        checks["factor_group_paths"] = "PASS" if factor_group_paths == factor_names else "FAIL"
+
+        item_map = _measurement_item_map(spec)
+        cross = sorted(item for item in model_items if len(item_map.get(item, set())) > 1)
+        residual = residual_pairs_from_fit(fitted_dev["model"], list(model_items))
+        residual_list = sorted([sorted(pair) for pair in residual])
+        dif = sorted(biased_items_from_fit(fitted_dev["model"], list(model_items), group))
+        derived_findings = {
+            "local_dependence": residual_list,
+            "cross_loadings": cross,
+            "dif_items": dif,
+            "poor_items": sorted(reported_poor),
+        }
+        normalized_reported = dict(findings)
+        normalized_target = dict(target["findings"])
+        for panel in ("local_dependence",):
+            normalized_reported[panel] = sorted(sorted(pair) for pair in findings.get(panel, []))
+            normalized_target[panel] = sorted(
+                sorted(pair) for pair in target["findings"].get(panel, [])
+            )
+        checks["findings"] = (
+            "PASS" if derived_findings == normalized_target == normalized_reported else "FAIL"
+        )
+        checks["replication_fit"] = (
+            "PASS" if fitted_rep["CFI"] >= 0.95 and fitted_rep["RMSEA"] <= 0.08 else "FAIL"
+        )
+        checks["model_fit"] = "PASS"
+
+        # Each retained modification is taken back out and the model refitted in
+        # the replication sample. What it is worth there is the verdict.
+        margin = params.get("replication_gain", 0.010)
+        ordered = [item for item in items if item in model_items]
+        reduced_for = {
+            "local_dependence": [_drop_residual_pair(spec, (a, b)) for a, b in residual_list],
+            "cross_loadings": [
+                _drop_cross_loading(spec, item, item_map, fitted_dev["model"]) for item in cross
+            ],
+            "dif_items": [_drop_line(spec, f"{item} ~ {group}") for item in dif],
+        }
+        derived_replication = {}
+        worth = {}
+        for panel, variants in reduced_for.items():
+            values = [_modification_worth(spec, reduced, rep, variables) for reduced in variants]
+            worth[panel] = values
+            derived_replication[panel] = (
+                "replicates"
+                if values and all(v is not None and v >= margin for v in values)
+                else "does_not_replicate"
+            )
+        # A poor item replicates as poor when it is still weak in the other sample.
+        weak_cut = params.get("weak_loading", 0.30)
+        if reported_poor:
+            with_weak = spec.replace("F1 =~ ", "F1 =~ " + "+".join(reported_poor) + "+", 1)
+            try:
+                restored = _model_fit_summary(with_weak, rep, ordered + reported_poor + [group])
+                estimated, _ = _standardised(restored["model"], ordered + reported_poor)
+                weak = [abs(estimated[item]) for item in reported_poor if item in estimated]
+                derived_replication["poor_items"] = (
+                    "replicates"
+                    if len(weak) == len(reported_poor) and max(weak) < weak_cut
+                    else "does_not_replicate"
+                )
+            except Exception:  # noqa: BLE001
+                derived_replication["poor_items"] = "does_not_replicate"
+        else:
+            derived_replication["poor_items"] = "does_not_replicate"
+
+        target_replication = dict(target["replication"])
+        rejected_target = sorted(
+            sorted(pair)
+            for pair in target_replication.pop("rejected_development_modifications", [])
+        )
+        rejected_reported = sorted(
+            sorted(pair) for pair in replication.get("rejected_development_modifications", [])
+        )
+        reported_verdicts = {
+            key: value
+            for key, value in replication.items()
+            if key != "rejected_development_modifications"
+        }
+        checks["replication_verdicts"] = (
+            "PASS" if derived_replication == target_replication == reported_verdicts else "FAIL"
+        )
+
+        # A rejected modification has to be one the development sample really
+        # supports and the replication sample really does not.
+        justified = True
+        for pair in rejected_reported:
+            added = spec + f"\n{pair[0]} ~~ {pair[1]}"
+            in_dev = _modification_worth(added, spec, dev, variables)
+            in_rep = _modification_worth(added, spec, rep, variables)
+            if in_dev is None or in_rep is None or in_dev < margin or in_rep >= margin:
+                justified = False
+        checks["rejected_modifications"] = (
+            "PASS" if rejected_reported == rejected_target and justified else "FAIL"
+        )
+
+        recorded = {
+            "development_CFI": round(fitted_dev["CFI"], 3),
+            "development_RMSEA": round(fitted_dev["RMSEA"], 3),
+            "replication_CFI": round(fitted_rep["CFI"], 3),
+            "replication_RMSEA": round(fitted_rep["RMSEA"], 3),
+            "derived_findings": derived_findings,
+            "replication_worth": worth,
+        }
+    except (InvalidSubmission, Exception) as exc:  # noqa: BLE001
+        checks.update(
+            {
+                "model_fit": "FAIL",
+                "findings": "FAIL",
+                "replication_verdicts": "FAIL",
+                "rejected_modifications": "FAIL",
+            }
+        )
+        return _result(0.0, checks, {}, f"model failed: {type(exc).__name__}: {exc}")
+
+    complete = all(value == "PASS" for value in checks.values())
+    return _result(
+        1.0 if complete else 0.0,
+        checks,
+        {"n_items": len(model_items)},
+        "all replicated modification claims pass" if complete else "misfit replication mismatch",
+        recorded,
+    )
 
 
 def score_population_classification(

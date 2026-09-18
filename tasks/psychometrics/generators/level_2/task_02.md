@@ -1,32 +1,36 @@
 # Task 02 — does the HSNS model generalize out of sample?
 
-Build a measurement model in a labelled training sample, then refit it —
-unchanged — in three anonymised holdouts and classify what happens to it in each.
-Use these decision rules:
+## Task
 
-| decision | when |
+Develop a measurement model in a labelled training sample. Refit that model,
+unchanged, in three anonymised holdouts and classify what happens in each.
+
+Use these rules:
+
+| decision | rule |
 |---|---|
-| `generalizes` | every loading and the factor correlation stay within .10 |
-| `measurement_structure_holds_relations_differ` | loadings stay within .10, the factor correlation moves more |
-| `measurement_structure_fails` | some loading moves more than .10 |
+| `generalizes` | every loading and the factor correlation stays within `.10` of training |
+| `measurement_structure_holds_relations_differ` | loadings stay within `.10`, but the factor correlation moves more |
+| `measurement_structure_fails` | at least one loading moves more than `.10` |
 
-The training file is labelled and the holdout files are anonymised. Use the
-codebook to identify the questionnaire variables; do not infer population
-identities from file metadata.
+## Files
 
-## What to report
+- `data.csv`: labelled training responses;
+- `holdout_a.csv`, `holdout_b.csv`, `holdout_c.csv`: anonymised holdouts;
+- `codebook.md`: variable definitions.
 
-Submit the frozen model and one decision for each holdout. The decision must be
-based on the model as refitted in that holdout, not on a modified holdout-specific
-model.
+Do not infer population identities from filenames or metadata.
 
-## What makes this non-trivial
+## Output
 
-Global fit in the training data is not evidence that a model transports unchanged.
-A holdout can preserve the item measurement structure while changing the
-relationship between factors, or it can make the measurement structure itself
-inadequate. The decisions must agree with what the frozen model produces in each
-holdout.
+Submit the frozen model and one decision for each holdout. Refit the submitted
+model unchanged; do not modify it separately for a holdout.
+
+## Why this requires investigation
+
+A model can fit well in the data used to develop it and still fail to transport.
+Measurement structure can remain stable while the relationship between factors
+changes, or the item measurement itself can change.
 
 ## Rebuild
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 03, matching case samples to reference populations.
+"""Build Level 2 Task 03: match Dirty Dozen case samples to populations.
+
+The generator writes reference populations, case samples, task metadata, hidden
+truth, and scoring artifacts.
 
 Six anonymised reference populations answer the Dirty Dozen under different
 measurement structures. Five case samples of 150 respondents each come from one

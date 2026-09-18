@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 05, an anomaly-attribution investigation.
+"""Build Level 2 Task 05: investigate repeated deliveries and response matches.
+
+The generator writes the delivered records, delivery audit, task metadata,
+hidden truth, and scoring artifacts.
 
 The task asks whether an apparent latent relationship is substantive, a panel
 delivery artifact, a consequence of discrete response collisions, or a mixture

@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 06, item integrity before a gender comparison.
+"""Build Level 2 Task 06: investigate item integrity before a group comparison.
 
-Four items behave differently in the two groups. Two were overwritten by the
-export, two are genuine differential item functioning, and the responses alone
-cannot tell those apart: the corrupted items do not even have the most middle
-responses. What separates them is whether a middle response carries any
-information about the respondent. The export audit reports how the file was
-transmitted, which flags one clean item and misses both DIF items.
+The generator writes the response file, export audit, task metadata, hidden
+truth, and scoring artifacts.
 
     python gen_l2_t06_gender_item_integrity.py
     python gen_l2_t06_gender_item_integrity.py --verify

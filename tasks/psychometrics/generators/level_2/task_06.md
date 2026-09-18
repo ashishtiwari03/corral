@@ -16,7 +16,7 @@ different response function in the two groups.
 
 ## Files
 
-- `data.csv`: item responses, group indicator, and country field.
+- `data.csv`: item responses and group indicator.
 - `codebook.md`: response coding and item descriptions.
 - `preliminary_analysis.md`: an initial, unresolved analysis.
 - `export_audit.csv`: transmission records for each item.

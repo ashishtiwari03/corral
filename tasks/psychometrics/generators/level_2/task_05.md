@@ -1,18 +1,27 @@
 # Task 05 — what explains the apparent relationship?
 
-You are investigating an unexpectedly strong relationship between two dimensions of the Hypersensitive Narcissism Scale in a panel-delivered survey. The response file, a preliminary memo, and a delivery audit provide partially overlapping evidence.
+## Task
 
-Decide whether the relationship is supported by independent respondents, distorted by repeated deliveries, affected by chance response collisions, or shaped by more than one mechanism. Establish an operational record key, collapse records using that key, and fit the measurement model again.
+Investigate an unexpectedly strong relationship between two HSNS dimensions in
+a panel-delivered survey. The response file, preliminary memo, and delivery
+audit contain partially overlapping evidence.
 
-## Available files
+Decide whether the relationship reflects independent respondents, repeated
+deliveries, chance response collisions, or more than one mechanism. Identify a
+record key, collapse repeated records using that key, and refit the measurement
+model.
 
-- `data.csv` and `codebook.md`: delivered HSNS responses and variables;
+## Files
+
+- `data.csv` and `codebook.md`: delivered responses and variables;
 - `preliminary_analysis.md`: the initial analysis and panel notes;
-- `delivery_audit.csv` and `delivery_audit_codebook.md`: delivery-level evidence joined by `session_id`.
+- `delivery_audit.csv` and `delivery_audit_codebook.md`: delivery evidence joined
+  by `session_id`.
 
-The audit contains delivery characteristics rather than a respondent identifier. Different people may share those characteristics, and the panel can issue fresh identifiers when a record is transmitted again. Treat the memo as a hypothesis to test, not as an answer.
+The audit describes deliveries, not respondents. Different people may share its
+values, and a repeated delivery may receive a new participant identifier.
 
-## What to return
+## Output
 
 Return one JSON object:
 
@@ -24,14 +33,19 @@ Return one JSON object:
 }
 ```
 
-The key must contain columns from `data.csv`. The scorer applies it to collapse records, refits the submitted model, and reads the factor correlation from that refit.
+The key must use columns from `data.csv`. The scorer applies it to collapse
+records, refits the submitted model, and reads the resulting factor
+correlation.
 
-## Why this is not a lookup
+## Why this requires investigation
 
-Exact response matches are expected in a long survey with five-point items, but repeated deliveries can create the same pattern for a different reason. Removing every match can delete genuine respondents, while retaining every row can count one respondent more than once. The audit is supporting evidence, not a direct identity field.
+Exact response matches are expected in a long survey. Removing every match can
+delete genuine respondents; retaining every row can count one respondent more
+than once. The audit helps test the explanations but is not a respondent ID.
 
 ## Rebuild
 
 ```bash
-uv run python generators/level_2/gen_l2_t05_duplicate_records.py [--verify|--naive]
+uv run --with numpy --with pandas --with scipy \
+  python generators/level_2/gen_l2_t05_duplicate_records.py [--verify|--naive]
 ```

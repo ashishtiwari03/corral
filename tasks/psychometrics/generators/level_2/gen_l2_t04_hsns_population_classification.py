@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 04, matching HSNS case samples to populations.
+"""Build Level 2 Task 04: match HSNS case samples to populations.
+
+The generator writes reference populations, case samples, task metadata, hidden
+truth, and scoring artifacts.
 
 Six anonymised reference populations answer the HSNS under different
 measurement structures. Five case samples of 200 respondents come from one of

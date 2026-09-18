@@ -108,3 +108,5 @@ assumptions, and report a calibrated conclusion.
 | [4](generators/level_2/task_04.md) | Which HSNS population fits each case sample? |
 | [5](generators/level_2/task_05.md) | Duplicate records or chance collisions? |
 | [6](generators/level_2/task_06.md) | Is the group difference real or an export artifact? |
+| [7](generators/level_2/task_07.md) | Does the HSNS predict behaviour beyond group membership? |
+| [8](generators/level_2/task_08.md) | Which model modifications survive replication? |
