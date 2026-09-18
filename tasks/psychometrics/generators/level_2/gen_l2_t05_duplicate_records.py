@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Generate Level 2 Task 05, duplicate records against chance collisions.
+"""Generate Level 2 Task 05, an anomaly-attribution investigation.
 
-Part of the sample was delivered twice under fresh identifiers, and the block
-that was repeated sits high on both traits, so the correlation between them is
-inflated. Thousands of other rows share an answer pattern purely by chance,
-because ten five-point items cannot tell 12,000 people apart. Removing every
-repeated pattern overshoots further than leaving them all in.
+The task asks whether an apparent latent relationship is substantive, a panel
+delivery artifact, a consequence of discrete response collisions, or a mixture
+of mechanisms. The response file, a preliminary memo, and a separate delivery
+audit provide partially overlapping evidence.
 
     python gen_l2_t05_duplicate_records.py
     python gen_l2_t05_duplicate_records.py --verify
@@ -54,20 +53,19 @@ REDELIVERY_CENTRE, REDELIVERY_SLOPE = 1.6, 3.0
 IDENTITY = ITEMS + ["age", "accuracy"]
 REISSUED = ["participant_id", "session_id", "recorded_on"]
 
-DIAGNOSIS = "both_present"
+DIAGNOSIS = "both_mechanisms"
 CORRELATION_TOLERANCE = 0.02
 
 PROMPT = (
-    "You are given responses to the Hypersensitive Narcissism Scale collected by a survey "
-    "panel. Thousands of rows share an answer pattern with at least one other row.\n\n"
-    "Two things can produce that. Records may have been delivered more than once, in which "
-    "case the repeats are not independent respondents and inflate whatever is estimated from "
-    "them. Or two different people may simply have chosen the same answers, which ten "
-    "five-point items make far more likely than it first appears.\n\n"
-    "Work out which is happening here, and report the correlation between the two traits "
-    "that the data actually support. State which columns together identify a record that is "
-    "the same respondent as another; the analysis is repeated with one row kept per "
-    "combination of those columns.\n"
+    "You are investigating an unexpectedly strong relationship between two dimensions of the "
+    "Hypersensitive Narcissism Scale in a panel-delivered survey. The response file, a "
+    "preliminary memo, and a separate delivery audit contain partially overlapping evidence. "
+    "The apparent relationship could reflect the respondents, repeated deliveries, identical "
+    "answers from different people, or more than one of these.\n\n"
+    "Use the evidence to decide which explanation is supported. Test how the conclusion changes "
+    "when records that appear to belong to the same respondent are collapsed, and state which "
+    "columns together identify such a record. Report the trait correlation from the resulting "
+    "analysis rather than assuming that the raw file is an independent sample.\n"
 )
 
 SUBMISSION_FORMAT = """\
@@ -75,7 +73,7 @@ A single JSON object:
 
 {
   "model_syntax": "F1 =~ ...\\nF2 =~ ...\\nF1 ~~ F2",
-  "diagnosis": "duplicate_records_only|chance_collisions_only|both_present",
+  "diagnosis": "repeated_delivery_only|chance_collisions_only|both_mechanisms",
   "duplicate_key": ["<column>", "..."]
 }
 
@@ -110,6 +108,8 @@ def respondents(rng, n):
 
 def deliver(rng, people):
     """Re-deliver the high-scoring end of the sample under fresh identifiers."""
+    people = people.copy()
+    people["_source_person"] = np.arange(len(people))
     z = (people._trait_sum - people._trait_sum.mean()) / people._trait_sum.std()
     chance = 1 / (1 + np.exp(-(z - REDELIVERY_CENTRE) * REDELIVERY_SLOPE))
     repeated = people[rng.random(len(people)) < chance.values]
@@ -121,7 +121,46 @@ def deliver(rng, people):
     delivered["session_id"] = [f"S{i:06d}" for i in rng.permutation(n) + 1]
     start = np.datetime64("2026-02-02")
     delivered["recorded_on"] = (start + rng.integers(0, 54, n).astype("timedelta64[D]")).astype(str)
-    return delivered.drop(columns="_trait_sum"), len(repeated)
+    source = delivered["_source_person"]
+    redelivered = source.duplicated(keep=False)
+    # These are intentionally not identifiers. They are stable delivery
+    # characteristics that provide supporting, but not conclusive, evidence.
+    device_codes = {
+        i: f"device_{value:04d}" for i, value in enumerate(rng.integers(0, 3600, N_RESPONDENTS))
+    }
+    audit = pd.DataFrame(
+        {
+            "session_id": delivered["session_id"],
+            "device_family": [device_codes[int(i)] for i in source],
+            "completion_band": np.where(
+                redelivered, "repeatable", rng.choice(["ordinary", "repeatable"], n, p=[0.84, 0.16])
+            ),
+            "response_quality_band": np.where(
+                redelivered, "high", rng.choice(["low", "typical", "high"], n, p=[0.08, 0.74, 0.18])
+            ),
+        }
+    )
+    return delivered.drop(columns=["_trait_sum", "_source_person"]), len(repeated), audit
+
+
+def write_evidence(out_dir, audit):
+    """Write the non-identity delivery audit and the preliminary memo."""
+    audit.to_csv(out_dir / "delivery_audit.csv", sep="\t", index=False)
+    (out_dir / "delivery_audit_codebook.md").write_text(
+        "# Codebook - delivery audit\n\n"
+        "One row per delivered session. Join to `data.csv` on `session_id`. The fields are delivery characteristics, not respondent identifiers; different people can share a device family or a quality band.\n\n"
+        "| variable | description |\n|---|---|\n"
+        "| `session_id` | identifier assigned to this delivery session |\n"
+        "| `device_family` | pseudonymous device-family grouping observed by the panel |\n"
+        "| `completion_band` | coarse completion-time grouping |\n"
+        "| `response_quality_band` | coarse panel quality grouping |\n"
+    )
+    (out_dir / "preliminary_analysis.md").write_text(
+        "# Preliminary analysis\n\n"
+        "A two-factor HSNS model was fitted to the delivered response file. The estimated factor correlation is noticeably larger than the panel analyst expected from prior work. The analyst also noticed many exact response-pattern matches, but did not determine whether these are repeated deliveries or different people who happened to use the same five-point answers.\n\n"
+        "The delivery system can issue a fresh participant identifier and session identifier when a record is transmitted again. The separate audit contains delivery characteristics that may help distinguish repeated transmissions from chance response-pattern matches, but none of its fields is a respondent identifier.\n\n"
+        "Treat this as a preliminary interpretation, not as the answer. Establish which explanation the combined evidence supports and check whether the reported factor relationship survives the data-quality decision.\n"
+    )
 
 
 def analysis_sample(df):
@@ -238,7 +277,7 @@ def build_task_json(data_sha):
     return [
         {
             "id": TASK_ID,
-            "name": "Duplicate records or chance collisions?",
+            "name": "What explains the apparent relationship?",
             "uuid": "1d2c5a7e-3f44-4c8b-9a10-6b5e2f7c9d31",
             "keywords": ["psychometrics", "data integrity", "duplicate records", "data cleaning"],
             "metrics": ["binary", "partial"],
@@ -248,6 +287,9 @@ def build_task_json(data_sha):
             "initial_input": {
                 "dataset": "data.csv",
                 "codebook": "codebook.md",
+                "preliminary_analysis": "preliminary_analysis.md",
+                "delivery_audit": "delivery_audit.csv",
+                "delivery_audit_codebook": "delivery_audit_codebook.md",
                 "data_sha256": data_sha,
             },
             "tools": [],
@@ -274,10 +316,10 @@ def candidate_submissions(X):
         },
         "treats every repeated pattern as a duplicate": {
             **correct,
-            "diagnosis": "duplicate_records_only",
+            "diagnosis": "repeated_delivery_only",
             "duplicate_key": ITEMS,
         },
-        "right key, wrong account of it": {**correct, "diagnosis": "duplicate_records_only"},
+        "right key, wrong account of it": {**correct, "diagnosis": "repeated_delivery_only"},
         "keys on the answers and age only": {**correct, "duplicate_key": ITEMS + ["age"]},
     }
 
@@ -362,7 +404,7 @@ def main():
     action = C.mode()
     rng = np.random.default_rng(SEED)
     people = respondents(rng, N_RESPONDENTS)
-    delivered, n_repeated = deliver(rng, people)
+    delivered, n_repeated, audit = deliver(rng, people)
     if action == "verify":
         return verify(delivered, n_repeated)
     if action == "naive":
@@ -385,6 +427,7 @@ def main():
         build_task_json,
     )
     write_codebook(OUT_DIR / "codebook.md", delivered)
+    write_evidence(OUT_DIR, audit)
     return 0
 
 

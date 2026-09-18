@@ -253,7 +253,7 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if key == "affected_items"
         else {k: "generalizes" for k in good["holdout_conclusions"]}
         if key == "holdout_conclusions"
-        else "duplicate_records_only"
+        else "repeated_delivery_only"
         if key == "diagnosis"
         else 0.9
         if key == "latent_difference"
