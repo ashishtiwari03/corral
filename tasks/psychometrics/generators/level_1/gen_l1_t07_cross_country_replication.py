@@ -34,26 +34,60 @@ ITEMS = HSNS + DD
 HSNS_F1 = ["HSNS1", "HSNS4", "HSNS5", "HSNS6", "HSNS8", "HSNS10"]
 HSNS_F2 = ["HSNS2", "HSNS3", "HSNS7", "HSNS9"]
 HSNS_LOADINGS = {
-    "HSNS1": 0.55, "HSNS4": 0.52, "HSNS5": 0.70, "HSNS6": 0.48,
-    "HSNS8": 0.71, "HSNS10": 0.66, "HSNS2": 0.76, "HSNS3": 0.58,
-    "HSNS7": 0.69, "HSNS9": 0.52,
+    "HSNS1": 0.55,
+    "HSNS4": 0.52,
+    "HSNS5": 0.70,
+    "HSNS6": 0.48,
+    "HSNS8": 0.71,
+    "HSNS10": 0.66,
+    "HSNS2": 0.76,
+    "HSNS3": 0.58,
+    "HSNS7": 0.69,
+    "HSNS9": 0.52,
 }
 HSNS_PHI = 0.35
 
 SPECIFIC_OF = {
-    "DDM1": "M", "DDM2": "M", "DDM3": "M", "DDM4": "M",
-    "DDP1": "P", "DDP2": "P", "DDP3": "P", "DDP4": "P",
-    "DDN1": "N", "DDN2": "N", "DDN3": "N", "DDN4": "N",
+    "DDM1": "M",
+    "DDM2": "M",
+    "DDM3": "M",
+    "DDM4": "M",
+    "DDP1": "P",
+    "DDP2": "P",
+    "DDP3": "P",
+    "DDP4": "P",
+    "DDN1": "N",
+    "DDN2": "N",
+    "DDN3": "N",
+    "DDN4": "N",
 }
 DD_GENERAL = {
-    "DDM1": 0.58, "DDM2": 0.52, "DDM3": 0.48, "DDM4": 0.60,
-    "DDP1": 0.55, "DDP2": 0.50, "DDP3": 0.53, "DDP4": 0.38,
-    "DDN1": 0.42, "DDN2": 0.40, "DDN3": 0.50, "DDN4": 0.52,
+    "DDM1": 0.58,
+    "DDM2": 0.52,
+    "DDM3": 0.48,
+    "DDM4": 0.60,
+    "DDP1": 0.55,
+    "DDP2": 0.50,
+    "DDP3": 0.53,
+    "DDP4": 0.38,
+    "DDN1": 0.42,
+    "DDN2": 0.40,
+    "DDN3": 0.50,
+    "DDN4": 0.52,
 }
 DD_SPECIFIC = {
-    "DDM1": 0.48, "DDM2": 0.44, "DDM3": 0.42, "DDM4": 0.50,
-    "DDP1": 0.52, "DDP2": 0.48, "DDP3": 0.55, "DDP4": 0.35,
-    "DDN1": 0.58, "DDN2": 0.56, "DDN3": 0.45, "DDN4": 0.30,
+    "DDM1": 0.48,
+    "DDM2": 0.44,
+    "DDM3": 0.42,
+    "DDM4": 0.50,
+    "DDP1": 0.52,
+    "DDP2": 0.48,
+    "DDP3": 0.55,
+    "DDP4": 0.35,
+    "DDN1": 0.58,
+    "DDN2": 0.56,
+    "DDN3": 0.45,
+    "DDN4": 0.30,
 }
 # Where the general factor is gone, the three traits are merely correlated.
 DD_NO_GENERAL_PHI = 0.45
@@ -73,11 +107,22 @@ COUNTRIES = {
 REPLICATION_COUNTRIES = [c for c in COUNTRIES if c != "US"]
 
 TRUTH = {
-    "hsns": {"GB": "exact", "CA": "approximate", "AU": "exact",
-             "IN": "approximate", "BR": "substantive_only", "DE": "approximate"},
-    "dirty_dozen": {"GB": "exact", "CA": "substantive_only",
-                    "AU": "substantive_only", "IN": "substantive_only",
-                    "BR": "substantive_only", "DE": "none"},
+    "hsns": {
+        "GB": "exact",
+        "CA": "approximate",
+        "AU": "exact",
+        "IN": "approximate",
+        "BR": "substantive_only",
+        "DE": "approximate",
+    },
+    "dirty_dozen": {
+        "GB": "exact",
+        "CA": "substantive_only",
+        "AU": "substantive_only",
+        "IN": "substantive_only",
+        "BR": "substantive_only",
+        "DE": "none",
+    },
 }
 
 POP_REFERENCE_N = 400_000
@@ -126,8 +171,7 @@ def simulate_hsns(n, rng, scale, phi):
     out = {}
     for item in HSNS:
         lam = HSNS_LOADINGS[item] * scale
-        ystar = (lam * eta[:, 0 if item in HSNS_F1 else 1]
-                 + rng.normal(0, np.sqrt(1 - lam ** 2), n))
+        ystar = lam * eta[:, 0 if item in HSNS_F1 else 1] + rng.normal(0, np.sqrt(1 - lam**2), n)
         out[item] = C.categorize(ystar, C.THRESHOLDS[item])
     return pd.DataFrame(out)[HSNS]
 
@@ -146,8 +190,7 @@ def simulate_dd(n, rng, general_scale, scrambled):
         eta = rng.multivariate_normal(np.zeros(3), phi, size=n)
         for item in DD:
             lam = np.sqrt(DD_GENERAL[item] ** 2 + DD_SPECIFIC[item] ** 2)
-            ystar = (lam * eta[:, names.index(assign[item])]
-                     + rng.normal(0, np.sqrt(1 - lam ** 2), n))
+            ystar = lam * eta[:, names.index(assign[item])] + rng.normal(0, np.sqrt(1 - lam**2), n)
             out[item] = C.categorize(ystar, C.THRESHOLDS[item])
         return pd.DataFrame(out)[DD]
 
@@ -156,8 +199,11 @@ def simulate_dd(n, rng, general_scale, scrambled):
     for item in DD:
         g = DD_GENERAL[item] * general_scale
         s = DD_SPECIFIC[item] * (0.6 if scrambled else 1.0)
-        ystar = (g * general + s * specific[assign[item]]
-                 + rng.normal(0, np.sqrt(max(1 - g ** 2 - s ** 2, 1e-6)), n))
+        ystar = (
+            g * general
+            + s * specific[assign[item]]
+            + rng.normal(0, np.sqrt(max(1 - g**2 - s**2, 1e-6)), n)
+        )
         out[item] = C.categorize(ystar, C.THRESHOLDS[item])
     return pd.DataFrame(out)[DD]
 
@@ -166,12 +212,18 @@ def build_dataset(rng):
     """Build the full survey: every country, both instruments, demographics."""
     frames = []
     for country, (n, scale, phi, gen, scram) in COUNTRIES.items():
-        frames.append(pd.concat([simulate_hsns(n, rng, scale, phi),
-                                 simulate_dd(n, rng, gen, scram),
-                                 C.demographics(n, rng, country)], axis=1))
+        frames.append(
+            pd.concat(
+                [
+                    simulate_hsns(n, rng, scale, phi),
+                    simulate_dd(n, rng, gen, scram),
+                    C.demographics(n, rng, country),
+                ],
+                axis=1,
+            )
+        )
     df = pd.concat(frames, ignore_index=True).sample(frac=1.0, random_state=SEED)
-    df[ITEMS] = df[ITEMS].mask(
-        rng.random((len(df), len(ITEMS))) < C.ITEM_MISSING_RATE, 0)
+    df[ITEMS] = df[ITEMS].mask(rng.random((len(df), len(ITEMS))) < C.ITEM_MISSING_RATE, 0)
     return df[ITEMS + ["age", "gender", "accuracy", "country"]].reset_index(drop=True)
 
 
@@ -212,8 +264,13 @@ def population_correlation_matrix():
     """Correlation matrix a perfectly specified US model would reproduce."""
     rng = np.random.default_rng(SEED + 999)
     n, scale, phi, gen, scram = COUNTRIES["US"]
-    big = pd.concat([simulate_hsns(POP_REFERENCE_N, rng, scale, phi),
-                     simulate_dd(POP_REFERENCE_N, rng, gen, scram)], axis=1)
+    big = pd.concat(
+        [
+            simulate_hsns(POP_REFERENCE_N, rng, scale, phi),
+            simulate_dd(POP_REFERENCE_N, rng, gen, scram),
+        ],
+        axis=1,
+    )
     return C.population_matrix(big, ITEMS)
 
 
@@ -235,8 +292,12 @@ def _hsns_diagnostics(X, us_loadings):
     ins = model.inspect(std_est=True)
     load = ins[ins.op == "~"]
     fitted = {r["lval"]: abs(float(r["Est. Std"])) for _, r in load.iterrows()}
-    cov = ins[(ins.op == "~~") & (ins.lval != ins.rval)
-              & ins.lval.isin(["F1", "F2"]) & ins.rval.isin(["F1", "F2"])]
+    cov = ins[
+        (ins.op == "~~")
+        & (ins.lval != ins.rval)
+        & ins.lval.isin(["F1", "F2"])
+        & ins.rval.isin(["F1", "F2"])
+    ]
     phi = float(cov["Est. Std"].iloc[0]) if len(cov) else np.nan
     deviation = max(abs(fitted[i] - us_loadings[i]) for i in HSNS)
     return deviation, phi, float(stats["CFI"].iloc[0])
@@ -262,16 +323,29 @@ def build_truth(floor, pop, data_sha, rows):
             "item_order": ITEMS,
         },
         "generative_parameters": {
-            "hsns": {"loadings": HSNS_LOADINGS, "phi_us": HSNS_PHI,
-                     "f1_items": HSNS_F1, "f2_items": HSNS_F2},
-            "dirty_dozen": {"general_loadings": DD_GENERAL,
-                            "specific_loadings": DD_SPECIFIC,
-                            "specific_of_item": SPECIFIC_OF,
-                            "no_general_phi": DD_NO_GENERAL_PHI,
-                            "scramble": DD_SCRAMBLE},
-            "countries": {c: {"n": v[0], "hsns_loading_scale": v[1],
-                              "hsns_phi": v[2], "dd_general_scale": v[3],
-                              "dd_scrambled": v[4]} for c, v in COUNTRIES.items()},
+            "hsns": {
+                "loadings": HSNS_LOADINGS,
+                "phi_us": HSNS_PHI,
+                "f1_items": HSNS_F1,
+                "f2_items": HSNS_F2,
+            },
+            "dirty_dozen": {
+                "general_loadings": DD_GENERAL,
+                "specific_loadings": DD_SPECIFIC,
+                "specific_of_item": SPECIFIC_OF,
+                "no_general_phi": DD_NO_GENERAL_PHI,
+                "scramble": DD_SCRAMBLE,
+            },
+            "countries": {
+                c: {
+                    "n": v[0],
+                    "hsns_loading_scale": v[1],
+                    "hsns_phi": v[2],
+                    "dd_general_scale": v[3],
+                    "dd_scrambled": v[4],
+                }
+                for c, v in COUNTRIES.items()
+            },
             "thresholds": C.THRESHOLDS,
         },
         "provenance": C.provenance(Path(__file__).name, SEED, rows, data_sha),
@@ -281,49 +355,74 @@ def build_truth(floor, pop, data_sha, rows):
 def build_task_json(data_sha):
     """Assemble the Corral task definition, including the scoring contract."""
     contract = C.scoring_contract(
-        "artifacts/level_1/task_07/truth.json", ITEMS,
+        "artifacts/level_1/task_07/truth.json",
+        ITEMS,
         [
-            {"key": "replication", "fn": "score_label_panel",
-             "truth_key": "scored.replication", "criterion": "replication"},
-        ])
+            {
+                "key": "replication",
+                "fn": "score_label_panel",
+                "truth_key": "scored.replication",
+                "criterion": "replication",
+            },
+        ],
+    )
     contract["syntax_whitelist"]["max_factors"] = 8
-    return [{
-        "id": TASK_ID,
-        "name": "Which instrument travels across countries?",
-        "uuid": "c24f7a08-6b31-4e5d-9a83-70d5c1e9b707",
-        "keywords": ["psychometrics", "replication", "cross-cultural",
-                     "model selection", "measurement"],
-        "metrics": ["binary", "partial"],
-        "level": 1,
-        "description": PROMPT,
-        "submission_format": SUBMISSION_FORMAT,
-        "initial_input": {"dataset": "data.csv", "codebook": "codebook.md",
-                          "data_sha256": data_sha},
-        "tools": [],
-        "scoring_function": "score_model_criteria",
-        "scoring_params": contract,
-    }]
+    return [
+        {
+            "id": TASK_ID,
+            "name": "Which instrument travels across countries?",
+            "uuid": "c24f7a08-6b31-4e5d-9a83-70d5c1e9b707",
+            "keywords": [
+                "psychometrics",
+                "replication",
+                "cross-cultural",
+                "model selection",
+                "measurement",
+            ],
+            "metrics": ["binary", "partial"],
+            "level": 1,
+            "description": PROMPT,
+            "submission_format": SUBMISSION_FORMAT,
+            "initial_input": {
+                "dataset": "data.csv",
+                "codebook": "codebook.md",
+                "data_sha256": data_sha,
+            },
+            "tools": [],
+            "scoring_function": "score_model_criteria",
+            "scoring_params": contract,
+        }
+    ]
 
 
 def candidate_submissions(X):
     """Answers an analyst might give, for the scoring tests."""
     del X
-    correct = {"model_syntax": reference_syntax(),
-               "replication": {k: dict(v) for k, v in TRUTH.items()}}
-    everything_holds = {"model_syntax": reference_syntax(),
-                        "replication": {inst: {c: "exact" for c in v}
-                                        for inst, v in TRUTH.items()}}
-    dd_assumed_fine = {"model_syntax": reference_syntax(),
-                       "replication": {"hsns": dict(TRUTH["hsns"]),
-                                       "dirty_dozen": {c: "exact" for c in
-                                                       TRUTH["dirty_dozen"]}}}
-    swapped = {"model_syntax": reference_syntax(),
-               "replication": {"hsns": dict(TRUTH["dirty_dozen"]),
-                               "dirty_dozen": dict(TRUTH["hsns"])}}
-    return {"correct": correct,
-            "fit-based: everything replicates": everything_holds,
-            "HSNS right, Dirty Dozen assumed fine": dd_assumed_fine,
-            "instruments swapped": swapped}
+    correct = {
+        "model_syntax": reference_syntax(),
+        "replication": {k: dict(v) for k, v in TRUTH.items()},
+    }
+    everything_holds = {
+        "model_syntax": reference_syntax(),
+        "replication": {inst: {c: "exact" for c in v} for inst, v in TRUTH.items()},
+    }
+    dd_assumed_fine = {
+        "model_syntax": reference_syntax(),
+        "replication": {
+            "hsns": dict(TRUTH["hsns"]),
+            "dirty_dozen": {c: "exact" for c in TRUTH["dirty_dozen"]},
+        },
+    }
+    swapped = {
+        "model_syntax": reference_syntax(),
+        "replication": {"hsns": dict(TRUTH["dirty_dozen"]), "dirty_dozen": dict(TRUTH["hsns"])},
+    }
+    return {
+        "correct": correct,
+        "fit-based: everything replicates": everything_holds,
+        "HSNS right, Dirty Dozen assumed fine": dd_assumed_fine,
+        "instruments swapped": swapped,
+    }
 
 
 def verify(df, pop):
@@ -334,13 +433,14 @@ def verify(df, pop):
     model = semopy.Model(hsns_syntax())
     model.fit(us[HSNS])
     ins = model.inspect(std_est=True)
-    us_loadings = {r["lval"]: abs(float(r["Est. Std"]))
-                   for _, r in ins[ins.op == "~"].iterrows()}
+    us_loadings = {r["lval"]: abs(float(r["Est. Std"])) for _, r in ins[ins.op == "~"].iterrows()}
 
     print(f"US calibration sample: {len(us):,}\n")
-    print(f"{'country':8s} {'N':>6s} | {'HSNS dev':>9s} {'phi':>6s} {'CFI':>7s} "
-          f"{'class':17s} | {'DD bifac BIC':>12s} {'3-fac BIC':>10s} "
-          f"{'winner':>9s} {'CFI':>7s} {'class':17s}")
+    print(
+        f"{'country':8s} {'N':>6s} | {'HSNS dev':>9s} {'phi':>6s} {'CFI':>7s} "
+        f"{'class':17s} | {'DD bifac BIC':>12s} {'3-fac BIC':>10s} "
+        f"{'winner':>9s} {'CFI':>7s} {'class':17s}"
+    )
     rows = []
     for country in REPLICATION_COUNTRIES:
         X = country_sample(df, country)
@@ -351,25 +451,33 @@ def verify(df, pop):
         dcfi = float(semopy.calc_stats(dmodel)["CFI"].iloc[0])
         winner = "bifactor" if bif < three else "three"
         rows.append((country, dev, phi, hcfi, bif, three, winner, dcfi))
-        print(f"{country:8s} {len(X):6,} | {dev:9.3f} {phi:6.3f} {hcfi:7.4f} "
-              f"{TRUTH['hsns'][country]:17s} | {bif:12.1f} {three:10.1f} "
-              f"{winner:>9s} {dcfi:7.4f} {TRUTH['dirty_dozen'][country]:17s}")
+        print(
+            f"{country:8s} {len(X):6,} | {dev:9.3f} {phi:6.3f} {hcfi:7.4f} "
+            f"{TRUTH['hsns'][country]:17s} | {bif:12.1f} {three:10.1f} "
+            f"{winner:>9s} {dcfi:7.4f} {TRUTH['dirty_dozen'][country]:17s}"
+        )
 
     by_country = {r[0]: r for r in rows}
     checks = [
-        ("the Dirty Dozen's structure holds only in GB",
-         by_country["GB"][6] == "bifactor"
-         and all(by_country[c][6] == "three" for c in ("CA", "AU", "IN", "BR"))),
-        ("yet the US model still fits everywhere it has stopped being best",
-         all(by_country[c][7] > 0.95 for c in ("CA", "AU", "IN", "BR"))),
-        ("Germany's Dirty Dozen genuinely breaks down",
-         by_country["DE"][7] < 0.95),
-        ("the HSNS structure holds everywhere except BR",
-         all(by_country[c][2] < 0.80 for c in ("GB", "CA", "AU", "IN", "DE"))
-         and by_country["BR"][2] > 0.85),
-        ("the HSNS parameter changes are visible where they were made",
-         all(by_country[c][1] > 0.06 for c in ("CA", "IN", "DE"))
-         and by_country["GB"][1] < 0.06),
+        (
+            "the Dirty Dozen's structure holds only in GB",
+            by_country["GB"][6] == "bifactor"
+            and all(by_country[c][6] == "three" for c in ("CA", "AU", "IN", "BR")),
+        ),
+        (
+            "yet the US model still fits everywhere it has stopped being best",
+            all(by_country[c][7] > 0.95 for c in ("CA", "AU", "IN", "BR")),
+        ),
+        ("Germany's Dirty Dozen genuinely breaks down", by_country["DE"][7] < 0.95),
+        (
+            "the HSNS structure holds everywhere except BR",
+            all(by_country[c][2] < 0.80 for c in ("GB", "CA", "AU", "IN", "DE"))
+            and by_country["BR"][2] > 0.85,
+        ),
+        (
+            "the HSNS parameter changes are visible where they were made",
+            all(by_country[c][1] > 0.06 for c in ("CA", "IN", "DE")) and by_country["GB"][1] < 0.06,
+        ),
     ]
     return C.report(checks)
 
@@ -394,10 +502,11 @@ def naive(df, pop):
         truth = TRUTH["dirty_dozen"][country]
         if (verdict == "replicates") != (truth == "exact"):
             wrong += 1
-        print(f"{country:8s} {hcfi:9.4f} {dcfi:8.4f}  Dirty Dozen {verdict}"
-              f"   (truth: {truth})")
-    print(f"\n  fit alone misclassifies {wrong} of {len(REPLICATION_COUNTRIES)} "
-          f"countries for the Dirty Dozen")
+        print(f"{country:8s} {hcfi:9.4f} {dcfi:8.4f}  Dirty Dozen {verdict}" f"   (truth: {truth})")
+    print(
+        f"\n  fit alone misclassifies {wrong} of {len(REPLICATION_COUNTRIES)} "
+        f"countries for the Dirty Dozen"
+    )
     return C.report([("fit alone gets most of the Dirty Dozen wrong", wrong >= 3)])
 
 
@@ -414,9 +523,12 @@ def main():
     pop = population_correlation_matrix()
     floor = C.evaluate_model(reference_syntax(), country_sample(df, "US"), ITEMS, pop)
     C.write_artifacts(
-        OUT_DIR, TASK_JSON, df,
+        OUT_DIR,
+        TASK_JSON,
+        df,
         lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
-        build_task_json)
+        build_task_json,
+    )
     return 0
 
 

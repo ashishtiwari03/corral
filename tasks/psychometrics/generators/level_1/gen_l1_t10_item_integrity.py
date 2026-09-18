@@ -33,25 +33,32 @@ DD = C.DD_ITEMS
 ITEMS = HSNS
 
 LOADINGS = {
-    "HSNS1": .64, "HSNS2": .70, "HSNS3": .61, "HSNS4": .62, "HSNS5": .66,
-    "HSNS6": .48, "HSNS7": .66, "HSNS8": .68, "HSNS9": .59, "HSNS10": .63,
+    "HSNS1": 0.64,
+    "HSNS2": 0.70,
+    "HSNS3": 0.61,
+    "HSNS4": 0.62,
+    "HSNS5": 0.66,
+    "HSNS6": 0.48,
+    "HSNS7": 0.66,
+    "HSNS8": 0.68,
+    "HSNS9": 0.59,
+    "HSNS10": 0.63,
 }
 
 # Three recording faults and one genuinely poor item.
-MIS_KEYED = "HSNS4"          # stored with the scale reversed
-NEUTRAL_CODED = "HSNS7"      # non-responses written as the midpoint
+MIS_KEYED = "HSNS4"  # stored with the scale reversed
+NEUTRAL_CODED = "HSNS7"  # non-responses written as the midpoint
 NEUTRAL_RATE = 0.45
-TRUNCATED = "HSNS2"          # the top of the scale was never recorded
+TRUNCATED = "HSNS2"  # the top of the scale was never recorded
 TRUNCATED_AT = 4
-WEAK = "HSNS6"               # the data are fine; the item measures poorly
+WEAK = "HSNS6"  # the data are fine; the item measures poorly
 
 TRUTH = {
     MIS_KEYED: "mis_keyed",
     NEUTRAL_CODED: "missing_as_neutral",
     TRUNCATED: "truncated_scale",
     WEAK: "weak_item",
-    **{i: "sound" for i in HSNS
-       if i not in (MIS_KEYED, NEUTRAL_CODED, TRUNCATED, WEAK)},
+    **{i: "sound" for i in HSNS if i not in (MIS_KEYED, NEUTRAL_CODED, TRUNCATED, WEAK)},
 }
 
 # Outside the United States every item is measured less well, and one sound item
@@ -101,14 +108,19 @@ def honest_responses(n, rng, scale):
     dark = rng.normal(size=n)
     cols = {}
     for item in HSNS:
-        lam = (LOADINGS[item] * scale if scale == 1.0
-               else NON_US_BROKEN.get(item, LOADINGS[item] * scale))
+        lam = (
+            LOADINGS[item] * scale
+            if scale == 1.0
+            else NON_US_BROKEN.get(item, LOADINGS[item] * scale)
+        )
         cols[item] = C.categorize(
-            lam * eta + rng.normal(0, np.sqrt(1 - lam ** 2), n), C.THRESHOLDS[item])
+            lam * eta + rng.normal(0, np.sqrt(1 - lam**2), n), C.THRESHOLDS[item]
+        )
     for item in DD:
         lam = 0.62 * scale
         cols[item] = C.categorize(
-            lam * dark + rng.normal(0, np.sqrt(1 - lam ** 2), n), C.THRESHOLDS[item])
+            lam * dark + rng.normal(0, np.sqrt(1 - lam**2), n), C.THRESHOLDS[item]
+        )
     return pd.DataFrame(cols)[C.ALL_ITEMS]
 
 
@@ -167,8 +179,7 @@ def excess_neutral(X):
     out = {}
     for item in ITEMS:
         tau = C.THRESHOLDS[item]
-        out[item] = float((X[item] == 3).mean()
-                          - (norm.cdf(tau[2]) - norm.cdf(tau[1])))
+        out[item] = float((X[item] == 3).mean() - (norm.cdf(tau[2]) - norm.cdf(tau[1])))
     return out
 
 
@@ -204,8 +215,7 @@ def build_truth(floor, pop, data_sha, rows):
             "loadings": LOADINGS,
             "faults": {
                 "mis_keyed": MIS_KEYED,
-                "missing_as_neutral": {"item": NEUTRAL_CODED,
-                                       "rate": NEUTRAL_RATE},
+                "missing_as_neutral": {"item": NEUTRAL_CODED, "rate": NEUTRAL_RATE},
                 "truncated_scale": {"item": TRUNCATED, "top": TRUNCATED_AT},
                 "weak_item": WEAK,
             },
@@ -220,40 +230,55 @@ def build_truth(floor, pop, data_sha, rows):
 def build_task_json(data_sha):
     """Assemble the Corral task definition, including the scoring contract."""
     contract = C.scoring_contract(
-        "artifacts/level_1/task_10/truth.json", ITEMS,
+        "artifacts/level_1/task_10/truth.json",
+        ITEMS,
         [
-            {"key": "item_quality", "fn": "score_label_panel",
-             "truth_key": "scored.item_quality", "criterion": "item_integrity"},
-        ])
+            {
+                "key": "item_quality",
+                "fn": "score_label_panel",
+                "truth_key": "scored.item_quality",
+                "criterion": "item_integrity",
+            },
+        ],
+    )
     contract["syntax_whitelist"]["max_factors"] = 4
-    return [{
-        "id": TASK_ID,
-        "name": "Which items are bad, and which is the data?",
-        "uuid": "9a51c7e0-4bd8-4f36-83a2-1e6cd4907b55",
-        "keywords": ["psychometrics", "data quality", "item analysis",
-                     "measurement", "screening"],
-        "metrics": ["binary", "partial"],
-        "level": 1,
-        "description": PROMPT,
-        "submission_format": SUBMISSION_FORMAT,
-        "initial_input": {"dataset": "data.csv", "codebook": "codebook.md",
-                          "data_sha256": data_sha},
-        "tools": [],
-        "scoring_function": "score_model_criteria",
-        "scoring_params": contract,
-    }]
+    return [
+        {
+            "id": TASK_ID,
+            "name": "Which items are bad, and which is the data?",
+            "uuid": "9a51c7e0-4bd8-4f36-83a2-1e6cd4907b55",
+            "keywords": [
+                "psychometrics",
+                "data quality",
+                "item analysis",
+                "measurement",
+                "screening",
+            ],
+            "metrics": ["binary", "partial"],
+            "level": 1,
+            "description": PROMPT,
+            "submission_format": SUBMISSION_FORMAT,
+            "initial_input": {
+                "dataset": "data.csv",
+                "codebook": "codebook.md",
+                "data_sha256": data_sha,
+            },
+            "tools": [],
+            "scoring_function": "score_model_criteria",
+            "scoring_params": contract,
+        }
+    ]
 
 
 def candidate_submissions(X):
     """Answers an analyst might give, for the scoring tests."""
     del X
+
     def sub(quality):
         return {"model_syntax": reference_syntax(), "item_quality": quality}
 
-    drop_the_weak = {i: ("weak_item" if TRUTH[i] != "sound" else "sound")
-                     for i in ITEMS}
-    missed_the_quiet = {i: (TRUTH[i] if i in (MIS_KEYED, WEAK) else "sound")
-                        for i in ITEMS}
+    drop_the_weak = {i: ("weak_item" if TRUTH[i] != "sound" else "sound") for i in ITEMS}
+    missed_the_quiet = {i: (TRUTH[i] if i in (MIS_KEYED, WEAK) else "sound") for i in ITEMS}
     swapped = {**TRUTH, NEUTRAL_CODED: "weak_item", WEAK: "missing_as_neutral"}
     return {
         "correct": sub(dict(TRUTH)),
@@ -276,12 +301,16 @@ def verify(df, pop):
     excess = excess_neutral(X)
 
     print(f"US sample: {len(X):,}\n")
-    print(f"{'item':8s} {'generated':>10s} {'as stored':>10s} {'repaired':>9s} "
-          f"{'max':>4s} {'excess P(3)':>12s}  truth")
+    print(
+        f"{'item':8s} {'generated':>10s} {'as stored':>10s} {'repaired':>9s} "
+        f"{'max':>4s} {'excess P(3)':>12s}  truth"
+    )
     for item in ITEMS:
-        print(f"  {item:6s} {LOADINGS[item]:10.2f} {raw_loads[item]:10.3f} "
-              f"{loads[item]:9.3f} {int(X[item].max()):4d} {excess[item]:+12.3f}"
-              f"  {TRUTH[item]}")
+        print(
+            f"  {item:6s} {LOADINGS[item]:10.2f} {raw_loads[item]:10.3f} "
+            f"{loads[item]:9.3f} {int(X[item].max()):4d} {excess[item]:+12.3f}"
+            f"  {TRUTH[item]}"
+        )
 
     sound = [loads[i] for i in ITEMS if TRUTH[i] == "sound"]
     gap = abs(loads[WEAK] - loads[NEUTRAL_CODED])
@@ -289,32 +318,44 @@ def verify(df, pop):
     pooled_sound_min = min(pooled[i] for i in ITEMS if TRUTH[i] == "sound")
     pooled_weakest = min((i for i in ITEMS), key=lambda i: pooled[i])
 
-    print(f"\n  the two look-alikes differ by {gap:.3f} in loading "
-          f"({WEAK} {loads[WEAK]:.3f}, {NEUTRAL_CODED} {loads[NEUTRAL_CODED]:.3f})")
-    print(f"  the truncated item loads {loads[TRUNCATED]:.3f}, inside the sound "
-          f"range {min(sound):.3f}-{max(sound):.3f}")
-    print(f"  pooling all countries makes {pooled_weakest} the weakest item at "
-          f"{pooled[pooled_weakest]:.3f}; in the United States the weakest is "
-          f"{WEAK} at {loads[WEAK]:.3f}")
+    print(
+        f"\n  the two look-alikes differ by {gap:.3f} in loading "
+        f"({WEAK} {loads[WEAK]:.3f}, {NEUTRAL_CODED} {loads[NEUTRAL_CODED]:.3f})"
+    )
+    print(
+        f"  the truncated item loads {loads[TRUNCATED]:.3f}, inside the sound "
+        f"range {min(sound):.3f}-{max(sound):.3f}"
+    )
+    print(
+        f"  pooling all countries makes {pooled_weakest} the weakest item at "
+        f"{pooled[pooled_weakest]:.3f}; in the United States the weakest is "
+        f"{WEAK} at {loads[WEAK]:.3f}"
+    )
 
     checks = [
-        ("the mis-keyed item announces itself and recodes cleanly",
-         raw_loads[MIS_KEYED] < -0.10
-         and abs(loads[MIS_KEYED] - LOADINGS[MIS_KEYED]) < 0.10),
-        ("the corrupted and the weak item are indistinguishable by loading",
-         gap < 0.05),
-        ("but the corrupted one is unmistakable in its responses",
-         excess[NEUTRAL_CODED] > 0.20
-         and max(excess[i] for i in ITEMS if i != NEUTRAL_CODED) < 0.05),
-        ("the truncated item is invisible in the model",
-         loads[TRUNCATED] > min(sound)),
-        ("and unmistakable in the data",
-         X[TRUNCATED].max() < 5
-         and all(X[i].max() == 5 for i in ITEMS if i != TRUNCATED)),
-        ("every sound item stays clear of the weak one",
-         min(sound) - max(loads[WEAK], loads[NEUTRAL_CODED]) > 0.05),
-        ("skipping the US filter makes a sound item look like the weak one",
-         pooled_sound_min < pooled[WEAK]),
+        (
+            "the mis-keyed item announces itself and recodes cleanly",
+            raw_loads[MIS_KEYED] < -0.10 and abs(loads[MIS_KEYED] - LOADINGS[MIS_KEYED]) < 0.10,
+        ),
+        ("the corrupted and the weak item are indistinguishable by loading", gap < 0.05),
+        (
+            "but the corrupted one is unmistakable in its responses",
+            excess[NEUTRAL_CODED] > 0.20
+            and max(excess[i] for i in ITEMS if i != NEUTRAL_CODED) < 0.05,
+        ),
+        ("the truncated item is invisible in the model", loads[TRUNCATED] > min(sound)),
+        (
+            "and unmistakable in the data",
+            X[TRUNCATED].max() < 5 and all(X[i].max() == 5 for i in ITEMS if i != TRUNCATED),
+        ),
+        (
+            "every sound item stays clear of the weak one",
+            min(sound) - max(loads[WEAK], loads[NEUTRAL_CODED]) > 0.05,
+        ),
+        (
+            "skipping the US filter makes a sound item look like the weak one",
+            pooled_sound_min < pooled[WEAK],
+        ),
     ]
     return C.report(checks)
 
@@ -328,20 +369,27 @@ def naive(df, pop):
     print(f"  {'item':8s} {'loading':>8s}  {'verdict':>20s}  truth")
     wrong = []
     for item in ITEMS:
-        verdict = ("mis_keyed" if loads[item] < -0.10
-                   else "weak_item" if abs(loads[item]) < 0.50 else "sound")
+        verdict = (
+            "mis_keyed"
+            if loads[item] < -0.10
+            else "weak_item"
+            if abs(loads[item]) < 0.50
+            else "sound"
+        )
         if verdict != TRUTH[item]:
             wrong.append(item)
-        print(f"  {item:8s} {loads[item]:8.3f}  {verdict:>20s}  {TRUTH[item]}"
-              f"{'   <- wrong' if verdict != TRUTH[item] else ''}")
-    print(f"\n  the loadings alone misclassify {len(wrong)} of {len(ITEMS)} "
-          f"items: {wrong}")
-    return C.report([
-        ("a corrupted item is mistaken for a weak one",
-         NEUTRAL_CODED in wrong),
-        ("a truncated item passes as sound", TRUNCATED in wrong),
-        ("so the model output alone cannot answer the task", len(wrong) >= 2),
-    ])
+        print(
+            f"  {item:8s} {loads[item]:8.3f}  {verdict:>20s}  {TRUTH[item]}"
+            f"{'   <- wrong' if verdict != TRUTH[item] else ''}"
+        )
+    print(f"\n  the loadings alone misclassify {len(wrong)} of {len(ITEMS)} " f"items: {wrong}")
+    return C.report(
+        [
+            ("a corrupted item is mistaken for a weak one", NEUTRAL_CODED in wrong),
+            ("a truncated item passes as sound", TRUNCATED in wrong),
+            ("so the model output alone cannot answer the task", len(wrong) >= 2),
+        ]
+    )
 
 
 def main():
@@ -357,9 +405,12 @@ def main():
     pop = population_correlation_matrix()
     floor = C.evaluate_model(reference_syntax(), analysis_sample(df), ITEMS, pop)
     C.write_artifacts(
-        OUT_DIR, TASK_JSON, df,
+        OUT_DIR,
+        TASK_JSON,
+        df,
         lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
-        build_task_json)
+        build_task_json,
+    )
     return 0
 
 

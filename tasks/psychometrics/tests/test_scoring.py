@@ -31,37 +31,66 @@ sys.path.insert(0, str(ROOT / "generators"))
 from psychometrics.score import score_model_criteria  # noqa: E402
 
 TASKS = [
-    ("generators/level_1/gen_l1_t01_hsns_structure.py",
-     "environments/level_1/tasks_json/task_01.json",
-     "artifacts/level_1/task_01/data.csv", "two_correlated_factors"),
-    ("generators/level_1/gen_l1_t02_dd_structure.py",
-     "environments/level_1/tasks_json/task_02.json",
-     "artifacts/level_1/task_02/data.csv", "bifactor_general_plus_specifics"),
-    ("generators/level_1/gen_l1_t03_local_dependence.py",
-     "environments/level_1/tasks_json/task_03.json",
-     "artifacts/level_1/task_03/data.csv",
-     "unidimensional_with_correlated_residuals"),
-    ("generators/level_1/gen_l1_t04_invariant_combination.py",
-     "environments/level_1/tasks_json/task_04.json",
-     "artifacts/level_1/task_04/data.csv", "DD, bifactor (CORRECT)"),
-    ("generators/level_1/gen_l1_t05_defensible_comparisons.py",
-     "environments/level_1/tasks_json/task_05.json",
-     "artifacts/level_1/task_05/data.csv", "correct"),
-    ("generators/level_1/gen_l1_t06_latent_relationships.py",
-     "environments/level_1/tasks_json/task_06.json",
-     "artifacts/level_1/task_06/data.csv", "joint latent model (CORRECT)"),
-    ("generators/level_1/gen_l1_t07_cross_country_replication.py",
-     "environments/level_1/tasks_json/task_07.json",
-     "artifacts/level_1/task_07/data.csv", "correct"),
-    ("generators/level_1/gen_l1_t08_score_justification.py",
-     "environments/level_1/tasks_json/task_08.json",
-     "artifacts/level_1/task_08/data.csv", "correct"),
-    ("generators/level_1/gen_l1_t09_careless_responding.py",
-     "environments/level_1/tasks_json/task_09.json",
-     "artifacts/level_1/task_09/data.csv", "correct"),
-    ("generators/level_1/gen_l1_t10_item_integrity.py",
-     "environments/level_1/tasks_json/task_10.json",
-     "artifacts/level_1/task_10/data.csv", "correct"),
+    (
+        "generators/level_1/gen_l1_t01_hsns_structure.py",
+        "environments/level_1/tasks_json/task_01.json",
+        "artifacts/level_1/task_01/data.csv",
+        "two_correlated_factors",
+    ),
+    (
+        "generators/level_1/gen_l1_t02_dd_structure.py",
+        "environments/level_1/tasks_json/task_02.json",
+        "artifacts/level_1/task_02/data.csv",
+        "bifactor_general_plus_specifics",
+    ),
+    (
+        "generators/level_1/gen_l1_t03_local_dependence.py",
+        "environments/level_1/tasks_json/task_03.json",
+        "artifacts/level_1/task_03/data.csv",
+        "unidimensional_with_correlated_residuals",
+    ),
+    (
+        "generators/level_1/gen_l1_t04_invariant_combination.py",
+        "environments/level_1/tasks_json/task_04.json",
+        "artifacts/level_1/task_04/data.csv",
+        "DD, bifactor (CORRECT)",
+    ),
+    (
+        "generators/level_1/gen_l1_t05_defensible_comparisons.py",
+        "environments/level_1/tasks_json/task_05.json",
+        "artifacts/level_1/task_05/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_1/gen_l1_t06_latent_relationships.py",
+        "environments/level_1/tasks_json/task_06.json",
+        "artifacts/level_1/task_06/data.csv",
+        "joint latent model (CORRECT)",
+    ),
+    (
+        "generators/level_1/gen_l1_t07_cross_country_replication.py",
+        "environments/level_1/tasks_json/task_07.json",
+        "artifacts/level_1/task_07/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_1/gen_l1_t08_score_justification.py",
+        "environments/level_1/tasks_json/task_08.json",
+        "artifacts/level_1/task_08/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_1/gen_l1_t09_careless_responding.py",
+        "environments/level_1/tasks_json/task_09.json",
+        "artifacts/level_1/task_09/data.csv",
+        "correct",
+    ),
+    (
+        "generators/level_1/gen_l1_t10_item_integrity.py",
+        "environments/level_1/tasks_json/task_10.json",
+        "artifacts/level_1/task_10/data.csv",
+        "correct",
+    ),
 ]
 
 
@@ -82,13 +111,18 @@ def build_submission(spec, X, items):
     load = ins[ins.op == "~"].copy()
     load["abs"] = pd.to_numeric(load["Est. Std"], errors="coerce").abs()
     best = load.loc[load.groupby("lval")["abs"].idxmax()]
-    cov = ins[(ins.op == "~~") & (ins.lval != ins.rval)
-              & ins.lval.isin(["F1", "F2"]) & ins.rval.isin(["F1", "F2"])]
-    phi = (float(pd.to_numeric(cov["Est. Std"], errors="coerce").iloc[0])
-           if len(cov) else None)
-    return {"model_syntax": spec,
-            "loadings": {r.lval: round(float(r.abs), 3) for r in best.itertuples()},
-            "factor_correlation": phi}
+    cov = ins[
+        (ins.op == "~~")
+        & (ins.lval != ins.rval)
+        & ins.lval.isin(["F1", "F2"])
+        & ins.rval.isin(["F1", "F2"])
+    ]
+    phi = float(pd.to_numeric(cov["Est. Std"], errors="coerce").iloc[0]) if len(cov) else None
+    return {
+        "model_syntax": spec,
+        "loadings": {r.lval: round(float(r.abs), 3) for r in best.itertuples()},
+        "factor_correlation": phi,
+    }
 
 
 def _group_submission(spec, X, items, truth=None):
@@ -97,12 +131,13 @@ def _group_submission(spec, X, items, truth=None):
     model = semopy.Model(spec)
     model.fit(X[used + ["gender"]] if "gender" not in used else X[used])
     ins = model.inspect(std_est=True)
-    rows = ins[(ins.op == "~") & (ins.rval == "gender")
-               & ~ins.lval.isin(X.columns)]
-    value = (float(pd.to_numeric(rows["Est. Std"], errors="coerce").iloc[0])
-             if len(rows) else 0.0)
-    return {"model_syntax": spec, "latent_difference": round(value, 4),
-            "biased_items": list(truth or [])}
+    rows = ins[(ins.op == "~") & (ins.rval == "gender") & ~ins.lval.isin(X.columns)]
+    value = float(pd.to_numeric(rows["Est. Std"], errors="coerce").iloc[0]) if len(rows) else 0.0
+    return {
+        "model_syntax": spec,
+        "latent_difference": round(value, 4),
+        "biased_items": list(truth or []),
+    }
 
 
 def run_task(gen_path, task_path, data_path, expected_winner):
@@ -123,15 +158,18 @@ def run_task(gen_path, task_path, data_path, expected_winner):
     if hasattr(gen, "candidate_submissions"):
         cases = gen.candidate_submissions(X)
     else:
-        cases = {name: build_submission(spec, X, items)
-                 for name, spec in gen.candidate_models().items()}
+        cases = {
+            name: build_submission(spec, X, items) for name, spec in gen.candidate_models().items()
+        }
     for name, submission in cases.items():
         result = score_model_criteria(submission, params, base_dir=ROOT)
         want = 1.0 if name == expected_winner else 0.0
         ok = result["score_binary"] == want
         failures += [] if ok else [f"{name}: expected {want}, got {result['score_binary']}"]
-        print(f"  {name:38s} {result['score_binary']:6.1f} "
-              f"{result['score_partial']:7.2f}  {result['reason']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} "
+            f"{result['score_partial']:7.2f}  {result['reason']}"
+        )
 
     good = cases.get("correct") or build_submission(gen.reference_syntax(), X, items)
     pooled_X = pd.read_csv(ROOT / data_path, sep="\t")
@@ -139,30 +177,50 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         pooled_X = pooled_X[pooled_X.gender.isin([1, 2])]
     pooled_X = pooled_X[items]
     pooled_X = pooled_X[(pooled_X != 0).all(axis=1)].astype(float)
-    key = ("item_quality" if "item_quality" in good
-           else "scoring" if "scoring" in good
-           else "replication" if "replication" in good
-           else "correlations" if "correlations" in good
-           else "comparisons" if "comparisons" in good
-           else "latent_difference" if "gender" in items else "loadings")
-    fake = ({k: "sound" for k in good["item_quality"]} if key == "item_quality"
-            else {k: "total_only" for k in good["scoring"]} if key == "scoring"
-            else {i: {c: "exact" for c in v} for i, v in good["replication"].items()}
-            if key == "replication"
-            else [[a, b, 0.3] for a, b, _ in good["correlations"]]
-            if key == "correlations"
-            else {k: True for k in good["comparisons"]} if key == "comparisons"
-            else 0.9 if key == "latent_difference" else {k: 0.55 for k in items})
+    key = (
+        "item_quality"
+        if "item_quality" in good
+        else "scoring"
+        if "scoring" in good
+        else "replication"
+        if "replication" in good
+        else "correlations"
+        if "correlations" in good
+        else "comparisons"
+        if "comparisons" in good
+        else "latent_difference"
+        if "gender" in items
+        else "loadings"
+    )
+    fake = (
+        {k: "sound" for k in good["item_quality"]}
+        if key == "item_quality"
+        else {k: "total_only" for k in good["scoring"]}
+        if key == "scoring"
+        else {i: {c: "exact" for c in v} for i, v in good["replication"].items()}
+        if key == "replication"
+        else [[a, b, 0.3] for a, b, _ in good["correlations"]]
+        if key == "correlations"
+        else {k: True for k in good["comparisons"]}
+        if key == "comparisons"
+        else 0.9
+        if key == "latent_difference"
+        else {k: 0.55 for k in items}
+    )
     adversarial = {
-        **({} if key in ("comparisons", "correlations", "replication",
-                         "scoring", "item_quality") else
-           {"pooled sample (no US filter)":
-            build_submission(gen.reference_syntax(), pooled_X, items)}),
+        **(
+            {}
+            if key in ("comparisons", "correlations", "replication", "scoring", "item_quality")
+            else {
+                "pooled sample (no US filter)": build_submission(
+                    gen.reference_syntax(), pooled_X, items
+                )
+            }
+        ),
         f"{key} fabricated": {**good, key: fake},
         f"{key} omitted": {k: v for k, v in good.items() if k != key},
         "code injection": {**good, "model_syntax": "import os"},
-        "unknown variable":
-            {**good, "model_syntax": f"F1 =~ {'+'.join(items)}+GHOST"},
+        "unknown variable": {**good, "model_syntax": f"F1 =~ {'+'.join(items)}+GHOST"},
         "not JSON": "the model is two factors",
     }
     print(f"  {'-' * 70}")
@@ -170,8 +228,10 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         result = score_model_criteria(submission, params, base_dir=ROOT)
         ok = result["score_binary"] == 0.0
         failures += [] if ok else [f"adversarial {name} scored {result['score_binary']}"]
-        print(f"  {name:38s} {result['score_binary']:6.1f} "
-              f"{result['score_partial']:7.2f}  {result['reason']}")
+        print(
+            f"  {name:38s} {result['score_binary']:6.1f} "
+            f"{result['score_partial']:7.2f}  {result['reason']}"
+        )
     return failures
 
 

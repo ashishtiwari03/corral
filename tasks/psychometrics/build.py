@@ -42,8 +42,7 @@ def generators(tasks=None):
     for path in sorted(ROOT.glob("generators/level_*/gen_l*_t*.py")):
         match = NAME.match(path.name)
         if match and (tasks is None or int(match["task"]) in tasks):
-            found.append((int(match["level"]), int(match["task"]),
-                          match["slug"], path))
+            found.append((int(match["level"]), int(match["task"]), match["slug"], path))
     return sorted(found)
 
 
@@ -52,10 +51,12 @@ def run(path, flag=None):
     started = time.monotonic()
     result = subprocess.run(
         [sys.executable, str(path)] + ([flag] if flag else []),
-        capture_output=True, text=True, cwd=ROOT)
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
     lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
-    tail = lines[-1].strip() if lines else (
-        result.stderr.strip().splitlines() or ["no output"])[-1]
+    tail = lines[-1].strip() if lines else (result.stderr.strip().splitlines() or ["no output"])[-1]
     return result.returncode == 0, time.monotonic() - started, tail
 
 
@@ -77,16 +78,19 @@ def stage(label, scripts, flag):
         ok, seconds, tail = run(path, flag)
         if not ok:
             failures.append(f"l{level}t{task:02d} {slug}")
-        print(f"  l{level}t{task:02d} {slug:28s} {seconds:6.1f}s  "
-              f"{'ok' if ok else 'FAILED'}  {'' if ok else tail[:70]}")
+        print(
+            f"  l{level}t{task:02d} {slug:28s} {seconds:6.1f}s  "
+            f"{'ok' if ok else 'FAILED'}  {'' if ok else tail[:70]}"
+        )
     return failures
 
 
 def scoring_tests():
     """Run the scorer's test suite. Returns failures."""
     print("\nScoring tests")
-    result = subprocess.run([sys.executable, "tests/test_scoring.py"],
-                            capture_output=True, text=True, cwd=ROOT)
+    result = subprocess.run(
+        [sys.executable, "tests/test_scoring.py"], capture_output=True, text=True, cwd=ROOT
+    )
     tail = [ln for ln in result.stdout.splitlines() if ln.strip()]
     print(f"  {tail[-1] if tail else 'no output'}")
     return [] if result.returncode == 0 else ["scoring tests"]
@@ -94,17 +98,23 @@ def scoring_tests():
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--verify", action="store_true",
-                        help="check the intended answer wins on every task")
-    parser.add_argument("--naive", action="store_true",
-                        help="check the default analysis fails on every task")
-    parser.add_argument("--check", action="store_true",
-                        help="build, then verify, naive and the scoring tests")
-    parser.add_argument("--clean", action="store_true",
-                        help="delete generated files before building")
-    parser.add_argument("--tasks", type=int, nargs="+", metavar="N",
-                        help="limit to these task numbers")
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--verify", action="store_true", help="check the intended answer wins on every task"
+    )
+    parser.add_argument(
+        "--naive", action="store_true", help="check the default analysis fails on every task"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="build, then verify, naive and the scoring tests"
+    )
+    parser.add_argument(
+        "--clean", action="store_true", help="delete generated files before building"
+    )
+    parser.add_argument(
+        "--tasks", type=int, nargs="+", metavar="N", help="limit to these task numbers"
+    )
     args = parser.parse_args()
 
     scripts = generators(set(args.tasks) if args.tasks else None)
@@ -121,8 +131,7 @@ def main():
     if args.check or not (args.verify or args.naive):
         failures += stage("Building", scripts, None)
     if args.check or args.verify:
-        failures += stage("Verifying (the intended answer wins)", scripts,
-                          "--verify")
+        failures += stage("Verifying (the intended answer wins)", scripts, "--verify")
     if args.check or args.naive:
         failures += stage("Checking the obvious analysis fails", scripts, "--naive")
     if args.check:

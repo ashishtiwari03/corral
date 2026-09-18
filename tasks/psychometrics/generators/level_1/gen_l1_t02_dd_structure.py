@@ -211,11 +211,7 @@ def build_truth(floor, pop, data_sha, rows):
             "n_factors": 4,
             "loadings": primary_loadings(),
             "item_assignment": {
-                i: (
-                    "G"
-                    if GENERAL_LOADINGS[i] >= SPECIFIC_LOADINGS[i]
-                    else f"S{SPECIFIC_OF[i]}"
-                )
+                i: ("G" if GENERAL_LOADINGS[i] >= SPECIFIC_LOADINGS[i] else f"S{SPECIFIC_OF[i]}")
                 for i in ITEMS
             },
         },
@@ -370,10 +366,7 @@ def naive(df, pop):
         fitted = {k: abs(v) for k, v in C.loadings(C.fit(spec, X, ITEMS)).items()}
         worst = max(abs(fitted[i] - truth[i]) for i in ITEMS)
         outcome[label] = worst <= 0.08
-        print(
-            f"{label:22s} {len(X):7,} {worst:14.3f}  "
-            f"{'yes' if outcome[label] else 'NO'}"
-        )
+        print(f"{label:22s} {len(X):7,} {worst:14.3f}  " f"{'yes' if outcome[label] else 'NO'}")
     return C.report(
         [
             (
@@ -396,9 +389,7 @@ def main():
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
-    floor = C.evaluate_model(
-        reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop
-    )
+    floor = C.evaluate_model(reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR,
         TASK_JSON,

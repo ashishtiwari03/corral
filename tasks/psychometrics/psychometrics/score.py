@@ -82,7 +82,8 @@ def validate_syntax(spec: str, items: list[str], max_factors: int = 6) -> str:
             latents.add(line.split("=~")[0].strip())
     if len(latents) > max_factors:
         raise InvalidSubmission(
-            f"{len(latents)} latent variables exceeds the limit of {max_factors}")
+            f"{len(latents)} latent variables exceeds the limit of {max_factors}"
+        )
 
     known = set(items) | latents
     for tok in _TOKEN.findall(spec):
@@ -99,8 +100,9 @@ def observed_in_spec(spec: str, known: list[str]) -> set:
     return {tok for tok in _TOKEN.findall(spec) if tok in set(known)}
 
 
-def evaluate_model(spec: str, X: pd.DataFrame, items: list[str],
-                   pop: np.ndarray | None = None) -> tuple[dict, Any]:
+def evaluate_model(
+    spec: str, X: pd.DataFrame, items: list[str], pop: np.ndarray | None = None
+) -> tuple[dict, Any]:
     """Fit a model and measure it. Returns (measures, fitted model)."""
     import semopy
 
@@ -131,12 +133,10 @@ def evaluate_model(spec: str, X: pd.DataFrame, items: list[str],
     }
     if pop is not None:
         criteria["sigma_max_abs_deviation"] = float(np.abs(implied[iu] - pop[iu]).max())
-        criteria["sigma_rms_deviation"] = float(
-            np.sqrt(((implied[iu] - pop[iu]) ** 2).mean()))
+        criteria["sigma_rms_deviation"] = float(np.sqrt(((implied[iu] - pop[iu]) ** 2).mean()))
     # Matched to the precision the reference criteria are stored at, so both
     # sides of every comparison are measured the same way.
-    return {k: (round(v, 3) if isinstance(v, float) else v)
-            for k, v in criteria.items()}, model
+    return {k: (round(v, 3) if isinstance(v, float) else v) for k, v in criteria.items()}, model
 
 
 # --------------------------------------------------------------------------
@@ -151,8 +151,7 @@ def check_constraints(model, criteria: dict, params: dict) -> tuple[dict, list[s
     # In semopy both measurement loadings and structural regressions use `~`,
     # so anything observed on the right-hand side is a covariate, not a factor.
     latents = set(loadings.rval.unique()) - set(model.vars["observed"])
-    factor_cov = covariances[covariances.lval.isin(latents)
-                             & covariances.rval.isin(latents)]
+    factor_cov = covariances[covariances.lval.isin(latents) & covariances.rval.isin(latents)]
     std_err = pd.to_numeric(ins["Std. Err"], errors="coerce")
 
     phi_max = params.get("phi_max", 0.90)
@@ -163,8 +162,9 @@ def check_constraints(model, criteria: dict, params: dict) -> tuple[dict, list[s
 
     degenerate: list[str] = []
     for factor in sorted(latents):
-        sub = lstd[(loadings.rval.values == factor)
-                   & loadings.lval.isin(model.vars["observed"]).values]
+        sub = lstd[
+            (loadings.rval.values == factor) & loadings.lval.isin(model.vars["observed"]).values
+        ]
         if len(sub) and (sub.abs() >= min_load).sum() < min_per:
             degenerate.append(factor)
         if len(sub) and (sub < sign_at).any():
@@ -173,13 +173,15 @@ def check_constraints(model, criteria: dict, params: dict) -> tuple[dict, list[s
     results = {
         "converged": True,
         "no_negative_variance": not (
-            pd.to_numeric(variances["Estimate"], errors="coerce") < 0).any(),
+            pd.to_numeric(variances["Estimate"], errors="coerce") < 0
+        ).any(),
         "positive_df": criteria["df"] > 0,
-        "finite_standard_errors": bool(std_err.notna().any()
-                                       and std_err.dropna().lt(max_se).all()),
+        "finite_standard_errors": bool(std_err.notna().any() and std_err.dropna().lt(max_se).all()),
         "no_redundant_factor": (
-            not (pd.to_numeric(factor_cov["Est. Std"], errors="coerce").abs()
-                 > phi_max).any() if len(factor_cov) else True),
+            not (pd.to_numeric(factor_cov["Est. Std"], errors="coerce").abs() > phi_max).any()
+            if len(factor_cov)
+            else True
+        ),
         "no_collapsed_factor": not degenerate,
     }
     return results, degenerate
@@ -193,10 +195,13 @@ def check_dominance(criteria: dict, floor: dict, spec: list[dict]) -> dict:
     for item in spec:
         key, direction, eps = item["key"], item["direction"], item["eps"]
         if key not in criteria or key not in floor:
-            out[key] = None                      # not applicable
+            out[key] = None  # not applicable
             continue
-        out[key] = (criteria[key] >= floor[key] - eps if direction == "higher"
-                    else criteria[key] <= floor[key] + eps)
+        out[key] = (
+            criteria[key] >= floor[key] - eps
+            if direction == "higher"
+            else criteria[key] <= floor[key] + eps
+        )
     return out
 
 
@@ -259,8 +264,7 @@ def _match_correlations(reported, target, model, items, tol) -> bool:
     if not isinstance(reported, list) or not target:
         return False
     composition = factor_composition(model, items)
-    want = {frozenset((frozenset(e["a"]), frozenset(e["b"]))): e["r"]
-            for e in target}
+    want = {frozenset((frozenset(e["a"]), frozenset(e["b"]))): e["r"] for e in target}
     seen = {}
     for entry in reported:
         try:
@@ -282,13 +286,20 @@ def residual_pairs_from_fit(model, items) -> set:
     those two items agree for a reason the common factors do not explain.
     """
     ins = model.inspect(std_est=True)
-    rows = ins[(ins.op == "~~") & (ins.lval != ins.rval)
-               & ins.lval.isin(items) & ins.rval.isin(items)]
+    rows = ins[
+        (ins.op == "~~") & (ins.lval != ins.rval) & ins.lval.isin(items) & ins.rval.isin(items)
+    ]
     return {frozenset((row.lval, row.rval)) for row in rows.itertuples()}
 
 
-def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int,
-                 model=None, items: list[str] | None = None) -> dict:
+def check_claims(
+    submission: dict,
+    truth: dict,
+    spec: list[dict],
+    n_latents: int,
+    model=None,
+    items: list[str] | None = None,
+) -> dict:
     out: dict[str, bool | None] = {}
     for item in spec:
         key, fn = item["key"], item["fn"]
@@ -297,8 +308,7 @@ def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int
         elif item.get("derive_from") == "refit_residual_covariances":
             reported = residual_pairs_from_fit(model, items)
         elif item.get("derive_from") == "refit_covariate_paths":
-            reported = biased_items_from_fit(model, items,
-                                             item.get("covariate", "gender"))
+            reported = biased_items_from_fit(model, items, item.get("covariate", "gender"))
         else:
             reported = submission.get(key)
         target = _dig(truth, item.get("truth_key", ""))
@@ -312,8 +322,9 @@ def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int
 
         if fn == "score_vector":
             try:
-                out[key] = all(abs(float(reported[k]) - v) <= item["tol"]
-                               for k, v in target.items())
+                out[key] = all(
+                    abs(float(reported[k]) - v) <= item["tol"] for k, v in target.items()
+                )
             except (KeyError, TypeError, ValueError):
                 out[key] = False
         elif fn == "score_scalar":
@@ -322,6 +333,7 @@ def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int
             except (TypeError, ValueError):
                 out[key] = False
         elif fn == "score_label_panel":
+
             def _flat(obj, prefix=""):
                 flat = {}
                 for k, v in (obj or {}).items():
@@ -330,6 +342,7 @@ def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int
                     else:
                         flat[f"{prefix}{k}"] = v
                 return flat
+
             want, got = _flat(target), _flat(reported)
             out[key] = bool(want) and want == got
         elif fn == "score_boolean_panel":
@@ -344,27 +357,28 @@ def check_claims(submission: dict, truth: dict, spec: list[dict], n_latents: int
                 # Pairs of factors, named by the submission and matched to the
                 # truth by which items each one covers.
                 composition = factor_composition(model, items)
-                want = {frozenset((frozenset(a), frozenset(b)))
-                        for a, b in (target or [])}
+                want = {frozenset((frozenset(a), frozenset(b))) for a, b in (target or [])}
                 try:
-                    got = {frozenset((composition[a], composition[b]))
-                           for a, b in (reported or [])}
+                    got = {frozenset((composition[a], composition[b])) for a, b in (reported or [])}
                 except (KeyError, TypeError, ValueError):
                     got = None
             else:
                 want = {frozenset(pair) for pair in (target or [])}
                 try:
-                    got = (reported if isinstance(reported, set)
-                           else {frozenset(pair) for pair in (reported or [])})
+                    got = (
+                        reported
+                        if isinstance(reported, set)
+                        else {frozenset(pair) for pair in (reported or [])}
+                    )
                 except TypeError:
                     got = None
             out[key] = got == want
         elif fn == "score_correlations_by_composition":
-            out[key] = _match_correlations(reported, target, model, items,
-                                           item.get("tol", 0.06))
+            out[key] = _match_correlations(reported, target, model, items, item.get("tol", 0.06))
         elif fn == "score_partition":
-            out[key] = (_partition(reported) == _partition(target)
-                        if isinstance(reported, dict) else False)
+            out[key] = (
+                _partition(reported) == _partition(target) if isinstance(reported, dict) else False
+            )
         else:
             out[key] = None
     return out
@@ -381,8 +395,7 @@ def _dig(obj: dict, dotted: str):
 # --------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------
-def score_model_criteria(submission: str | dict, params: dict,
-                         base_dir: str | Path = ".") -> dict:
+def score_model_criteria(submission: str | dict, params: dict, base_dir: str | Path = ".") -> dict:
     """Score one submission.
 
     submission  the agent's JSON answer, or the object already parsed
@@ -405,8 +418,7 @@ def score_model_criteria(submission: str | dict, params: dict,
     items = params["items"]
 
     known = params["syntax_whitelist"]["items"]
-    data = pd.read_csv(base / params["truth_path"].rsplit("/", 1)[0]
-                       / params["dataset"], sep="\t")
+    data = pd.read_csv(base / params["truth_path"].rsplit("/", 1)[0] / params["dataset"], sep="\t")
     for col, val in params.get("subset", {}).items():
         data = data[data[col].isin(val)] if isinstance(val, list) else data[data[col] == val]
     X = data[[c for c in known if c in data.columns]]
@@ -419,47 +431,61 @@ def score_model_criteria(submission: str | dict, params: dict,
             X[name] = total - X[name]
 
     try:
-        spec = validate_syntax(submission.get("model_syntax", ""), known,
-                               params["syntax_whitelist"]["max_factors"])
+        spec = validate_syntax(
+            submission.get("model_syntax", ""), known, params["syntax_whitelist"]["max_factors"]
+        )
         # Which variables the model analyses is itself an answer when the task
         # leaves the choice open, and the later stages assume that set.
         if set(observed_in_spec(spec, known)) != set(items):
-            return _result(0.0, {"instrument": "FAIL"}, {},
-                           "TIER3 instrument: the model does not analyse the "
-                           "expected set of variables")
+            return _result(
+                0.0,
+                {"instrument": "FAIL"},
+                {},
+                "TIER3 instrument: the model does not analyse the " "expected set of variables",
+            )
         criteria, model = evaluate_model(spec, X, items, pop)
     except InvalidSubmission as exc:
         return _zero(f"invalid specification: {exc}")
-    except Exception as exc:                                    # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return _zero(f"model failed to fit: {type(exc).__name__}: {exc}")
 
     checks: dict[str, str] = {}
 
     constraints, degenerate = check_constraints(
-        model, criteria, _merge(params["tier_1_constraints"]))
+        model, criteria, _merge(params["tier_1_constraints"])
+    )
     checks.update({k: _fmt(v) for k, v in constraints.items()})
     if not all(constraints.values()):
-        return _result(0.0, checks, criteria,
-                       "TIER1 " + ",".join(k for k, v in constraints.items() if not v)
-                       + (f" {degenerate}" if degenerate else ""))
+        return _result(
+            0.0,
+            checks,
+            criteria,
+            "TIER1 "
+            + ",".join(k for k, v in constraints.items() if not v)
+            + (f" {degenerate}" if degenerate else ""),
+        )
 
     dominance = check_dominance(criteria, floor, params["tier_2_comparative"])
     checks.update({k: _fmt(v) for k, v in dominance.items()})
     if not all(v for v in dominance.values() if v is not None):
-        return _result(0.0, checks, criteria,
-                       "TIER2 " + ",".join(k for k, v in dominance.items() if v is False))
+        return _result(
+            0.0,
+            checks,
+            criteria,
+            "TIER2 " + ",".join(k for k, v in dominance.items() if v is False),
+        )
 
-    n_latents = len({ln.split("=~")[0].strip()
-                     for ln in spec.splitlines() if "=~" in ln})
-    claims = check_claims(submission, truth, params["tier_3_claims"], n_latents,
-                          model=model, items=items)
+    n_latents = len({ln.split("=~")[0].strip() for ln in spec.splitlines() if "=~" in ln})
+    claims = check_claims(
+        submission, truth, params["tier_3_claims"], n_latents, model=model, items=items
+    )
     checks.update({k: _fmt(v) for k, v in claims.items()})
     if not all(v for v in claims.values() if v is not None):
-        return _result(0.0, checks, criteria,
-                       "TIER3 " + ",".join(k for k, v in claims.items() if v is False))
+        return _result(
+            0.0, checks, criteria, "TIER3 " + ",".join(k for k, v in claims.items() if v is False)
+        )
 
-    return _result(1.0, checks, criteria, "all tiers pass",
-                   _recorded(criteria))
+    return _result(1.0, checks, criteria, "all tiers pass", _recorded(criteria))
 
 
 def _merge(specs: list[dict]) -> dict:
@@ -479,19 +505,20 @@ def _recorded(criteria: dict) -> dict:
 
     record = {}
     if criteria.get("df", 0) > 0:
-        record["chi_square_p"] = float(
-            1 - chi2_dist.cdf(criteria["chi2"], criteria["df"]))
+        record["chi_square_p"] = float(1 - chi2_dist.cdf(criteria["chi2"], criteria["df"]))
         record["chi_square_df"] = criteria["df"]
     return record
 
 
-def _result(score: float, checks: dict, criteria: dict, reason: str,
-            recorded: dict | None = None) -> dict:
+def _result(
+    score: float, checks: dict, criteria: dict, reason: str, recorded: dict | None = None
+) -> dict:
     applicable = [v for v in checks.values() if v != "n/a"]
     return {
         "score_binary": score,
-        "score_partial": (sum(v == "PASS" for v in applicable) / len(applicable)
-                          if applicable else 0.0),
+        "score_partial": (
+            sum(v == "PASS" for v in applicable) / len(applicable) if applicable else 0.0
+        ),
         "checks_vector": checks,
         "criteria": criteria,
         "reason": reason,
@@ -500,5 +527,10 @@ def _result(score: float, checks: dict, criteria: dict, reason: str,
 
 
 def _zero(reason: str) -> dict:
-    return {"score_binary": 0.0, "score_partial": 0.0,
-            "checks_vector": {}, "criteria": {}, "reason": reason}
+    return {
+        "score_binary": 0.0,
+        "score_partial": 0.0,
+        "checks_vector": {},
+        "criteria": {},
+        "reason": reason,
+    }

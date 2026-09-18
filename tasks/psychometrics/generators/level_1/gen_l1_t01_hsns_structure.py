@@ -147,9 +147,7 @@ def candidate_models():
         "two_correlated_factors": reference_syntax(),
         "two_orthogonal_factors": f"F1 =~ {f1}\nF2 =~ {f2}\nF1 ~~ 0*F2",
         "three_correlated_factors": (
-            "F1 =~ HSNS1+HSNS8+HSNS6\n"
-            "F2 =~ HSNS4+HSNS5+HSNS10\n"
-            "F3 =~ HSNS2+HSNS3+HSNS7+HSNS9"
+            "F1 =~ HSNS1+HSNS8+HSNS6\n" "F2 =~ HSNS4+HSNS5+HSNS10\n" "F3 =~ HSNS2+HSNS3+HSNS7+HSNS9"
         ),
         "unidimensional_with_correlated_residuals": (
             f"G =~ {every}\nHSNS2 ~~ HSNS7\nHSNS5 ~~ HSNS10\nHSNS1 ~~ HSNS8"
@@ -185,9 +183,7 @@ def build_truth(floor, pop, data_sha, rows):
             "n_factors": 2,
             "loadings": {k: v[1] for k, v in LOADINGS.items()},
             "factor_correlation": PHI,
-            "item_assignment": {
-                k: ("F1" if v[0] == F1 else "F2") for k, v in LOADINGS.items()
-            },
+            "item_assignment": {k: ("F1" if v[0] == F1 else "F2") for k, v in LOADINGS.items()},
         },
         "scoring_reference": {
             "reference_model_syntax": reference_syntax(),
@@ -342,9 +338,7 @@ def naive(df, pop):
         ]
         phi = float(pd.to_numeric(cov["Est. Std"], errors="coerce").iloc[0])
         outcome[label] = abs(phi - PHI) <= 0.06
-        print(
-            f"{label:22s} {len(X):7,} {phi:7.3f}  {'yes' if outcome[label] else 'NO'}"
-        )
+        print(f"{label:22s} {len(X):7,} {phi:7.3f}  {'yes' if outcome[label] else 'NO'}")
     return C.report(
         [
             (
@@ -367,9 +361,7 @@ def main():
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
-    floor = C.evaluate_model(
-        reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop
-    )
+    floor = C.evaluate_model(reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR,
         TASK_JSON,

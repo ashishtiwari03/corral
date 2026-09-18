@@ -127,9 +127,7 @@ def build_dataset(rng):
     frames = []
     for country, n in C.N_BY_COUNTRY.items():
         is_us = country == "US"
-        hsns = simulate_hsns(
-            n, rng, scale=1.0 if is_us else LOADING_SCALE_NON_US, dependent=is_us
-        )
+        hsns = simulate_hsns(n, rng, scale=1.0 if is_us else LOADING_SCALE_NON_US, dependent=is_us)
         names = ["mach", "psych", "narc"]
         phi = np.eye(3)
         for (a, b), v in DD_PHI.items():
@@ -150,9 +148,7 @@ def reference_syntax():
 def candidate_models():
     """The rival structures a competent analyst would fit to these items."""
     every = "+".join(ITEMS)
-    two_factor = (
-        "F1 =~ HSNS2+HSNS7+HSNS3+HSNS9\nF2 =~ HSNS1+HSNS4+HSNS5+HSNS6+HSNS8+HSNS10"
-    )
+    two_factor = "F1 =~ HSNS2+HSNS7+HSNS3+HSNS9\nF2 =~ HSNS1+HSNS4+HSNS5+HSNS6+HSNS8+HSNS10"
     return {
         "unidimensional": f"G =~ {every}",
         "two_correlated_factors": two_factor,
@@ -174,9 +170,7 @@ def candidate_models():
 def population_correlation_matrix():
     """Correlation matrix a perfectly specified model would reproduce."""
     rng = np.random.default_rng(SEED + 999)
-    return np.corrcoef(
-        simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float)
-    ).round(3)
+    return np.corrcoef(simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float)).round(3)
 
 
 def build_truth(floor, pop, data_sha, rows):
@@ -313,12 +307,9 @@ def verify(df, pop):
     residual = corr.values - _implied(reference_syntax().split("\n")[0], X)
     res = pd.DataFrame(residual, index=ITEMS, columns=ITEMS)
 
+    print("\ntop raw correlations: " + "  ".join(f"{a}-{b} {r:.3f}" for a, b, r in ranked[:3]))
     print(
-        f"\ntop raw correlations: "
-        + "  ".join(f"{a}-{b} {r:.3f}" for a, b, r in ranked[:3])
-    )
-    print(
-        f"residual correlations under one factor: "
+        "residual correlations under one factor: "
         + "  ".join(f"{a}-{b} {res.loc[a, b]:+.3f}" for (a, b), _ in RESIDUAL_PAIRS)
         + f"   decoy {DECOY_PAIR[0]}-{DECOY_PAIR[1]} "
         f"{res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]:+.3f}"
@@ -368,8 +359,7 @@ def naive(df, pop):
     eigen = np.linalg.eigvalsh(corr)[::-1]
     rng = np.random.default_rng(0)
     random_eigen = [
-        np.linalg.eigvalsh(np.corrcoef(rng.standard_normal(X.shape).T))[::-1]
-        for _ in range(30)
+        np.linalg.eigvalsh(np.corrcoef(rng.standard_normal(X.shape).T))[::-1] for _ in range(30)
     ]
     n_factors = int((eigen > np.percentile(random_eigen, 95, axis=0)).sum())
     print(
@@ -387,16 +377,10 @@ def naive(df, pop):
     ):
         Xs = sub[ITEMS]
         Xs = Xs[(Xs != 0).all(axis=1)].astype(float)
-        fitted = {
-            k: abs(v)
-            for k, v in C.loadings(C.fit(reference_syntax(), Xs, ITEMS)).items()
-        }
+        fitted = {k: abs(v) for k, v in C.loadings(C.fit(reference_syntax(), Xs, ITEMS)).items()}
         worst = max(abs(fitted[i] - truth[i]) for i in ITEMS)
         outcome[label] = worst <= 0.08
-        print(
-            f"{label:22s} {len(Xs):7,} {worst:14.3f}  "
-            f"{'yes' if outcome[label] else 'NO'}"
-        )
+        print(f"{label:22s} {len(Xs):7,} {worst:14.3f}  " f"{'yes' if outcome[label] else 'NO'}")
 
     return C.report(
         [
@@ -421,9 +405,7 @@ def main():
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
-    floor = C.evaluate_model(
-        reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop
-    )
+    floor = C.evaluate_model(reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop)
     C.write_artifacts(
         OUT_DIR,
         TASK_JSON,

@@ -142,9 +142,7 @@ A single JSON object:
 # --------------------------------------------------------------------------
 def simulate_hsns(n, rng, female, scale=1.0, us=True):
     """One trait, a real gender difference, and bias against women on four items."""
-    eta = rng.normal(0.0, 1.0, n) + (
-        np.where(female, HSNS_LATENT_DIFFERENCE, 0.0) if us else 0.0
-    )
+    eta = rng.normal(0.0, 1.0, n) + (np.where(female, HSNS_LATENT_DIFFERENCE, 0.0) if us else 0.0)
     out = {}
     for item in HSNS:
         lam = HSNS_LOADINGS[item] * scale
@@ -236,10 +234,8 @@ def candidate_models():
     hsns_base = f"F =~ {'+'.join(HSNS)}\nF ~ gender"
     return {
         "HSNS, assumes no bias": hsns_base,
-        "HSNS, bias freed": hsns_base
-        + "".join(f"\n{i} ~ gender" for i in HSNS_BIASED_ITEMS),
-        "DD, nominal three-factor": dd_three_factor()
-        + "\nFM ~ gender\nFP ~ gender\nFN ~ gender",
+        "HSNS, bias freed": hsns_base + "".join(f"\n{i} ~ gender" for i in HSNS_BIASED_ITEMS),
+        "DD, nominal three-factor": dd_three_factor() + "\nFM ~ gender\nFP ~ gender\nFN ~ gender",
         "DD, bifactor (CORRECT)": reference_syntax(),
     }
 
@@ -421,9 +417,7 @@ def _bias_recover(spec, X, variables, items, factors):
     model.fit(X[variables])
     ins = model.inspect(std_est=True)
     rows = ins[(ins.op == "~") & (ins.rval == "gender") & ins.lval.isin(items)]
-    effect = rows.assign(v=pd.to_numeric(rows["Est. Std"], errors="coerce")).set_index(
-        "lval"
-    )["v"]
+    effect = rows.assign(v=pd.to_numeric(rows["Est. Std"], errors="coerce")).set_index("lval")["v"]
     return sorted(effect[effect < effect.median() - 0.05].index)
 
 
@@ -434,15 +428,9 @@ def verify(df, target, pop):
     men, women = X_dd[X_dd.gender == 1], X_dd[X_dd.gender == 2]
     print(f"US comparison sample: {len(men):,} men, {len(women):,} women\n")
 
-    hs_flagged = _bias_recover(
-        f"F =~ {'+'.join(HSNS)}", X_hs, HSNS + ["gender"], HSNS, ["F"]
-    )
-    dd3_flagged = _bias_scan(
-        dd_three_factor(), X_dd, MODEL_VARS, DD, ["FM", "FP", "FN"]
-    )
-    ddb_flagged = _bias_scan(
-        dd_bifactor(), X_dd, MODEL_VARS, DD, ["G", "SM", "SP", "SN"]
-    )
+    hs_flagged = _bias_recover(f"F =~ {'+'.join(HSNS)}", X_hs, HSNS + ["gender"], HSNS, ["F"])
+    dd3_flagged = _bias_scan(dd_three_factor(), X_dd, MODEL_VARS, DD, ["FM", "FP", "FN"])
+    ddb_flagged = _bias_scan(dd_bifactor(), X_dd, MODEL_VARS, DD, ["G", "SM", "SP", "SN"])
 
     print("  items that look biased across gender:")
     print(f"    HSNS, one factor              {hs_flagged}")
@@ -483,10 +471,10 @@ def naive(df, target, pop):
     X_hs = comparison_sample(df, HSNS + ["gender"])
     hs = _bias_scan(f"F =~ {'+'.join(HSNS)}", X_hs, HSNS + ["gender"], HSNS, ["F"])
     dd = _bias_scan(dd_three_factor(), X_dd, MODEL_VARS, DD, ["FM", "FP", "FN"])
-    print(f"  taking each instrument at face value:")
+    print("  taking each instrument at face value:")
     print(f"    HSNS (one factor)         -> {len(hs)} biased items {hs}")
     print(f"    Dirty Dozen (3 subscales) -> {len(dd)} biased items {dd}")
-    print(f"    conclusion: neither instrument supports the comparison")
+    print("    conclusion: neither instrument supports the comparison")
     print(f"  truth: the Dirty Dozen does, and the difference is {target:+.3f}")
     return C.report(
         [
@@ -513,9 +501,7 @@ def main():
     if action != "build":
         return verify(df, target, pop) if action == "verify" else naive(df, target, pop)
 
-    floor = C.evaluate_model(
-        reference_syntax(), comparison_sample(df, MODEL_VARS), MODEL_VARS, pop
-    )
+    floor = C.evaluate_model(reference_syntax(), comparison_sample(df, MODEL_VARS), MODEL_VARS, pop)
     C.write_artifacts(
         OUT_DIR,
         TASK_JSON,

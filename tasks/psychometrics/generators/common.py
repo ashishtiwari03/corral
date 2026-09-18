@@ -21,15 +21,35 @@ import pandas as pd
 PKG_ROOT = Path(__file__).resolve().parents[1]
 
 HSNS_ITEMS = [f"HSNS{i}" for i in range(1, 11)]
-DD_ITEMS = ["DDP1", "DDP2", "DDP3", "DDP4", "DDN1", "DDN2", "DDN3", "DDN4",
-            "DDM1", "DDM2", "DDM3", "DDM4"]
+DD_ITEMS = [
+    "DDP1",
+    "DDP2",
+    "DDP3",
+    "DDP4",
+    "DDN1",
+    "DDN2",
+    "DDN3",
+    "DDN4",
+    "DDM1",
+    "DDM2",
+    "DDM3",
+    "DDM4",
+]
 ALL_ITEMS = HSNS_ITEMS + DD_ITEMS
 COLUMNS = ALL_ITEMS + ["age", "gender", "accuracy", "country"]
 
 # Respondents per country, following the imbalance typical of open web surveys.
 N_BY_COUNTRY = {
-    "US": 27000, "GB": 6200, "CA": 3800, "AU": 3000, "DE": 830,
-    "IN": 660, "SE": 630, "PH": 560, "PL": 520, "BR": 510,
+    "US": 27000,
+    "GB": 6200,
+    "CA": 3800,
+    "AU": 3000,
+    "DE": 830,
+    "IN": 660,
+    "SE": 630,
+    "PH": 560,
+    "PL": 520,
+    "BR": 510,
 }
 ITEM_MISSING_RATE = 0.012
 
@@ -37,17 +57,28 @@ ITEM_MISSING_RATE = 0.012
 # give the 1-5 answer, which is what makes the answers skewed rather than
 # symmetric.
 THRESHOLDS = {
-    "HSNS1": [-1.701, -0.923, -0.487, 0.509], "HSNS2": [-0.948, -0.253, 0.109, 0.984],
-    "HSNS3": [-1.351, -0.568, -0.189, 0.737], "HSNS4": [-1.057, -0.032, 0.44, 1.18],
-    "HSNS5": [-1.32, -0.443, 0.013, 0.902], "HSNS6": [-2.084, -1.288, -0.752, 0.326],
-    "HSNS7": [-1.451, -0.669, -0.25, 0.876], "HSNS8": [-1.247, -0.383, 0.016, 0.873],
-    "HSNS9": [-1.591, -0.875, -0.445, 0.606], "HSNS10": [-0.712, 0.158, 0.538, 1.229],
-    "DDP1": [-0.659, 0.026, 0.337, 1.06], "DDP2": [-0.625, 0.171, 0.554, 1.209],
-    "DDP3": [-1.069, -0.35, 0.063, 0.925], "DDP4": [-1.559, -0.969, -0.507, 0.434],
-    "DDN1": [-1.607, -1.037, -0.569, 0.509], "DDN2": [-1.241, -0.539, -0.008, 0.941],
-    "DDN3": [-1.114, -0.371, 0.083, 0.888], "DDN4": [-0.884, 0.046, 0.526, 1.379],
-    "DDM1": [-1.011, -0.296, 0.116, 1.007], "DDM2": [-1.565, -0.934, -0.591, 0.612],
-    "DDM3": [-1.286, -0.523, -0.17, 0.865], "DDM4": [-0.81, 0.057, 0.58, 1.396],
+    "HSNS1": [-1.701, -0.923, -0.487, 0.509],
+    "HSNS2": [-0.948, -0.253, 0.109, 0.984],
+    "HSNS3": [-1.351, -0.568, -0.189, 0.737],
+    "HSNS4": [-1.057, -0.032, 0.44, 1.18],
+    "HSNS5": [-1.32, -0.443, 0.013, 0.902],
+    "HSNS6": [-2.084, -1.288, -0.752, 0.326],
+    "HSNS7": [-1.451, -0.669, -0.25, 0.876],
+    "HSNS8": [-1.247, -0.383, 0.016, 0.873],
+    "HSNS9": [-1.591, -0.875, -0.445, 0.606],
+    "HSNS10": [-0.712, 0.158, 0.538, 1.229],
+    "DDP1": [-0.659, 0.026, 0.337, 1.06],
+    "DDP2": [-0.625, 0.171, 0.554, 1.209],
+    "DDP3": [-1.069, -0.35, 0.063, 0.925],
+    "DDP4": [-1.559, -0.969, -0.507, 0.434],
+    "DDN1": [-1.607, -1.037, -0.569, 0.509],
+    "DDN2": [-1.241, -0.539, -0.008, 0.941],
+    "DDN3": [-1.114, -0.371, 0.083, 0.888],
+    "DDN4": [-0.884, 0.046, 0.526, 1.379],
+    "DDM1": [-1.011, -0.296, 0.116, 1.007],
+    "DDM2": [-1.565, -0.934, -0.591, 0.612],
+    "DDM3": [-1.286, -0.523, -0.17, 0.865],
+    "DDM4": [-0.81, 0.057, 0.58, 1.396],
 }
 
 ITEM_TEXT = {
@@ -60,7 +91,7 @@ ITEM_TEXT = {
     "HSNS7": "I often interpret the remarks of others in a personal way.",
     "HSNS8": "I easily become wrapped up in my own interests and forget the existence of others.",
     "HSNS9": "I dislike being with a group unless I know that I am appreciated by at least one of those present.",
-    "HSNS10": "I am secretly \"put out\" or annoyed when other people come to me with their troubles, asking me for my time and sympathy.",
+    "HSNS10": 'I am secretly "put out" or annoyed when other people come to me with their troubles, asking me for my time and sympathy.',
     "DDM1": "I tend to manipulate others to get my way.",
     "DDM2": "I have used deceit or lied to get my way.",
     "DDM3": "I have used flattery to get my way.",
@@ -88,8 +119,19 @@ def categorize(ystar, tau):
     return np.searchsorted(np.asarray(tau), ystar).astype(int) + 1
 
 
-def correlated_block(n, rng, loadings, phi_matrix, factor_names, taus,
-                     scale=1.0, cross=None, resid_corr=None, dif=None, female=None):
+def correlated_block(
+    n,
+    rng,
+    loadings,
+    phi_matrix,
+    factor_names,
+    taus,
+    scale=1.0,
+    cross=None,
+    resid_corr=None,
+    dif=None,
+    female=None,
+):
     """Answers from respondents whose traits are correlated with each other.
 
     n            how many respondents
@@ -113,12 +155,11 @@ def correlated_block(n, rng, loadings, phi_matrix, factor_names, taus,
     for item, (factor, lam) in loadings.items():
         lam *= scale
         common = lam * eta[:, index[factor]]
-        explained = lam ** 2
+        explained = lam**2
         if cross and item == cross[0]:
             extra = cross[2] * scale
             common = common + extra * eta[:, index[cross[1]]]
-            explained += extra ** 2 + 2 * extra * lam * phi_matrix[
-                index[factor], index[cross[1]]]
+            explained += extra**2 + 2 * extra * lam * phi_matrix[index[factor], index[cross[1]]]
         if resid_corr and item in resid_corr[0]:
             common = common + np.sqrt(resid_corr[1]) * shared
             explained += resid_corr[1]
@@ -126,8 +167,7 @@ def correlated_block(n, rng, loadings, phi_matrix, factor_names, taus,
         tau = taus[item]
         if dif and item in dif and female is not None:
             shifted = [t + dif[item] for t in tau]
-            out[item] = np.where(female, categorize(ystar, shifted),
-                                 categorize(ystar, tau))
+            out[item] = np.where(female, categorize(ystar, shifted), categorize(ystar, tau))
         else:
             out[item] = categorize(ystar, tau)
     return pd.DataFrame(out)
@@ -152,20 +192,25 @@ def bifactor_block(n, rng, general, specific, specific_of, items, taus):
     out = {}
     for item in items:
         gl, sl = general[item], specific[item]
-        ystar = (gl * g + sl * s[specific_of[item]]
-                 + rng.normal(0, np.sqrt(max(1 - gl ** 2 - sl ** 2, 1e-6)), n))
+        ystar = (
+            gl * g
+            + sl * s[specific_of[item]]
+            + rng.normal(0, np.sqrt(max(1 - gl**2 - sl**2, 1e-6)), n)
+        )
         out[item] = categorize(ystar, taus[item])
     return pd.DataFrame(out)[items]
 
 
 def demographics(n, rng, country):
     """The non-item columns for one country's respondents."""
-    return pd.DataFrame({
-        "age": np.clip(rng.lognormal(np.log(22), 0.38, n).round(), 13, 89).astype(int),
-        "gender": rng.choice([1, 2, 3, 0], size=n, p=[0.61, 0.37, 0.01, 0.01]),
-        "accuracy": np.clip(rng.beta(6, 1.4, n) * 100, 1, 100).round().astype(int),
-        "country": country,
-    })
+    return pd.DataFrame(
+        {
+            "age": np.clip(rng.lognormal(np.log(22), 0.38, n).round(), 13, 89).astype(int),
+            "gender": rng.choice([1, 2, 3, 0], size=n, p=[0.61, 0.37, 0.01, 0.01]),
+            "accuracy": np.clip(rng.beta(6, 1.4, n) * 100, 1, 100).round().astype(int),
+            "country": country,
+        }
+    )
 
 
 def finalize(frames, rng, seed):
@@ -174,8 +219,7 @@ def finalize(frames, rng, seed):
     A dropped answer is written as 0.
     """
     df = pd.concat(frames, ignore_index=True).sample(frac=1.0, random_state=seed)
-    df[ALL_ITEMS] = df[ALL_ITEMS].mask(
-        rng.random((len(df), len(ALL_ITEMS))) < ITEM_MISSING_RATE, 0)
+    df[ALL_ITEMS] = df[ALL_ITEMS].mask(rng.random((len(df), len(ALL_ITEMS))) < ITEM_MISSING_RATE, 0)
     return df[COLUMNS].reset_index(drop=True)
 
 
@@ -215,24 +259,24 @@ def evaluate_model(spec, X, items, pop):
 
     chi2 = float(stats["chi2"].iloc[0])
     n_par = len(model.param_vals)
-    return _rounded({
-        "df": float(stats["DoF"].iloc[0]),
-        "chi2": chi2,
-        "CFI": float(stats["CFI"].iloc[0]),
-        "RMSEA": float(stats["RMSEA"].iloc[0]),
-        "SRMR": float(np.sqrt(((empirical[upper] - implied[upper]) ** 2).mean())),
-        "BIC": float(chi2 + n_par * np.log(len(X))),
-        "n_free_parameters": n_par,
-        "sigma_max_abs_deviation": float(np.abs(implied[upper] - pop[upper]).max()),
-        "sigma_rms_deviation": float(
-            np.sqrt(((implied[upper] - pop[upper]) ** 2).mean())),
-    })
+    return _rounded(
+        {
+            "df": float(stats["DoF"].iloc[0]),
+            "chi2": chi2,
+            "CFI": float(stats["CFI"].iloc[0]),
+            "RMSEA": float(stats["RMSEA"].iloc[0]),
+            "SRMR": float(np.sqrt(((empirical[upper] - implied[upper]) ** 2).mean())),
+            "BIC": float(chi2 + n_par * np.log(len(X))),
+            "n_free_parameters": n_par,
+            "sigma_max_abs_deviation": float(np.abs(implied[upper] - pop[upper]).max()),
+            "sigma_rms_deviation": float(np.sqrt(((implied[upper] - pop[upper]) ** 2).mean())),
+        }
+    )
 
 
 def _rounded(criteria, places=3):
     """Round to a precision a rebuild reproduces and the tolerances can tell apart."""
-    return {k: (round(v, places) if isinstance(v, float) else v)
-            for k, v in criteria.items()}
+    return {k: (round(v, places) if isinstance(v, float) else v) for k, v in criteria.items()}
 
 
 def fit(spec, X, items=None):
@@ -273,10 +317,13 @@ def loadings(model, factors=None):
 def factor_correlations(model, factors):
     """Correlations between the latent factors, keyed by the pair of names."""
     rows = estimates(model)
-    rows = rows[(rows.op == "~~") & (rows.lval != rows.rval)
-                & rows.lval.isin(factors) & rows.rval.isin(factors)]
-    return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"])
-            for _, r in rows.iterrows()}
+    rows = rows[
+        (rows.op == "~~")
+        & (rows.lval != rows.rval)
+        & rows.lval.isin(factors)
+        & rows.rval.isin(factors)
+    ]
+    return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"]) for _, r in rows.iterrows()}
 
 
 def population_matrix(frame, items):
@@ -318,8 +365,9 @@ def write_codebook(path, df):
         "| `accuracy` | self-rated accuracy of own responses, 0-100 |",
         "| `country` | ISO country code |",
         "",
-        f"Rows: {len(df):,}. Countries: " +
-        ", ".join(f"{c} ({n:,})" for c, n in df.country.value_counts().items()) + ".",
+        f"Rows: {len(df):,}. Countries: "
+        + ", ".join(f"{c} ({n:,})" for c, n in df.country.value_counts().items())
+        + ".",
         "",
     ]
     path.write_text("\n".join(lines))
@@ -328,16 +376,24 @@ def write_codebook(path, df):
 def provenance(generator, seed, rows, data_sha):
     """How this dataset was produced, for the record."""
     try:
-        rev = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"],
-                                      cwd=PKG_ROOT, text=True).strip()
-    except Exception:                                          # noqa: BLE001
+        rev = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=PKG_ROOT, text=True
+        ).strip()
+    except Exception:  # noqa: BLE001
         rev = "unknown"
     return {
-        "generator": generator, "seed": seed,
-        "generated": date.today().isoformat(), "git_rev": rev,
-        "rows": rows, "data_sha256": data_sha, "external_data_used": None,
-        "versions": {"python": sys.version.split()[0],
-                     "numpy": np.__version__, "pandas": pd.__version__},
+        "generator": generator,
+        "seed": seed,
+        "generated": date.today().isoformat(),
+        "git_rev": rev,
+        "rows": rows,
+        "data_sha256": data_sha,
+        "external_data_used": None,
+        "versions": {
+            "python": sys.version.split()[0],
+            "numpy": np.__version__,
+            "pandas": pd.__version__,
+        },
     }
 
 
@@ -358,8 +414,7 @@ def scoring_contract(truth_path, items, tier_3_claims):
         "items": items,
         "scorer_estimator": "ML",
         "refit_submitted_syntax": True,
-        "syntax_whitelist": {"items": items, "operators": ["=~", "~~", "~"],
-                             "max_factors": 6},
+        "syntax_whitelist": {"items": items, "operators": ["=~", "~~", "~"], "max_factors": 6},
         "method": "constraints_then_pareto_then_claims",
         "aggregation": "all_tiers_must_pass",
         "emit": ["score_binary", "score_partial", "checks_vector"],
@@ -371,23 +426,27 @@ def scoring_contract(truth_path, items, tier_3_claims):
             {"key": "positive_df"},
             {"key": "finite_standard_errors", "max_standard_error": 10.0},
             {"key": "no_redundant_factor", "phi_max": 0.90},
-            {"key": "no_collapsed_factor", "min_salient_loading": 0.30,
-             "min_salient_per_factor": 2, "sign_reversal_at": -0.10},
+            {
+                "key": "no_collapsed_factor",
+                "min_salient_loading": 0.30,
+                "min_salient_per_factor": 2,
+                "sign_reversal_at": -0.10,
+            },
         ],
         # Stage 2: the generating model sets a floor. A submission must be no
         # worse than it on any of these, and is allowed to be better.
         "reference_role": "floor",
         "tier_2_comparative": [
-            {"key": "CFI", "direction": "higher", "eps": 0.005,
-             "criterion": "global_fit"},
-            {"key": "RMSEA", "direction": "lower", "eps": 0.005,
-             "criterion": "global_fit"},
-            {"key": "SRMR", "direction": "lower", "eps": 0.005,
-             "criterion": "global_fit"},
-            {"key": "BIC", "direction": "lower", "eps": 10.0,
-             "criterion": "parsimony"},
-            {"key": "sigma_max_abs_deviation", "direction": "lower",
-             "eps": 0.010, "criterion": "accuracy"},
+            {"key": "CFI", "direction": "higher", "eps": 0.005, "criterion": "global_fit"},
+            {"key": "RMSEA", "direction": "lower", "eps": 0.005, "criterion": "global_fit"},
+            {"key": "SRMR", "direction": "lower", "eps": 0.005, "criterion": "global_fit"},
+            {"key": "BIC", "direction": "lower", "eps": 10.0, "criterion": "parsimony"},
+            {
+                "key": "sigma_max_abs_deviation",
+                "direction": "lower",
+                "eps": 0.010,
+                "criterion": "accuracy",
+            },
         ],
         "tier_3_claims": tier_3_claims,
         "recorded_fields": ["chi_square_p", "chi_square_df"],
@@ -427,10 +486,8 @@ def data_sha256(out_dir):
 def mode():
     """Read the command line. Returns "verify", "naive" or "build"."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--verify", action="store_true",
-                        help="check the intended answer wins")
-    parser.add_argument("--naive", action="store_true",
-                        help="check the obvious analysis fails")
+    parser.add_argument("--verify", action="store_true", help="check the intended answer wins")
+    parser.add_argument("--naive", action="store_true", help="check the obvious analysis fails")
     args = parser.parse_args()
     return "verify" if args.verify else "naive" if args.naive else "build"
 

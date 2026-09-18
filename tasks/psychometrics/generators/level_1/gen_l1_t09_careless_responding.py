@@ -34,24 +34,48 @@ ITEMS = C.ALL_ITEMS
 E = ["HSNS1", "HSNS4", "HSNS5", "HSNS6", "HSNS8", "HSNS10"]
 V = ["HSNS2", "HSNS3", "HSNS7", "HSNS9"]
 FACTORS = ["E", "V", "M", "P", "N"]
-ITEMS_OF = {"E": E, "V": V,
-            **{k: [i for i in DD if i[2] == k] for k in "MPN"}}
+ITEMS_OF = {"E": E, "V": V, **{k: [i for i in DD if i[2] == k] for k in "MPN"}}
 FACTOR_OF = {i: f for f, its in ITEMS_OF.items() for i in its}
 
 LOADINGS = {
-    "HSNS1": .64, "HSNS2": .70, "HSNS3": .63, "HSNS4": .60, "HSNS5": .66,
-    "HSNS6": .58, "HSNS7": .67, "HSNS8": .68, "HSNS9": .61, "HSNS10": .62,
-    "DDP1": .70, "DDP2": .66, "DDP3": .69, "DDP4": .58,
-    "DDN1": .68, "DDN2": .66, "DDN3": .70, "DDN4": .64,
-    "DDM1": .70, "DDM2": .68, "DDM3": .62, "DDM4": .72,
+    "HSNS1": 0.64,
+    "HSNS2": 0.70,
+    "HSNS3": 0.63,
+    "HSNS4": 0.60,
+    "HSNS5": 0.66,
+    "HSNS6": 0.58,
+    "HSNS7": 0.67,
+    "HSNS8": 0.68,
+    "HSNS9": 0.61,
+    "HSNS10": 0.62,
+    "DDP1": 0.70,
+    "DDP2": 0.66,
+    "DDP3": 0.69,
+    "DDP4": 0.58,
+    "DDN1": 0.68,
+    "DDN2": 0.66,
+    "DDN3": 0.70,
+    "DDN4": 0.64,
+    "DDM1": 0.70,
+    "DDM2": 0.68,
+    "DDM3": 0.62,
+    "DDM4": 0.72,
 }
 # Within each instrument the dimensions are moderately related; across the two
 # they are barely related at all, which is the finding the contamination hides.
-PHI = {("E", "V"): .35, ("M", "P"): .45, ("M", "N"): .35, ("P", "N"): .30,
-       ("E", "M"): .25, ("E", "P"): .20, ("E", "N"): .30,
-       ("V", "M"): .15, ("V", "P"): .12, ("V", "N"): .22}
-CROSS_PAIRS = [("E", "M"), ("E", "P"), ("E", "N"),
-               ("V", "M"), ("V", "P"), ("V", "N")]
+PHI = {
+    ("E", "V"): 0.35,
+    ("M", "P"): 0.45,
+    ("M", "N"): 0.35,
+    ("P", "N"): 0.30,
+    ("E", "M"): 0.25,
+    ("E", "P"): 0.20,
+    ("E", "N"): 0.30,
+    ("V", "M"): 0.15,
+    ("V", "P"): 0.12,
+    ("V", "N"): 0.22,
+}
+CROSS_PAIRS = [("E", "M"), ("E", "P"), ("E", "N"), ("V", "M"), ("V", "P"), ("V", "N")]
 
 # Respondents who were not reading. Straight-liners give one answer to all 22
 # items; the rest click at random. The proportions are ordinary for web panels.
@@ -114,8 +138,7 @@ def honest_responses(n, rng, us):
     cols = {}
     for item in ITEMS:
         lam = LOADINGS[item]
-        ystar = (lam * eta[:, FACTORS.index(FACTOR_OF[item])]
-                 + rng.normal(0, np.sqrt(1 - lam ** 2), n))
+        ystar = lam * eta[:, FACTORS.index(FACTOR_OF[item])] + rng.normal(0, np.sqrt(1 - lam**2), n)
         cols[item] = C.categorize(ystar, C.THRESHOLDS[item])
     return pd.DataFrame(cols)[ITEMS]
 
@@ -131,10 +154,9 @@ def contaminate(frame, rng):
     n_straight = int(round(n * STRAIGHT_LINE_RATE))
     n_random = int(round(n * RANDOM_RATE))
     straight = order[:n_straight]
-    clicking = order[n_straight:n_straight + n_random]
-    values = frame.values
-    values[straight] = rng.choice(
-        [1, 2, 3, 4, 5], size=(n_straight, 1), p=STRAIGHT_VALUE_P)
+    clicking = order[n_straight : n_straight + n_random]
+    values = frame.to_numpy(copy=True)
+    values[straight] = rng.choice([1, 2, 3, 4, 5], size=(n_straight, 1), p=STRAIGHT_VALUE_P)
     values[clicking] = rng.integers(1, 6, size=(n_random, len(ITEMS)))
     return pd.DataFrame(values, columns=ITEMS), set(straight), set(clicking)
 
@@ -179,10 +201,10 @@ def latent_correlations(X):
     model = semopy.Model(reference_syntax())
     model.fit(X[ITEMS])
     ins = model.inspect(std_est=True)
-    rows = ins[(ins.op == "~~") & (ins.lval != ins.rval)
-               & ins.lval.isin(FACTORS) & ins.rval.isin(FACTORS)]
-    return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"])
-            for _, r in rows.iterrows()}
+    rows = ins[
+        (ins.op == "~~") & (ins.lval != ins.rval) & ins.lval.isin(FACTORS) & ins.rval.isin(FACTORS)
+    ]
+    return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"]) for _, r in rows.iterrows()}
 
 
 def population_reference(rng):
@@ -207,9 +229,13 @@ def build_truth(targets, floor, pop, data_sha, rows):
         "task_id": TASK_ID,
         "scored": {
             "correlations": [
-                {"a": sorted(ITEMS_OF[a]), "b": sorted(ITEMS_OF[b]),
-                 "r": round(targets[frozenset((a, b))], 3)}
-                for a, b in CROSS_PAIRS],
+                {
+                    "a": sorted(ITEMS_OF[a]),
+                    "b": sorted(ITEMS_OF[b]),
+                    "r": round(targets[frozenset((a, b))], 3),
+                }
+                for a, b in CROSS_PAIRS
+            ],
             "calibration_country": "US",
         },
         "scoring_reference": {
@@ -240,35 +266,52 @@ def build_truth(targets, floor, pop, data_sha, rows):
 def build_task_json(data_sha):
     """Assemble the Corral task definition, including the scoring contract."""
     contract = C.scoring_contract(
-        "artifacts/level_1/task_09/truth.json", ITEMS,
+        "artifacts/level_1/task_09/truth.json",
+        ITEMS,
         [
-            {"key": "correlations", "fn": "score_correlations_by_composition",
-             "truth_key": "scored.correlations", "tol": CORRELATION_TOLERANCE,
-             "criterion": "latent_association"},
-        ])
+            {
+                "key": "correlations",
+                "fn": "score_correlations_by_composition",
+                "truth_key": "scored.correlations",
+                "tol": CORRELATION_TOLERANCE,
+                "criterion": "latent_association",
+            },
+        ],
+    )
     contract["syntax_whitelist"]["max_factors"] = 6
-    return [{
-        "id": TASK_ID,
-        "name": "How strongly are the two instruments related?",
-        "uuid": "3d47e9b1-0c62-4a75-b8e3-5619fa07c2d4",
-        "keywords": ["psychometrics", "data quality", "careless responding",
-                     "discriminant validity", "measurement error"],
-        "metrics": ["binary", "partial"],
-        "level": 1,
-        "description": PROMPT,
-        "submission_format": SUBMISSION_FORMAT,
-        "initial_input": {"dataset": "data.csv", "codebook": "codebook.md",
-                          "data_sha256": data_sha},
-        "tools": [],
-        "scoring_function": "score_model_criteria",
-        "scoring_params": contract,
-    }]
+    return [
+        {
+            "id": TASK_ID,
+            "name": "How strongly are the two instruments related?",
+            "uuid": "3d47e9b1-0c62-4a75-b8e3-5619fa07c2d4",
+            "keywords": [
+                "psychometrics",
+                "data quality",
+                "careless responding",
+                "discriminant validity",
+                "measurement error",
+            ],
+            "metrics": ["binary", "partial"],
+            "level": 1,
+            "description": PROMPT,
+            "submission_format": SUBMISSION_FORMAT,
+            "initial_input": {
+                "dataset": "data.csv",
+                "codebook": "codebook.md",
+                "data_sha256": data_sha,
+            },
+            "tools": [],
+            "scoring_function": "score_model_criteria",
+            "scoring_params": contract,
+        }
+    ]
 
 
 def _submission(values):
-    return {"model_syntax": reference_syntax(),
-            "correlations": [[a, b, round(values[frozenset((a, b))], 3)]
-                             for a, b in CROSS_PAIRS]}
+    return {
+        "model_syntax": reference_syntax(),
+        "correlations": [[a, b, round(values[frozenset((a, b))], 3)] for a, b in CROSS_PAIRS],
+    }
 
 
 def candidate_submissions(X):
@@ -277,14 +320,14 @@ def candidate_submissions(X):
     rng = np.random.default_rng(SEED)
     df = build_dataset(rng)
     return {
-        "correct": _submission(
-            latent_correlations(analysis_sample(df, screen="spread"))),
+        "correct": _submission(latent_correlations(analysis_sample(df, screen="spread"))),
         "unscreened": _submission(latent_correlations(analysis_sample(df))),
         "screened on self-rated accuracy": _submission(
-            latent_correlations(analysis_sample(df, screen="accuracy"))),
+            latent_correlations(analysis_sample(df, screen="accuracy"))
+        ),
         "all countries, screened": _submission(
-            latent_correlations(analysis_sample(df, country=None,
-                                                screen="spread"))),
+            latent_correlations(analysis_sample(df, country=None, screen="spread"))
+        ),
     }
 
 
@@ -298,8 +341,10 @@ def verify(df, targets):
     raw = analysis_sample(df)
     clean = analysis_sample(df, screen="spread")
     by_accuracy = analysis_sample(df, screen="accuracy")
-    print(f"US sample {len(raw):,}   after the spread screen {len(clean):,}   "
-          f"after the accuracy screen {len(by_accuracy):,}\n")
+    print(
+        f"US sample {len(raw):,}   after the spread screen {len(clean):,}   "
+        f"after the accuracy screen {len(by_accuracy):,}\n"
+    )
 
     fits = {}
     for label, X in [("unscreened", raw), ("screened", clean)]:
@@ -307,49 +352,62 @@ def verify(df, targets):
         model.fit(X[ITEMS])
         stats = semopy.calc_stats(model)
         fits[label] = (float(stats["CFI"].iloc[0]), float(stats["RMSEA"].iloc[0]))
-        print(f"  the five-dimension model on {label:11s} data: "
-              f"CFI {fits[label][0]:.4f}  RMSEA {fits[label][1]:.4f}")
+        print(
+            f"  the five-dimension model on {label:11s} data: "
+            f"CFI {fits[label][0]:.4f}  RMSEA {fits[label][1]:.4f}"
+        )
 
-    got = {label: latent_correlations(X) for label, X in
-           [("unscreened", raw), ("accuracy", by_accuracy), ("screened", clean)]}
-    print(f"\n{'pair':14s} {'truth':>7s} {'unscreened':>11s} {'accuracy':>9s} "
-          f"{'screened':>9s}")
+    got = {
+        label: latent_correlations(X)
+        for label, X in [("unscreened", raw), ("accuracy", by_accuracy), ("screened", clean)]
+    }
+    print(f"\n{'pair':14s} {'truth':>7s} {'unscreened':>11s} {'accuracy':>9s} " f"{'screened':>9s}")
     worst = {k: 0.0 for k in got}
     for a, b in CROSS_PAIRS:
         key = frozenset((a, b))
-        print(f"  {a} x {b:9s} {targets[key]:7.3f} {got['unscreened'][key]:11.3f} "
-              f"{got['accuracy'][key]:9.3f} {got['screened'][key]:9.3f}")
+        print(
+            f"  {a} x {b:9s} {targets[key]:7.3f} {got['unscreened'][key]:11.3f} "
+            f"{got['accuracy'][key]:9.3f} {got['screened'][key]:9.3f}"
+        )
         for label in got:
-            worst[label] = max(worst[label],
-                               abs(got[label][key] - targets[key]))
-    print(f"\n  largest error: unscreened {worst['unscreened']:.3f}, "
-          f"accuracy-screened {worst['accuracy']:.3f}, "
-          f"screened {worst['screened']:.3f}  (tolerance "
-          f"{CORRELATION_TOLERANCE})")
+            worst[label] = max(worst[label], abs(got[label][key] - targets[key]))
+    print(
+        f"\n  largest error: unscreened {worst['unscreened']:.3f}, "
+        f"accuracy-screened {worst['accuracy']:.3f}, "
+        f"screened {worst['screened']:.3f}  (tolerance "
+        f"{CORRELATION_TOLERANCE})"
+    )
 
     us = df[df.country == "US"]
     spoiled = us[ITEMS].std(axis=1) == 0
-    print(f"  the spread screen removes {int(spoiled.sum()):,} of {len(us):,} "
-          f"US rows; self-rated accuracy below 50 covers "
-          f"{int((spoiled & (us.accuracy < 50)).sum()):,} of them")
+    print(
+        f"  the spread screen removes {int(spoiled.sum()):,} of {len(us):,} "
+        f"US rows; self-rated accuracy below 50 covers "
+        f"{int((spoiled & (us.accuracy < 50)).sum()):,} of them"
+    )
 
     pooled = latent_correlations(analysis_sample(df, country=None, screen="spread"))
-    pooled_worst = max(abs(pooled[frozenset(p)] - targets[frozenset(p)])
-                       for p in CROSS_PAIRS)
+    pooled_worst = max(abs(pooled[frozenset(p)] - targets[frozenset(p)]) for p in CROSS_PAIRS)
 
     checks = [
-        ("the contaminated data fit the right model well",
-         fits["unscreened"][0] > 0.95),
-        ("so nothing in the fit warns that anything is wrong",
-         fits["unscreened"][0] > 0.95 and fits["unscreened"][1] < 0.06),
-        ("yet the cross-instrument correlations are badly wrong",
-         worst["unscreened"] > 2 * CORRELATION_TOLERANCE),
-        ("screening on self-rated accuracy does not help",
-         worst["accuracy"] > CORRELATION_TOLERANCE),
-        ("screening on response spread does",
-         worst["screened"] <= CORRELATION_TOLERANCE),
-        ("and skipping the US filter is wrong even after screening",
-         pooled_worst > CORRELATION_TOLERANCE),
+        ("the contaminated data fit the right model well", fits["unscreened"][0] > 0.95),
+        (
+            "so nothing in the fit warns that anything is wrong",
+            fits["unscreened"][0] > 0.95 and fits["unscreened"][1] < 0.06,
+        ),
+        (
+            "yet the cross-instrument correlations are badly wrong",
+            worst["unscreened"] > 2 * CORRELATION_TOLERANCE,
+        ),
+        (
+            "screening on self-rated accuracy does not help",
+            worst["accuracy"] > CORRELATION_TOLERANCE,
+        ),
+        ("screening on response spread does", worst["screened"] <= CORRELATION_TOLERANCE),
+        (
+            "and skipping the US filter is wrong even after screening",
+            pooled_worst > CORRELATION_TOLERANCE,
+        ),
     ]
     return C.report(checks)
 
@@ -365,14 +423,19 @@ def naive(df, targets):
         error = got[key] - targets[key]
         overstated += error > CORRELATION_TOLERANCE
         print(f"  {a} x {b:9s} {got[key]:9.3f} {targets[key]:7.3f} {error:+7.3f}")
-    print(f"\n  {overstated} of {len(CROSS_PAIRS)} associations overstated "
-          f"by more than {CORRELATION_TOLERANCE}")
-    return C.report([
-        ("the ordinary analysis overstates the association", overstated >= 4),
-        ("including the pair that is really near zero",
-         got[frozenset(("V", "P"))] - targets[frozenset(("V", "P"))]
-         > CORRELATION_TOLERANCE),
-    ])
+    print(
+        f"\n  {overstated} of {len(CROSS_PAIRS)} associations overstated "
+        f"by more than {CORRELATION_TOLERANCE}"
+    )
+    return C.report(
+        [
+            ("the ordinary analysis overstates the association", overstated >= 4),
+            (
+                "including the pair that is really near zero",
+                got[frozenset(("V", "P"))] - targets[frozenset(("V", "P"))] > CORRELATION_TOLERANCE,
+            ),
+        ]
+    )
 
 
 def main():
@@ -388,10 +451,12 @@ def main():
 
     floor = C.evaluate_model(reference_syntax(), analysis_sample(df), ITEMS, pop)
     C.write_artifacts(
-        OUT_DIR, TASK_JSON, df,
-        lambda sha: build_truth(targets, floor, pop.tolist(),
-                                sha, len(df)),
-        build_task_json)
+        OUT_DIR,
+        TASK_JSON,
+        df,
+        lambda sha: build_truth(targets, floor, pop.tolist(), sha, len(df)),
+        build_task_json,
+    )
     return 0
 
 
