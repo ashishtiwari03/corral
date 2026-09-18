@@ -149,12 +149,53 @@ def responses(rng, n_1, n_2, apply_dif=True):
 
 def simulate(rng):
     """The delivered dataset."""
-    frame = responses(rng, N_GROUP_1, N_GROUP_2)
+    frame, eta = responses_with_latents(rng, N_GROUP_1, N_GROUP_2)
     frame["age"] = np.clip(rng.normal(35, 11, len(frame)).round(), 18, 78).astype(int)
     frame["accuracy"] = np.clip(rng.beta(8, 1.5, len(frame)) * 100, 1, 100).round().astype(int)
     frame["country"] = "US"
     frame[ITEMS] = frame[ITEMS].mask(rng.random((len(frame), len(ITEMS))) < 0.01, 0)
-    return frame[ITEMS + ["age", "gender", "accuracy", "country"]]
+    frame = frame[ITEMS + ["age", "gender", "accuracy", "country"]]
+    frame.insert(0, "participant_id", [f"P{i:05d}" for i in range(1, len(frame) + 1)])
+    behavior = pd.DataFrame(
+        {
+            "participant_id": frame["participant_id"],
+            "gender": frame["gender"],
+            "credit_allocation": 50 + 10 * eta[:, 0] + rng.normal(0, 8, len(frame)),
+            "feedback_reactivity": 50 + 10 * eta[:, 1] + rng.normal(0, 8, len(frame)),
+        }
+    )
+    return frame, behavior
+
+
+def responses_with_latents(rng, n_1, n_2, apply_dif=True):
+    """Draw responses and retain the latent traits for the auxiliary file."""
+    gender = np.r_[np.ones(n_1), np.full(n_2, 2)]
+    eta = rng.multivariate_normal([0.0, 0.0], [[1.0, PHI], [PHI, 1.0]], len(gender))
+    shared = rng.normal(size=len(gender))
+    out = {}
+    for item, (factor, loading) in LOADINGS.items():
+        factor_index = 0 if factor == "egocentrism" else 1
+        common = loading * eta[:, factor_index]
+        explained = loading**2
+        if item == CROSS_LOADING[0]:
+            cross_loading = CROSS_LOADING[1]
+            common += cross_loading * eta[:, 0]
+            explained += cross_loading**2 + 2 * cross_loading * loading * PHI
+        if item in RESIDUAL_CORR[0]:
+            residual = RESIDUAL_CORR[1]
+            common += np.sqrt(residual) * shared
+            explained += residual
+        y = common + rng.normal(0, np.sqrt(max(1 - explained, 1e-6)), len(gender))
+        tau = np.asarray(C.THRESHOLDS[item])
+        shift = ITEM_DIF.get(item, 0.0) if apply_dif else 0.0
+        values = np.empty(len(y), dtype=int)
+        for group, threshold in ((1, tau), (2, tau + shift)):
+            mask = gender == group
+            values[mask] = C.categorize(y[mask], threshold)
+        out[item] = values
+    frame = pd.DataFrame(out)
+    frame["gender"] = gender.astype(int)
+    return frame, eta
 
 
 def population_matrix(rng):
@@ -203,6 +244,9 @@ def write_codebook(path, df):
         "Tab-separated, one row per respondent. Questionnaire responses are ratings "
         "from 1 (Disagree) to 5 (Agree); 0 denotes a missing response.",
         "",
+        "The separate `behavior.csv` file contains two independent behavioural "
+        "indicators for the same participants.",
+        "",
         "| item | text |",
         "|---|---|",
         *[f"| `{item}` | {C.ITEM_TEXT[item]} |" for item in ITEMS],
@@ -218,6 +262,25 @@ def write_codebook(path, df):
         "",
     ]
     path.write_text("\n".join(lines))
+
+
+def write_behavior(path, behavior):
+    behavior.to_csv(path, sep="\t", index=False)
+
+
+def write_behavior_codebook(path):
+    path.write_text(
+        "# Codebook - behavioural indicators\n\n"
+        "`behavior.csv` is tab-separated and uses the same `participant_id` and "
+        "`gender` values as `data.csv`. The two continuous variables are scores "
+        "from separate behavioural tasks; higher values indicate more of the "
+        "behaviour recorded by that task.\n\n"
+        "| variable | description |\n|---|---|\n"
+        "| `participant_id` | participant key for joining the files |\n"
+        "| `gender` | 1 = Group 1, 2 = Group 2 |\n"
+        "| `credit_allocation` | score from a joint-credit allocation task |\n"
+        "| `feedback_reactivity` | score from a feedback-response task |\n"
+    )
 
 
 def build_truth(floor, pop, data_sha, rows):
@@ -303,6 +366,8 @@ def build_task_json(data_sha):
                 "dataset": "data.csv",
                 "codebook": "codebook.md",
                 "preliminary_memo": "preliminary_analysis.md",
+                "behavior_data": "behavior.csv",
+                "behavior_codebook": "behavior_codebook.md",
                 "data_sha256": data_sha,
             },
             "tools": [],
@@ -355,7 +420,7 @@ def candidate_submissions(X):
     }
 
 
-def verify(df):
+def verify(df, behavior):
     """Confirm the conclusion reverses only when the biased items are freed."""
     X = analysis_sample(df)
     raw = raw_effect_size(X)
@@ -389,6 +454,10 @@ def verify(df):
         f"{ranked.index(intruder) + 1}th of 10, above a biased one"
     )
     print(f"    against purified anchors, the two sets separate by {gap:.0f}x")
+    print(
+        f"    behavioural indicators: credit={behavior.credit_allocation.mean():.2f}, "
+        f"feedback={behavior.feedback_reactivity.mean():.2f}"
+    )
 
     return C.report(
         [
@@ -483,9 +552,9 @@ def naive(df):
 
 def main():
     action = C.mode()
-    df = simulate(np.random.default_rng(SEED))
+    df, behavior = simulate(np.random.default_rng(SEED))
     if action == "verify":
-        return verify(df)
+        return verify(df, behavior)
     if action == "naive":
         return naive(df)
     pop = population_matrix(np.random.default_rng(SEED + 1001))
@@ -498,6 +567,8 @@ def main():
         build_task_json,
     )
     write_codebook(OUT_DIR / "codebook.md", df)
+    write_behavior(OUT_DIR / "behavior.csv", behavior)
+    write_behavior_codebook(OUT_DIR / "behavior_codebook.md")
     write_task_memo(OUT_DIR / "preliminary_analysis.md")
     return 0
 

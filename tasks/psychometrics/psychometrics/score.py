@@ -492,7 +492,12 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
 
     n_latents = len({ln.split("=~")[0].strip() for ln in spec.splitlines() if "=~" in ln})
     claims = check_claims(
-        submission, truth, params["tier_3_claims"], n_latents, model=model, items=items
+        submission,
+        truth,
+        params["tier_3_claims"],
+        n_latents,
+        model=model,
+        items=items,
     )
     checks.update({k: _fmt(v) for k, v in claims.items()})
     if not all(v for v in claims.values() if v is not None):

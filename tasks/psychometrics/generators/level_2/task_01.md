@@ -1,8 +1,8 @@
 # Task 01 — can this questionnaire compare the two groups?
 
-You are given responses to the Hypersensitive Narcissism Scale (HSNS) from two groups, together with a codebook and a preliminary analysis memo. The memo recommends reporting a group difference based on the observed scores.
+You are given responses to the Hypersensitive Narcissism Scale (HSNS) from two groups, a separate file of behavioural indicators for the same participants, a codebook, and a preliminary analysis memo. The memo recommends reporting a group difference based on the observed scores.
 
-Assess that recommendation using the data. Carry out whatever analyses you judge necessary and return a reproducible measurement model, one overall recommendation, and the items that materially affect the recommendation.
+Assess that recommendation using the available evidence. Carry out whatever analyses you judge necessary and return a reproducible measurement model, one overall recommendation, and the items that materially affect the recommendation.
 
 ## What makes this non-trivial
 
