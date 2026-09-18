@@ -57,6 +57,9 @@ TASKS = [
     ("generators/level_1/gen_l1_t08_score_justification.py",
      "environments/level_1/tasks_json/task_08.json",
      "artifacts/level_1/task_08/data.csv", "correct"),
+    ("generators/level_1/gen_l1_t09_careless_responding.py",
+     "environments/level_1/tasks_json/task_09.json",
+     "artifacts/level_1/task_09/data.csv", "correct"),
 ]
 
 
@@ -142,7 +145,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
     fake = ({k: "total_only" for k in good["scoring"]} if key == "scoring"
             else {i: {c: "exact" for c in v} for i, v in good["replication"].items()}
             if key == "replication"
-            else {k: 0.3 for k in good["correlations"]} if key == "correlations"
+            else [[a, b, 0.3] for a, b, _ in good["correlations"]]
+            if key == "correlations"
             else {k: True for k in good["comparisons"]} if key == "comparisons"
             else 0.9 if key == "latent_difference" else {k: 0.55 for k in items})
     adversarial = {

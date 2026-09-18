@@ -41,5 +41,6 @@ the task.
 | [L1-T6](generators/level_1/task_06.md) | How do the two instruments' dimensions relate? | five correlated dimensions, one pair near-redundant |
 | [L1-T7](generators/level_1/task_07.md) | Which instrument travels across countries? | HSNS holds up; the Dirty Dozen's general factor is US-specific |
 | [L1-T8](generators/level_1/task_08.md) | What may each instrument's scores be used for? | HSNS one factor; Dirty Dozen's total is reliable but not interpretable |
+| [L1-T9](generators/level_1/task_09.md) | How strongly are the two instruments related? | five dimensions, barely related across instruments; 8% of respondents straight-lined |
 
 Level 2 is not yet defined; the boundary between the levels is being reworked.
