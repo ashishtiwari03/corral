@@ -1,31 +1,47 @@
 # Task 05 — which comparisons between men and women can be defended?
 
-## The idea
+## The task
 
-The items relate to the trait identically in both groups. That makes several
-comparisons sound: the structure itself, how much the trait varies, and how it
-relates to other traits. But six of the ten items are answered differently by
-men and women at the same trait level, in both directions.
+Select the US respondents who reported male or female, then judge six specific comparisons of the HSNS between the two groups as defensible or not. Also report how the two traits relate within each group.
 
-## What goes wrong
+## The data
 
-- Because the shifts run both ways and no item is known to be clean, there is
-  no fixed point to anchor a comparison of averages. The group means are the
-  one comparison everybody wants and the one that cannot be made.
-- Comparing the raw totals looks fine and is not: the totals differ because of
-  how the items behave, not because of the trait.
-- The mixed directions roughly cancel in the totals, so the bias does not
-  announce itself as a large obvious gap.
+The 10 HSNS items were drawn from one trait, loadings .48–.76, identical in
+both sexes. A second trait, from four Dirty Dozen items, was generated
+alongside it.
+
+Put in deliberately:
+
+- six of the ten items shifted between the sexes, in **both** directions:
+  +.40, −.45, +.35, −.50, +.45, −.40
+- a real trait difference of .30 between the sexes, which those shifts make
+  impossible to recover
+- the two traits correlated .50 in men and .30 in women, a difference that
+  **is** recoverable
+
+## The answer
+
+The items relate to the trait identically in both groups, so comparing the
+structure, the spread of the trait, and how it relates to other traits are all
+sound. Comparing the group averages is not, and neither is comparing the raw
+totals.
+
+## Traps
+
+- **Six of ten items are answered differently.** Men and women at the same trait
+  level answer them differently, and in both directions. Since no item is
+  known to be clean, there is no fixed point to anchor a comparison of
+  averages.
+- **The comparison everyone wants is the one that fails.** Group averages are
+  the usual headline result and are exactly what these data cannot support.
+- **The bias does not announce itself.** Because the shifts run both ways they
+  roughly cancel in the totals, so there is no large obvious gap to notice.
 
 ## Scoring
 
-Stage 3 checks a yes-or-no verdict on each kind of comparison, plus the
+Stage 3 checks a yes-or-no verdict on each of the six comparisons, plus the
 reported correlation between the two traits in each group, which is one of the
 comparisons that does hold.
-
-The submission is the model, a verdict per comparison, and the trait
-correlation in each group. Anything else the scorer needs it works out by re-
-fitting the submitted model, so the agent is not asked for it.
 
 ## Rebuild
 
@@ -34,5 +50,5 @@ uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t05_defensible_comparisons.py [--verify|--naive]
 ```
 
-`--verify` prints the numbers behind everything above and checks the intended
-answer wins. `--naive` checks that the obvious analysis fails.
+`--verify` prints the numbers behind all of the above. `--naive` shows the
+obvious analysis failing.

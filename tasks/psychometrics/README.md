@@ -1,10 +1,7 @@
 # Psychometrics Task Environment
 
-Questionnaire data, and the job of working out what is really behind it.
-
-Every dataset here is simulated from a known model, so the right answer is
-exact rather than a matter of opinion. Each task is built so that the obvious
-analysis produces a specific wrong answer.
+Every dataset here is simulated from a known model, so the ground truth is known. 
+Each task is built so that the obvious analysis produces a specific wrong answer.
 
 ## Layout
 
@@ -22,8 +19,7 @@ tests/test_scoring.py             checks every task scores as intended
 
 ## Building
 
-Everything under `artifacts/` and `environments/` is generated, and a rebuild
-reproduces it byte for byte.
+Generators build everything under `artifacts/` and `environments/` , we can rebuild it with the following comments
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
@@ -32,38 +28,24 @@ uv run ... python build.py --check                 # build, then check everythin
 uv run ... python build.py --tasks 3 7             # only these
 ```
 
-`--check` runs three things for every task: that the intended answer wins
-(`--verify`), that the obvious analysis fails (`--naive`), and that the scorer
-gives the intended verdicts. Generators read nothing external and depend only on
-their seed.
+`--check` runs three things for every task: that the intended answer wins (`--verify`), that the obvious analysis fails (`--naive`), and that the scorer gives the intended verdicts. 
 
 ## Scoring
 
-A submission gives a model plus the numbers that model produced. Anything else
-the scorer needs, it works out by re-fitting that model, so nothing is asked for
-that the answer does not require.
+A submission gives a model plus the numbers that model produced.
+Anything else the scorer needs, it works out by re-fitting that model.
 
-Scoring runs in three stages, all of which must pass. They are never added up
-into a weighted total.
+Scoring runs in three stages, all of which must pass. 
 
-1. **Constraints.** Is the model usable at all? A negative variance, or two
-   factors too alike to tell apart, make a model invalid rather than worse. It
-   is dropped here however well it fits.
-2. **Comparison.** The model the data came from sets a floor. A submission must
-   be at least as good on fit, on how many parameters it spends, and on how
-   close the correlations it implies come to the truth. Beating the floor is
-   fine and never counts against it.
-3. **Claims.** The numbers reported, checked against the values the data were
-   built from.
+1. **Constraints.** Checks the usability of the model. A negative variance, or two factors too alike to tell apart, make a model invalid.
+2. **Comparison.** The model the data came from sets a floor. A submission must be at least as good on fit, on how many parameters it spends, and on how close the correlations it implies come to the truth. 
+3. **Claims.** The numbers reported, checked against the values the data were built from.
 
-Reported: `score_binary`, `score_partial` (for diagnosis only) and
-`checks_vector`.
+Reported: `score_binary`, `score_partial` (for diagnosis only) and `checks_vector`.
 
 ## Level 1
 
-The task description never says which columns belong to which questionnaire, or
-how they group into subscales. Working that out from the item wording is part of
-every task.
+Links to tasks in level 1
 
 | task | question |
 |---|---|
@@ -73,18 +55,13 @@ every task.
 | [4](generators/level_1/task_04.md) | Which questionnaire supports a comparison between men and women? |
 | [5](generators/level_1/task_05.md) | Which comparisons between men and women can be defended? |
 | [6](generators/level_1/task_06.md) | How do the traits behind the two questionnaires relate? |
-| [7](generators/level_1/task_07.md) | Which questionnaire travels to other countries? |
+| [7](generators/level_1/task_07.md) | Which questionnaire is portable to other countries? |
 | [8](generators/level_1/task_08.md) | What may each questionnaire's scores be used for? |
 | [9](generators/level_1/task_09.md) | How strongly are the two questionnaires related? |
 | [10](generators/level_1/task_10.md) | Which items are bad, and which is the data? |
 
 ## Level 2
 
-Not built yet. A Level 1 task has one analysis to get right: the obvious
-approach gives a specific wrong answer, and the evidence that corrects it is
-there in the analysis itself.
+:TODO
 
-A Level 2 task is meant to be different in kind. Two analyses, both defensible,
-give opposite answers, and doing either one better does not help. The agent has
-to notice the conflict, work out what would settle it, and run a test the task
-never asked for.
+Basic idea - Two or more analyses, both defensible, give opposite answers, and doing either one better does not help. The agent has to notice the conflict, work out what would settle it, and run a test.

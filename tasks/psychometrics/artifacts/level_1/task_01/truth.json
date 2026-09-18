@@ -387,7 +387,7 @@
     "generator": "gen_l1_t01_hsns_structure.py",
     "seed": 20260901,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 43710,
     "data_sha256": "1ab7f7d14db13ff1553517f44f063919fbe9bc8fcca00333eb9ed201b8713c6d",
     "external_data_used": null,

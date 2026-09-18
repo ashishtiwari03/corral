@@ -457,7 +457,7 @@
     "generator": "gen_l1_t04_invariant_combination.py",
     "seed": 20261001,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 43710,
     "data_sha256": "9d2a1f10e26300ee136ef97984e44ed36ce67250b28550717e43f7a38f32d154",
     "external_data_used": null,

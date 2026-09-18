@@ -30,14 +30,22 @@ TASK_JSON = C.PKG_ROOT / "environments" / "level_1" / "tasks_json" / "task_04.js
 HSNS = C.HSNS_ITEMS
 DD = C.DD_ITEMS
 ALL_VARS = HSNS + DD + ["gender"]
-MODEL_VARS = DD + ["gender"]          # the combination that works
+MODEL_VARS = DD + ["gender"]  # the combination that works
 
 # --------------------------------------------------------------------------
 # HSNS: a real gender difference, hidden by bias against women on four items
 # --------------------------------------------------------------------------
 HSNS_LOADINGS = {
-    "HSNS1": 0.55, "HSNS2": 0.76, "HSNS3": 0.58, "HSNS4": 0.52, "HSNS5": 0.70,
-    "HSNS6": 0.48, "HSNS7": 0.69, "HSNS8": 0.71, "HSNS9": 0.60, "HSNS10": 0.66,
+    "HSNS1": 0.55,
+    "HSNS2": 0.76,
+    "HSNS3": 0.58,
+    "HSNS4": 0.52,
+    "HSNS5": 0.70,
+    "HSNS6": 0.48,
+    "HSNS7": 0.69,
+    "HSNS8": 0.71,
+    "HSNS9": 0.60,
+    "HSNS10": 0.66,
 }
 HSNS_LATENT_DIFFERENCE = 0.45
 HSNS_BIASED_ITEMS = ["HSNS1", "HSNS5", "HSNS8", "HSNS10"]
@@ -48,19 +56,46 @@ HSNS_BIAS_SHIFT = 0.55
 # Women simply have more of the general trait. Nothing here is biased.
 # --------------------------------------------------------------------------
 SPECIFIC_OF = {
-    "DDM1": "M", "DDM2": "M", "DDM3": "M", "DDM4": "M",
-    "DDP1": "P", "DDP2": "P", "DDP3": "P", "DDP4": "P",
-    "DDN1": "N", "DDN2": "N", "DDN3": "N", "DDN4": "N",
+    "DDM1": "M",
+    "DDM2": "M",
+    "DDM3": "M",
+    "DDM4": "M",
+    "DDP1": "P",
+    "DDP2": "P",
+    "DDP3": "P",
+    "DDP4": "P",
+    "DDN1": "N",
+    "DDN2": "N",
+    "DDN3": "N",
+    "DDN4": "N",
 }
 DD_GENERAL = {
-    "DDM1": 0.58, "DDM2": 0.52, "DDM3": 0.48, "DDM4": 0.60,
-    "DDP1": 0.55, "DDP2": 0.50, "DDP3": 0.53, "DDP4": 0.38,
-    "DDN1": 0.42, "DDN2": 0.40, "DDN3": 0.50, "DDN4": 0.52,
+    "DDM1": 0.58,
+    "DDM2": 0.52,
+    "DDM3": 0.48,
+    "DDM4": 0.60,
+    "DDP1": 0.55,
+    "DDP2": 0.50,
+    "DDP3": 0.53,
+    "DDP4": 0.38,
+    "DDN1": 0.42,
+    "DDN2": 0.40,
+    "DDN3": 0.50,
+    "DDN4": 0.52,
 }
 DD_SPECIFIC = {
-    "DDM1": 0.48, "DDM2": 0.44, "DDM3": 0.42, "DDM4": 0.50,
-    "DDP1": 0.52, "DDP2": 0.48, "DDP3": 0.55, "DDP4": 0.35,
-    "DDN1": 0.58, "DDN2": 0.56, "DDN3": 0.45, "DDN4": 0.30,
+    "DDM1": 0.48,
+    "DDM2": 0.44,
+    "DDM3": 0.42,
+    "DDM4": 0.50,
+    "DDP1": 0.52,
+    "DDP2": 0.48,
+    "DDP3": 0.55,
+    "DDP4": 0.35,
+    "DDN1": 0.58,
+    "DDN2": 0.56,
+    "DDN3": 0.45,
+    "DDN4": 0.30,
 }
 DD_LATENT_DIFFERENCE = 0.30
 
@@ -80,13 +115,12 @@ Read the data and select participants from the United States. Two instruments we
 administered. Determine which of them supports a comparison of men and women - that \
 is, which one measures the same thing in both groups - and report the size of the \
 gender difference on it, as the standardised coefficient of the latent trait regressed \
-on `gender`, so that a positive value means women score higher.
+on `gender`.
 
 Also report which items, in the instrument that does not support the comparison, \
 function differently across gender.
 
-Restrict the comparison to respondents who reported male or female. Items are \
-five-point ordinal ratings and 0 denotes a missing response.
+Restrict the comparison to respondents who reported male or female.\
 """
 
 SUBMISSION_FORMAT = """\
@@ -99,9 +133,7 @@ A single JSON object:
 }
 
 `model_syntax` uses lavaan notation (`=~` loadings, `~` regressions, `~~`
-(co)variances, `0*` to fix a parameter to zero). It is re-fitted during evaluation, so
-it must be complete and runnable, must contain `gender` as a predictor of the latent
-trait, and the value you report must be the one it produces.
+(co)variances, `0*` to fix a parameter to zero).
 """
 
 
@@ -110,16 +142,20 @@ trait, and the value you report must be the one it produces.
 # --------------------------------------------------------------------------
 def simulate_hsns(n, rng, female, scale=1.0, us=True):
     """One trait, a real gender difference, and bias against women on four items."""
-    eta = rng.normal(0.0, 1.0, n) + (np.where(female, HSNS_LATENT_DIFFERENCE, 0.0)
-                                     if us else 0.0)
+    eta = rng.normal(0.0, 1.0, n) + (
+        np.where(female, HSNS_LATENT_DIFFERENCE, 0.0) if us else 0.0
+    )
     out = {}
     for item in HSNS:
         lam = HSNS_LOADINGS[item] * scale
-        ystar = lam * eta + rng.normal(0, np.sqrt(1 - lam ** 2), n)
+        ystar = lam * eta + rng.normal(0, np.sqrt(1 - lam**2), n)
         tau = np.asarray(C.THRESHOLDS[item])
         if us and item in HSNS_BIASED_ITEMS:
-            out[item] = np.where(female, C.categorize(ystar, tau + HSNS_BIAS_SHIFT),
-                                 C.categorize(ystar, tau))
+            out[item] = np.where(
+                female,
+                C.categorize(ystar, tau + HSNS_BIAS_SHIFT),
+                C.categorize(ystar, tau),
+            )
         else:
             out[item] = C.categorize(ystar, tau)
     return pd.DataFrame(out)[HSNS]
@@ -133,8 +169,11 @@ def simulate_dd(n, rng, female, scale=1.0, us=True):
     out = {}
     for item in DD:
         g, s = DD_GENERAL[item] * scale, DD_SPECIFIC[item] * scale
-        ystar = (g * general + s * specific[SPECIFIC_OF[item]]
-                 + rng.normal(0, np.sqrt(max(1 - g ** 2 - s ** 2, 1e-6)), n))
+        ystar = (
+            g * general
+            + s * specific[SPECIFIC_OF[item]]
+            + rng.normal(0, np.sqrt(max(1 - g**2 - s**2, 1e-6)), n)
+        )
         out[item] = C.categorize(ystar, C.THRESHOLDS[item])
     return pd.DataFrame(out)[DD]
 
@@ -147,9 +186,16 @@ def build_dataset(rng):
         demo = C.demographics(n, rng, country)
         female = (demo.gender == 2).to_numpy()
         scale = 1.0 if us else LOADING_SCALE_NON_US
-        frames.append(pd.concat([simulate_hsns(n, rng, female, scale, us),
-                                 simulate_dd(n, rng, female, scale, us),
-                                 demo], axis=1))
+        frames.append(
+            pd.concat(
+                [
+                    simulate_hsns(n, rng, female, scale, us),
+                    simulate_dd(n, rng, female, scale, us),
+                    demo,
+                ],
+                axis=1,
+            )
+        )
     return C.finalize(frames, rng, SEED)
 
 
@@ -190,10 +236,10 @@ def candidate_models():
     hsns_base = f"F =~ {'+'.join(HSNS)}\nF ~ gender"
     return {
         "HSNS, assumes no bias": hsns_base,
-        "HSNS, bias freed": hsns_base + "".join(
-            f"\n{i} ~ gender" for i in HSNS_BIASED_ITEMS),
+        "HSNS, bias freed": hsns_base
+        + "".join(f"\n{i} ~ gender" for i in HSNS_BIASED_ITEMS),
         "DD, nominal three-factor": dd_three_factor()
-            + "\nFM ~ gender\nFP ~ gender\nFN ~ gender",
+        + "\nFM ~ gender\nFP ~ gender\nFN ~ gender",
         "DD, bifactor (CORRECT)": reference_syntax(),
     }
 
@@ -243,21 +289,28 @@ def build_truth(target, floor, pop, data_sha, rows):
             "item_order": MODEL_VARS,
         },
         "generative_parameters": {
-            "hsns": {"loadings": HSNS_LOADINGS,
-                     "latent_difference_women_minus_men": HSNS_LATENT_DIFFERENCE,
-                     "biased_items": HSNS_BIASED_ITEMS,
-                     "bias_threshold_shift": HSNS_BIAS_SHIFT,
-                     "bias_direction": "against women",
-                     "invariant": False},
-            "dirty_dozen": {"general_loadings": DD_GENERAL,
-                            "specific_loadings": DD_SPECIFIC,
-                            "specific_of_item": SPECIFIC_OF,
-                            "latent_difference_women_minus_men": DD_LATENT_DIFFERENCE,
-                            "biased_items": [],
-                            "invariant": True},
-            "non_us": {"loading_scale": LOADING_SCALE_NON_US,
-                       "dirty_dozen_latent_difference": NON_US_DD_DIFFERENCE,
-                       "hsns_latent_difference": 0.0, "biased_items": []},
+            "hsns": {
+                "loadings": HSNS_LOADINGS,
+                "latent_difference_women_minus_men": HSNS_LATENT_DIFFERENCE,
+                "biased_items": HSNS_BIASED_ITEMS,
+                "bias_threshold_shift": HSNS_BIAS_SHIFT,
+                "bias_direction": "against women",
+                "invariant": False,
+            },
+            "dirty_dozen": {
+                "general_loadings": DD_GENERAL,
+                "specific_loadings": DD_SPECIFIC,
+                "specific_of_item": SPECIFIC_OF,
+                "latent_difference_women_minus_men": DD_LATENT_DIFFERENCE,
+                "biased_items": [],
+                "invariant": True,
+            },
+            "non_us": {
+                "loading_scale": LOADING_SCALE_NON_US,
+                "dirty_dozen_latent_difference": NON_US_DD_DIFFERENCE,
+                "hsns_latent_difference": 0.0,
+                "biased_items": [],
+            },
             "thresholds": C.THRESHOLDS,
         },
         "provenance": C.provenance(Path(__file__).name, SEED, rows, data_sha),
@@ -267,40 +320,64 @@ def build_truth(target, floor, pop, data_sha, rows):
 def build_task_json(data_sha):
     """Assemble the Corral task definition, including the scoring contract."""
     contract = C.scoring_contract(
-        "artifacts/level_1/task_04/truth.json", MODEL_VARS,
+        "artifacts/level_1/task_04/truth.json",
+        MODEL_VARS,
         [
-            {"key": "latent_difference", "fn": "score_scalar",
-             "truth_key": "scored.latent_difference", "tol": 0.06,
-             "criterion": "group_comparison"},
+            {
+                "key": "latent_difference",
+                "fn": "score_scalar",
+                "truth_key": "scored.latent_difference",
+                "tol": 0.06,
+                "criterion": "group_comparison",
+            },
             # The selected instrument must show no item bias: any direct gender
             # path in the submitted model is a claim of bias that is not there.
-            {"key": "spurious_bias", "fn": "score_item_set",
-             "derive_from": "refit_covariate_paths", "covariate": "gender",
-             "truth_key": "scored.spurious_bias_in_selected_instrument",
-             "criterion": "item_bias"},
+            {
+                "key": "spurious_bias",
+                "fn": "score_item_set",
+                "derive_from": "refit_covariate_paths",
+                "covariate": "gender",
+                "truth_key": "scored.spurious_bias_in_selected_instrument",
+                "criterion": "item_bias",
+            },
             # Evidence that the rejected instrument was actually analysed.
-            {"key": "biased_items", "fn": "score_item_set",
-             "truth_key": "scored.biased_items", "criterion": "item_bias"},
-        ])
+            {
+                "key": "biased_items",
+                "fn": "score_item_set",
+                "truth_key": "scored.biased_items",
+                "criterion": "item_bias",
+            },
+        ],
+    )
     contract["subset"] = {"country": "US", "gender": [1, 2]}
     contract["syntax_whitelist"]["items"] = ALL_VARS
     contract["syntax_whitelist"]["max_factors"] = 8
-    return [{
-        "id": TASK_ID,
-        "name": "Which instrument supports a gender comparison?",
-        "uuid": "a7e35f90-2c14-4b8d-8f66-1d90e4b7c201",
-        "keywords": ["psychometrics", "measurement invariance", "item bias",
-                     "group comparison", "model selection"],
-        "metrics": ["binary", "partial"],
-        "level": 1,
-        "description": PROMPT,
-        "submission_format": SUBMISSION_FORMAT,
-        "initial_input": {"dataset": "data.csv", "codebook": "codebook.md",
-                          "data_sha256": data_sha},
-        "tools": [],
-        "scoring_function": "score_model_criteria",
-        "scoring_params": contract,
-    }]
+    return [
+        {
+            "id": TASK_ID,
+            "name": "Which instrument supports a gender comparison?",
+            "uuid": "a7e35f90-2c14-4b8d-8f66-1d90e4b7c201",
+            "keywords": [
+                "psychometrics",
+                "measurement invariance",
+                "item bias",
+                "group comparison",
+                "model selection",
+            ],
+            "metrics": ["binary", "partial"],
+            "level": 1,
+            "description": PROMPT,
+            "submission_format": SUBMISSION_FORMAT,
+            "initial_input": {
+                "dataset": "data.csv",
+                "codebook": "codebook.md",
+                "data_sha256": data_sha,
+            },
+            "tools": [],
+            "scoring_function": "score_model_criteria",
+            "scoring_params": contract,
+        }
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -335,14 +412,18 @@ def _bias_recover(spec, X, variables, items, factors):
     """
     import semopy
 
-    full = (spec + "".join(f"\n{f} ~ gender" for f in factors)
-            + "".join(f"\n{i} ~ gender" for i in items))
+    full = (
+        spec
+        + "".join(f"\n{f} ~ gender" for f in factors)
+        + "".join(f"\n{i} ~ gender" for i in items)
+    )
     model = semopy.Model(full)
     model.fit(X[variables])
     ins = model.inspect(std_est=True)
     rows = ins[(ins.op == "~") & (ins.rval == "gender") & ins.lval.isin(items)]
-    effect = rows.assign(v=pd.to_numeric(rows["Est. Std"], errors="coerce")
-                         ).set_index("lval")["v"]
+    effect = rows.assign(v=pd.to_numeric(rows["Est. Std"], errors="coerce")).set_index(
+        "lval"
+    )["v"]
     return sorted(effect[effect < effect.median() - 0.05].index)
 
 
@@ -353,12 +434,15 @@ def verify(df, target, pop):
     men, women = X_dd[X_dd.gender == 1], X_dd[X_dd.gender == 2]
     print(f"US comparison sample: {len(men):,} men, {len(women):,} women\n")
 
-    hs_flagged = _bias_recover(f"F =~ {'+'.join(HSNS)}", X_hs, HSNS + ["gender"],
-                               HSNS, ["F"])
-    dd3_flagged = _bias_scan(dd_three_factor(), X_dd, MODEL_VARS, DD,
-                             ["FM", "FP", "FN"])
-    ddb_flagged = _bias_scan(dd_bifactor(), X_dd, MODEL_VARS, DD,
-                             ["G", "SM", "SP", "SN"])
+    hs_flagged = _bias_recover(
+        f"F =~ {'+'.join(HSNS)}", X_hs, HSNS + ["gender"], HSNS, ["F"]
+    )
+    dd3_flagged = _bias_scan(
+        dd_three_factor(), X_dd, MODEL_VARS, DD, ["FM", "FP", "FN"]
+    )
+    ddb_flagged = _bias_scan(
+        dd_bifactor(), X_dd, MODEL_VARS, DD, ["G", "SM", "SP", "SN"]
+    )
 
     print("  items that look biased across gender:")
     print(f"    HSNS, one factor              {hs_flagged}")
@@ -370,7 +454,8 @@ def verify(df, target, pop):
         variables = MODEL_VARS if name.startswith("DD") else HSNS + ["gender"]
         factor = "G" if "bifactor" in name else ("FM" if "nominal" in name else "F")
         estimates[name] = latent_difference(
-            spec, X_dd if name.startswith("DD") else X_hs, variables, factor)
+            spec, X_dd if name.startswith("DD") else X_hs, variables, factor
+        )
     print("\n  latent gender difference by route:")
     for name, value in estimates.items():
         print(f"    {name:32s} {value:+.3f}")
@@ -378,11 +463,15 @@ def verify(df, target, pop):
 
     checks = [
         ("the HSNS really is biased", set(hs_flagged) == set(HSNS_BIASED_ITEMS)),
-        ("the Dirty Dozen looks biased under its nominal structure",
-         len(dd3_flagged) > 0),
+        (
+            "the Dirty Dozen looks biased under its nominal structure",
+            len(dd3_flagged) > 0,
+        ),
         ("but is clean under its real structure", ddb_flagged == []),
-        ("the correct route lands on the calibrated target",
-         abs(estimates["DD, bifactor (CORRECT)"] - target) <= 0.06),
+        (
+            "the correct route lands on the calibrated target",
+            abs(estimates["DD, bifactor (CORRECT)"] - target) <= 0.06,
+        ),
     ]
     return C.report(checks)
 
@@ -399,12 +488,18 @@ def naive(df, target, pop):
     print(f"    Dirty Dozen (3 subscales) -> {len(dd)} biased items {dd}")
     print(f"    conclusion: neither instrument supports the comparison")
     print(f"  truth: the Dirty Dozen does, and the difference is {target:+.3f}")
-    return C.report([
-        ("the face-value analysis rejects both instruments",
-         len(hs) > 0 and len(dd) > 0),
-        ("the items it flags in the Dirty Dozen are not really biased",
-         len(dd) > 0),
-    ])
+    return C.report(
+        [
+            (
+                "the face-value analysis rejects both instruments",
+                len(hs) > 0 and len(dd) > 0,
+            ),
+            (
+                "the items it flags in the Dirty Dozen are not really biased",
+                len(dd) > 0,
+            ),
+        ]
+    )
 
 
 def main():
@@ -418,12 +513,16 @@ def main():
     if action != "build":
         return verify(df, target, pop) if action == "verify" else naive(df, target, pop)
 
-    floor = C.evaluate_model(reference_syntax(),
-                             comparison_sample(df, MODEL_VARS), MODEL_VARS, pop)
+    floor = C.evaluate_model(
+        reference_syntax(), comparison_sample(df, MODEL_VARS), MODEL_VARS, pop
+    )
     C.write_artifacts(
-        OUT_DIR, TASK_JSON, df,
+        OUT_DIR,
+        TASK_JSON,
+        df,
         lambda sha: build_truth(target, floor, pop.tolist(), sha, len(df)),
-        build_task_json)
+        build_task_json,
+    )
     return 0
 
 

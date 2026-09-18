@@ -33,9 +33,15 @@ TRAIT = "vulnerability"
 # HSNS1 and HSNS8 track the trait strongly. That alone makes them one of the
 # most correlated pairs, so sorting raw correlations points at them first.
 LOADINGS = {
-    "HSNS1": (TRAIT, 0.82), "HSNS2": (TRAIT, 0.58), "HSNS3": (TRAIT, 0.66),
-    "HSNS4": (TRAIT, 0.55), "HSNS5": (TRAIT, 0.49), "HSNS6": (TRAIT, 0.61),
-    "HSNS7": (TRAIT, 0.64), "HSNS8": (TRAIT, 0.80), "HSNS9": (TRAIT, 0.60),
+    "HSNS1": (TRAIT, 0.82),
+    "HSNS2": (TRAIT, 0.58),
+    "HSNS3": (TRAIT, 0.66),
+    "HSNS4": (TRAIT, 0.55),
+    "HSNS5": (TRAIT, 0.49),
+    "HSNS6": (TRAIT, 0.61),
+    "HSNS7": (TRAIT, 0.64),
+    "HSNS8": (TRAIT, 0.80),
+    "HSNS9": (TRAIT, 0.60),
     "HSNS10": (TRAIT, 0.53),
 }
 
@@ -54,12 +60,18 @@ LOADING_SCALE_NON_US = 0.75
 
 # The Dark Triad items are in the file but are not part of this task.
 DD_LOADINGS = {
-    "DDM1": ("mach", 0.74), "DDM2": ("mach", 0.71),
-    "DDM3": ("mach", 0.58), "DDM4": ("mach", 0.77),
-    "DDP1": ("psych", 0.69), "DDP2": ("psych", 0.73),
-    "DDP3": ("psych", 0.66), "DDP4": ("psych", 0.48),
-    "DDN1": ("narc", 0.78), "DDN2": ("narc", 0.81),
-    "DDN3": ("narc", 0.70), "DDN4": ("narc", 0.62),
+    "DDM1": ("mach", 0.74),
+    "DDM2": ("mach", 0.71),
+    "DDM3": ("mach", 0.58),
+    "DDM4": ("mach", 0.77),
+    "DDP1": ("psych", 0.69),
+    "DDP2": ("psych", 0.73),
+    "DDP3": ("psych", 0.66),
+    "DDP4": ("psych", 0.48),
+    "DDN1": ("narc", 0.78),
+    "DDN2": ("narc", 0.81),
+    "DDN3": ("narc", 0.70),
+    "DDN4": ("narc", 0.62),
 }
 DD_PHI = {("mach", "psych"): 0.58, ("mach", "narc"): 0.42, ("psych", "narc"): 0.39}
 
@@ -71,8 +83,7 @@ every column.
 
 Read the data and select participants from the United States. Identify the \
 theoretically plausible psychometric models for the Hypersensitive Narcissism Scale \
-(HSNS). Fit and compare alternative factor-analytic models, and determine which one \
-best describes these data.
+(HSNS).
 
 Items are five-point ordinal ratings and 0 denotes a missing response.
 """
@@ -87,11 +98,9 @@ A single JSON object:
 }
 
 `model_syntax` uses lavaan notation (`=~` loadings, `~~` (co)variances, `0*` to fix a
-parameter to zero). It is re-fitted during evaluation, so it must be complete and
-runnable and the estimates you report must be the ones it produces.
+parameter to zero).
 
-`loadings` gives, for each item you analysed, the largest absolute standardised
-loading that item has on any factor in your model.
+`loadings` gives, for each item you analysed, the largest absolute standardised loading that item has on any factor in your model.
 """
 
 
@@ -102,7 +111,7 @@ def simulate_hsns(n, rng, scale=1.0, dependent=True):
     out = {}
     for item in ITEMS:
         lam = LOADINGS[item][1] * scale
-        common, explained = lam * eta, lam ** 2
+        common, explained = lam * eta, lam**2
         if dependent:
             for pair, cov in RESIDUAL_PAIRS:
                 if item in pair:
@@ -118,8 +127,9 @@ def build_dataset(rng):
     frames = []
     for country, n in C.N_BY_COUNTRY.items():
         is_us = country == "US"
-        hsns = simulate_hsns(n, rng, scale=1.0 if is_us else LOADING_SCALE_NON_US,
-                             dependent=is_us)
+        hsns = simulate_hsns(
+            n, rng, scale=1.0 if is_us else LOADING_SCALE_NON_US, dependent=is_us
+        )
         names = ["mach", "psych", "narc"]
         phi = np.eye(3)
         for (a, b), v in DD_PHI.items():
@@ -140,27 +150,33 @@ def reference_syntax():
 def candidate_models():
     """The rival structures a competent analyst would fit to these items."""
     every = "+".join(ITEMS)
-    two_factor = ("F1 =~ HSNS2+HSNS7+HSNS3+HSNS9\n"
-                  "F2 =~ HSNS1+HSNS4+HSNS5+HSNS6+HSNS8+HSNS10")
+    two_factor = (
+        "F1 =~ HSNS2+HSNS7+HSNS3+HSNS9\nF2 =~ HSNS1+HSNS4+HSNS5+HSNS6+HSNS8+HSNS10"
+    )
     return {
         "unidimensional": f"G =~ {every}",
         "two_correlated_factors": two_factor,
         "bifactor_general_plus_specifics": (
             f"G =~ {every}\nS1 =~ HSNS2+HSNS7+HSNS3+HSNS9\n"
             "S2 =~ HSNS1+HSNS4+HSNS5+HSNS6+HSNS8+HSNS10\n"
-            "G ~~ 0*S1\nG ~~ 0*S2\nS1 ~~ 0*S2"),
+            "G ~~ 0*S1\nG ~~ 0*S2\nS1 ~~ 0*S2"
+        ),
         "unidimensional_with_correlated_residuals": reference_syntax(),
         "unidim_with_decoy_pair_freed": (
-            reference_syntax() + f"\n{DECOY_PAIR[0]} ~~ {DECOY_PAIR[1]}"),
+            reference_syntax() + f"\n{DECOY_PAIR[0]} ~~ {DECOY_PAIR[1]}"
+        ),
         "unidim_top_two_raw_correlations": (
-            f"G =~ {every}\nHSNS2 ~~ HSNS7\n{DECOY_PAIR[0]} ~~ {DECOY_PAIR[1]}"),
+            f"G =~ {every}\nHSNS2 ~~ HSNS7\n{DECOY_PAIR[0]} ~~ {DECOY_PAIR[1]}"
+        ),
     }
 
 
 def population_correlation_matrix():
     """Correlation matrix a perfectly specified model would reproduce."""
     rng = np.random.default_rng(SEED + 999)
-    return np.corrcoef(simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float)).round(3)
+    return np.corrcoef(
+        simulate_hsns(POP_REFERENCE_N, rng).values.T.astype(float)
+    ).round(3)
 
 
 def build_truth(floor, pop, data_sha, rows):
@@ -183,15 +199,20 @@ def build_truth(floor, pop, data_sha, rows):
             "item_order": ITEMS,
         },
         "generative_parameters": {
-            "us": {"loadings": {k: v[1] for k, v in LOADINGS.items()},
-                   "residual_covariances": {f"{a}_{b}": v
-                                            for (a, b), v in RESIDUAL_PAIRS},
-                   "decoy_pair": list(DECOY_PAIR),
-                   "decoy_residual_covariance": 0.0},
-            "non_us": {"loading_scale": LOADING_SCALE_NON_US,
-                       "residual_covariances": {}},
-            "dark_triad": {"loadings": {k: v[1] for k, v in DD_LOADINGS.items()},
-                           "phi": {f"{a}_{b}": v for (a, b), v in DD_PHI.items()}},
+            "us": {
+                "loadings": {k: v[1] for k, v in LOADINGS.items()},
+                "residual_covariances": {f"{a}_{b}": v for (a, b), v in RESIDUAL_PAIRS},
+                "decoy_pair": list(DECOY_PAIR),
+                "decoy_residual_covariance": 0.0,
+            },
+            "non_us": {
+                "loading_scale": LOADING_SCALE_NON_US,
+                "residual_covariances": {},
+            },
+            "dark_triad": {
+                "loadings": {k: v[1] for k, v in DD_LOADINGS.items()},
+                "phi": {f"{a}_{b}": v for (a, b), v in DD_PHI.items()},
+            },
             "thresholds": C.THRESHOLDS,
         },
         "provenance": C.provenance(Path(__file__).name, SEED, rows, data_sha),
@@ -200,38 +221,62 @@ def build_truth(floor, pop, data_sha, rows):
 
 def build_task_json(data_sha):
     """Assemble the Corral task definition, including the scoring contract."""
-    return [{
-        "id": TASK_ID,
-        "name": "HSNS dimensionality versus item redundancy",
-        "uuid": "6c40b18e-9d2f-4a77-93e1-58aa0c7f5d03",
-        "keywords": ["psychometrics", "factor analysis", "local dependence",
-                     "model selection", "HSNS"],
-        "metrics": ["binary", "partial"],
-        "level": 1,
-        "description": PROMPT,
-        "submission_format": SUBMISSION_FORMAT,
-        "initial_input": {"dataset": "data.csv", "codebook": "codebook.md",
-                          "data_sha256": data_sha},
-        "tools": [],
-        "scoring_function": "score_model_criteria",
-        "scoring_params": C.scoring_contract(
-            "artifacts/level_1/task_03/truth.json", ITEMS,
-            [
-                {"key": "loadings", "fn": "score_vector",
-                 "truth_key": "scored.loadings", "tol": 0.08,
-                 "all_must_be_within": True, "criterion": "parameter_quality"},
-                # The answer: which pairs agree beyond the trait. Read from the
-                # submitted model rather than asked for separately.
-                {"key": "residual_pairs", "fn": "score_pair_set",
-                 "derive_from": "refit_residual_covariances",
-                 "truth_key": "scored.residual_pairs",
-                 "criterion": "local_dependence"},
-                {"key": "factor_correlation", "fn": "score_scalar",
-                 "truth_key": "scored.factor_correlation", "tol": 0.06,
-                 "applicable_if": "model_has_two_oblique_factors",
-                 "criterion": "parameter_quality"},
-            ]),
-    }]
+    return [
+        {
+            "id": TASK_ID,
+            "name": "HSNS dimensionality versus item redundancy",
+            "uuid": "6c40b18e-9d2f-4a77-93e1-58aa0c7f5d03",
+            "keywords": [
+                "psychometrics",
+                "factor analysis",
+                "local dependence",
+                "model selection",
+                "HSNS",
+            ],
+            "metrics": ["binary", "partial"],
+            "level": 1,
+            "description": PROMPT,
+            "submission_format": SUBMISSION_FORMAT,
+            "initial_input": {
+                "dataset": "data.csv",
+                "codebook": "codebook.md",
+                "data_sha256": data_sha,
+            },
+            "tools": [],
+            "scoring_function": "score_model_criteria",
+            "scoring_params": C.scoring_contract(
+                "artifacts/level_1/task_03/truth.json",
+                ITEMS,
+                [
+                    {
+                        "key": "loadings",
+                        "fn": "score_vector",
+                        "truth_key": "scored.loadings",
+                        "tol": 0.08,
+                        "all_must_be_within": True,
+                        "criterion": "parameter_quality",
+                    },
+                    # The answer: which pairs agree beyond the trait. Read from the
+                    # submitted model rather than asked for separately.
+                    {
+                        "key": "residual_pairs",
+                        "fn": "score_pair_set",
+                        "derive_from": "refit_residual_covariances",
+                        "truth_key": "scored.residual_pairs",
+                        "criterion": "local_dependence",
+                    },
+                    {
+                        "key": "factor_correlation",
+                        "fn": "score_scalar",
+                        "truth_key": "scored.factor_correlation",
+                        "tol": 0.06,
+                        "applicable_if": "model_has_two_oblique_factors",
+                        "criterion": "parameter_quality",
+                    },
+                ],
+            ),
+        }
+    ]
 
 
 def verify(df, pop):
@@ -245,38 +290,56 @@ def verify(df, pop):
     for name, spec in candidate_models().items():
         crit = C.evaluate_model(spec, X, ITEMS, pop)
         criteria[name] = crit
-        rows.append({"model": name, "df": crit["df"],
-                     "p": 1 - chi2_dist.cdf(crit["chi2"], crit["df"]),
-                     "CFI": crit["CFI"], "RMSEA": crit["RMSEA"],
-                     "BIC": crit["BIC"], "sigma": crit["sigma_max_abs_deviation"]})
-    print(pd.DataFrame(rows).to_string(index=False,
-                                       float_format=lambda v: f"{v:.4f}"))
+        rows.append(
+            {
+                "model": name,
+                "df": crit["df"],
+                "p": 1 - chi2_dist.cdf(crit["chi2"], crit["df"]),
+                "CFI": crit["CFI"],
+                "RMSEA": crit["RMSEA"],
+                "BIC": crit["BIC"],
+                "sigma": crit["sigma_max_abs_deviation"],
+            }
+        )
+    print(pd.DataFrame(rows).to_string(index=False, float_format=lambda v: f"{v:.4f}"))
 
     truth = criteria["unidimensional_with_correlated_residuals"]
     corr = pd.DataFrame(np.corrcoef(X.values.T), index=ITEMS, columns=ITEMS)
-    ranked = sorted(((a, b, corr.loc[a, b]) for i, a in enumerate(ITEMS)
-                     for b in ITEMS[i + 1:]), key=lambda t: -t[2])
+    ranked = sorted(
+        ((a, b, corr.loc[a, b]) for i, a in enumerate(ITEMS) for b in ITEMS[i + 1 :]),
+        key=lambda t: -t[2],
+    )
     decoy_rank = [(a, b) for a, b, _ in ranked].index(DECOY_PAIR) + 1
     residual = corr.values - _implied(reference_syntax().split("\n")[0], X)
     res = pd.DataFrame(residual, index=ITEMS, columns=ITEMS)
 
-    print(f"\ntop raw correlations: " +
-          "  ".join(f"{a}-{b} {r:.3f}" for a, b, r in ranked[:3]))
-    print(f"residual correlations under one factor: " +
-          "  ".join(f"{a}-{b} {res.loc[a, b]:+.3f}" for (a, b), _ in RESIDUAL_PAIRS) +
-          f"   decoy {DECOY_PAIR[0]}-{DECOY_PAIR[1]} "
-          f"{res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]:+.3f}")
+    print(
+        f"\ntop raw correlations: "
+        + "  ".join(f"{a}-{b} {r:.3f}" for a, b, r in ranked[:3])
+    )
+    print(
+        f"residual correlations under one factor: "
+        + "  ".join(f"{a}-{b} {res.loc[a, b]:+.3f}" for (a, b), _ in RESIDUAL_PAIRS)
+        + f"   decoy {DECOY_PAIR[0]}-{DECOY_PAIR[1]} "
+        f"{res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]:+.3f}"
+    )
 
     checks = [
         ("the generating model fits well", truth["CFI"] > 0.99),
-        ("the two-factor reading fits badly",
-         criteria["two_correlated_factors"]["CFI"] < truth["CFI"] - 0.05),
-        ("plain unidimensional fits badly",
-         criteria["unidimensional"]["CFI"] < truth["CFI"] - 0.05),
+        (
+            "the two-factor reading fits badly",
+            criteria["two_correlated_factors"]["CFI"] < truth["CFI"] - 0.05,
+        ),
+        (
+            "plain unidimensional fits badly",
+            criteria["unidimensional"]["CFI"] < truth["CFI"] - 0.05,
+        ),
         ("the decoy pair ranks in the top 3 raw correlations", decoy_rank <= 3),
-        ("but its residual correlation is an order of magnitude smaller",
-         abs(res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]) * 5
-         < min(abs(res.loc[a, b]) for (a, b), _ in RESIDUAL_PAIRS)),
+        (
+            "but its residual correlation is an order of magnitude smaller",
+            abs(res.loc[DECOY_PAIR[0], DECOY_PAIR[1]]) * 5
+            < min(abs(res.loc[a, b]) for (a, b), _ in RESIDUAL_PAIRS),
+        ),
     ]
     return C.report(checks)
 
@@ -304,32 +367,46 @@ def naive(df, pop):
     corr = np.corrcoef(X.values.T)
     eigen = np.linalg.eigvalsh(corr)[::-1]
     rng = np.random.default_rng(0)
-    random_eigen = [np.linalg.eigvalsh(np.corrcoef(rng.standard_normal(X.shape).T))[::-1]
-                    for _ in range(30)]
+    random_eigen = [
+        np.linalg.eigvalsh(np.corrcoef(rng.standard_normal(X.shape).T))[::-1]
+        for _ in range(30)
+    ]
     n_factors = int((eigen > np.percentile(random_eigen, 95, axis=0)).sum())
-    print(f"parallel analysis on the US sample -> {n_factors} factors "
-          f"(eigenvalues {np.round(eigen[:3], 2)})")
+    print(
+        f"parallel analysis on the US sample -> {n_factors} factors "
+        f"(eigenvalues {np.round(eigen[:3], 2)})"
+    )
     FactorAnalyzer(n_factors=2, rotation="oblimin", method="minres").fit(X.values)
 
     truth = {k: v[1] for k, v in LOADINGS.items()}
     print(f"\n{'sample':22s} {'N':>7s} {'worst |error|':>14s}  within 0.08?")
     outcome = {}
-    for label, sub in (("US only (correct)", df[df.country == "US"]),
-                       ("pooled (no filter)", df)):
+    for label, sub in (
+        ("US only (correct)", df[df.country == "US"]),
+        ("pooled (no filter)", df),
+    ):
         Xs = sub[ITEMS]
         Xs = Xs[(Xs != 0).all(axis=1)].astype(float)
-        fitted = {k: abs(v) for k, v in
-                  C.loadings(C.fit(reference_syntax(), Xs, ITEMS)).items()}
+        fitted = {
+            k: abs(v)
+            for k, v in C.loadings(C.fit(reference_syntax(), Xs, ITEMS)).items()
+        }
         worst = max(abs(fitted[i] - truth[i]) for i in ITEMS)
         outcome[label] = worst <= 0.08
-        print(f"{label:22s} {len(Xs):7,} {worst:14.3f}  "
-              f"{'yes' if outcome[label] else 'NO'}")
+        print(
+            f"{label:22s} {len(Xs):7,} {worst:14.3f}  "
+            f"{'yes' if outcome[label] else 'NO'}"
+        )
 
-    return C.report([
-        ("the usual dimensionality check reports two factors", n_factors == 2),
-        ("the pooled analysis reports loadings outside tolerance",
-         outcome["US only (correct)"] and not outcome["pooled (no filter)"]),
-    ])
+    return C.report(
+        [
+            ("the usual dimensionality check reports two factors", n_factors == 2),
+            (
+                "the pooled analysis reports loadings outside tolerance",
+                outcome["US only (correct)"] and not outcome["pooled (no filter)"],
+            ),
+        ]
+    )
 
 
 def main():
@@ -344,12 +421,16 @@ def main():
 
     print(f"Fitting the scoring reference (population draw N={POP_REFERENCE_N:,}) ...")
     pop = population_correlation_matrix()
-    floor = C.evaluate_model(reference_syntax(), C.analysis_sample(df, ITEMS),
-                             ITEMS, pop)
+    floor = C.evaluate_model(
+        reference_syntax(), C.analysis_sample(df, ITEMS), ITEMS, pop
+    )
     C.write_artifacts(
-        OUT_DIR, TASK_JSON, df,
+        OUT_DIR,
+        TASK_JSON,
+        df,
         lambda sha: build_truth(floor, pop.tolist(), sha, len(df)),
-        build_task_json)
+        build_task_json,
+    )
     return 0
 
 

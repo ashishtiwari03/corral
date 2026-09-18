@@ -861,7 +861,7 @@
     "generator": "gen_l1_t07_cross_country_replication.py",
     "seed": 20260907,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 39000,
     "data_sha256": "d8dd037de1ce70b3cae79f9c99cd5d14df9a33b6588497b59ea4c912b0e83460",
     "external_data_used": null,

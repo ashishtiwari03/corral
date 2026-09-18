@@ -1,34 +1,51 @@
 # Task 08 — what may each questionnaire's scores be used for?
 
-## The idea
+## The task
 
-For each questionnaire, decide what may legitimately be added up: one total,
-separate subscale scores, both, or neither. The HSNS supports a total. The Dirty
-Dozen does not, and supports subscale scores instead.
+Select the US respondents, build a model for each questionnaire, and decide
+what each one entitles you to add up: one overall total, separate subscale
+scores, both, or neither.
 
-## What goes wrong
+## The data
 
-- The reliability figure almost every paper reports ranks the two backwards.
-  The Dirty Dozen scores higher on it, and its total is the one that means
-  nothing: only about a third of that total reflects anything its twelve items
-  share, and the rest blends three distinguishable traits.
-- Reaching for the usual correction is not enough either. By that measure the
-  Dirty Dozen total looks excellent. Only the figure that asks specifically how
-  much of the total comes from a *single common* trait separates them.
-- Keeping both the total and the subscales is the natural compromise, since
-  the subscales are genuinely good and the total looks fine. It is wrong.
-- Analysing all countries together breaks both verdicts at once.
+- **HSNS**: one trait, even loadings .40–.52, plus a little shared agreement
+  between items 2 and 7. Gives a sound total score.
+- **Dirty Dozen**: a weak broad trait (loadings .22–.46) under three strong
+  narrow ones (.62–.80). Gives sound subscale scores and a meaningless total.
+
+The balance between broad and narrow varies from item to item within a
+subscale. Without that variation the model would be three related traits
+written a different way, and the task would have no answer.
+
+Put in deliberately: outside the US the HSNS splits in two and the Dirty Dozen
+collapses onto one strong trait, which breaks both verdicts if the countries
+are pooled.
+
+## The answer
+
+The HSNS supports a total. The Dirty Dozen does not, and supports subscale
+scores instead.
+
+## Traps
+
+- **The usual reliability figure ranks them backwards.** The Dirty Dozen scores
+  higher on the number almost every paper reports, and its total is the one
+  that means nothing: only about a third of it reflects anything its twelve
+  items share, the rest blending three distinguishable traits.
+- **The usual correction is not enough either.** By that measure the Dirty Dozen
+  total looks excellent. Only the figure that asks how much of a total comes
+  from a single common trait separates the two questionnaires.
+- **The compromise answer is wrong.** Keeping both the total and the subscales
+  is natural, since the subscales are genuinely good and the total looks fine.
+- **The wrong sample breaks both verdicts at once.** Analysing every country
+  rather than the US alone changes the answer for each questionnaire.
 
 ## Scoring
 
 Stage 2 rejects a model of three merely related traits, which would reach the
-right verdict by a route the data do not support. Stage 3 checks the verdict for
-each questionnaire and which items group together. Neither reliability figure is
-asked for: knowing which one answers the question is the task.
-
-The submission is the model and a verdict per questionnaire. Anything else the
-scorer needs it works out by re-fitting the submitted model, so the agent is
-not asked for it.
+right verdict by a route the data do not support. Stage 3 checks the verdict
+for each questionnaire and which items group together. Neither reliability
+figure is asked for: knowing which one answers the question is the task.
 
 ## Rebuild
 
@@ -37,5 +54,5 @@ uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t08_score_justification.py [--verify|--naive]
 ```
 
-`--verify` prints the numbers behind everything above and checks the intended
-answer wins. `--naive` checks that the obvious analysis fails.
+`--verify` prints the numbers behind all of the above. `--naive` shows the
+obvious analysis failing.

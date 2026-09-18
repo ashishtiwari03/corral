@@ -457,7 +457,7 @@
     "generator": "gen_l1_t05_defensible_comparisons.py",
     "seed": 20260905,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 43710,
     "data_sha256": "cf5f0bcca61896cf6c7fd5ad8ee2031f8993b666fed42d0bdd6ac6928b132fd1",
     "external_data_used": null,

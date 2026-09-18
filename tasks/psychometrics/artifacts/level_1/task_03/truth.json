@@ -376,7 +376,7 @@
     "generator": "gen_l1_t03_local_dependence.py",
     "seed": 20260903,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 43710,
     "data_sha256": "cd3ab658a29b16f988bf488ef4cc5a69ae1882e1d8e466ac22b6feeea6e0baba",
     "external_data_used": null,

@@ -338,7 +338,7 @@
     "generator": "gen_l1_t10_item_integrity.py",
     "seed": 20260922,
     "generated": "2026-09-18",
-    "git_rev": "516d823f3",
+    "git_rev": "e50d8fbca",
     "rows": 43710,
     "data_sha256": "78cdfa92c3ae30bfc2801692549c8a15ef988967c044b39119852cf7092de8d8",
     "external_data_used": null,
