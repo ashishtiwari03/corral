@@ -441,3 +441,31 @@ async def test_python_state_and_protocol_are_isolated_between_trials_and_forks(
             json.loads(await _execute(session, "submit_action", planets=[]))["success"]
             is False
         )
+
+
+@pytest.mark.anyio
+async def test_submit_gate_waits_for_the_protocol_acknowledgement(tmp_path, environment):
+    database = tmp_path / "gate_order.sqlite3"
+    async with SQLiteCommitStore(database, "gate_order") as store:
+        session = await _start_session(environment, store)
+        # Step 2 of the prompt asks for exactly this line, and an agent can
+        # reach it before the step 0 acknowledgement.
+        await _execute(
+            session,
+            "PythonREPL",
+            input_code='print("Gate decision: Kepler=YES; Best_RMS_over_med_sigma=1.09")',
+        )
+        assert _submission_state(await store.materialize("main"))["force_submit"]
+
+        # submit_action stays blocked until the guide is acknowledged, so
+        # blocking the REPL too would leave the trial with no way forward.
+        assert "protocol guide not acknowledged" in await _execute(
+            session, "submit_action", planets=[]
+        )
+        assert "42" in await _execute(session, "PythonREPL", input_code="print(42)")
+
+        # Once acknowledged, the gate applies as designed.
+        await _ack(session)
+        assert "Policy gate active" in await _execute(
+            session, "PythonREPL", input_code="print(42)"
+        )

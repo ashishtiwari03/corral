@@ -193,3 +193,13 @@ def test_last_line_inside_a_block_keeps_its_indentation(analysis_session):
         "No output. You likely forgot to print the result. "
         "Please use `print(...)` to see any output."
     )
+
+
+def test_submission_guide_uses_real_newlines(analysis_session):
+    from stargazer.tools import STARGAZER_SUBMISSION_GUIDE
+
+    # The guide is the prompt's mandatory step 0, so a literal "\n" is the
+    # first thing every agent reads.
+    assert "\\n" not in STARGAZER_SUBMISSION_GUIDE
+    assert len(STARGAZER_SUBMISSION_GUIDE.splitlines()) == 6
+    assert analysis_session.execute("print(STARGAZER_SUBMISSION_GUIDE)").count("\n") == 7

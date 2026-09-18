@@ -303,7 +303,13 @@ class StargazerEnvironment(Environment):
         submission = hidden["submission_session"]
         if submission["done"]:
             return "Stargazer is done. Finish with Corral's final-answer tool."
-        if tool.name == "PythonREPL" and submission["force_submit"]:
+        # Forcing a submission the protocol gate would refuse locks both
+        # tools: neither early return can clear either flag.
+        if (
+            tool.name == "PythonREPL"
+            and submission["force_submit"]
+            and submission["protocol_ack"]
+        ):
             return (
                 "Policy gate active: Best_RMS_over_med_sigma < 1.1 with Kepler=YES. "
                 "Your next step MUST be submit_action now; skip summaries and extra analysis."

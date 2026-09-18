@@ -210,3 +210,19 @@ def test_zero_time_of_periastron_is_not_discarded(simple_task, exact_submission)
     )
 
     assert zero.planets[0].l_rad == pytest.approx(shifted.planets[0].l_rad)
+
+
+def test_null_mass_does_not_discard_the_amplitude(simple_task):
+    planet = {"P_days": 10.0, "K_ms": 50.0, "e": 0.1, "omega_rad": 0.2, "l_rad": 1.0}
+    expected = normalize_submission({"planets": [planet]}, simple_task)
+
+    # An LLM writing `"m_sin_i_mjup": null` used to drop K_ms with it, leaving
+    # the planet clamped to the 0.001 Mjup floor.
+    for absent in (None, 0.0):
+        result = normalize_submission(
+            {"planets": [{**planet, "m_sin_i_mjup": absent}]}, simple_task
+        )
+        assert result.planets[0].m_sin_i_mjup == pytest.approx(
+            expected.planets[0].m_sin_i_mjup
+        )
+        assert result.planets[0].m_sin_i_mjup > 0.001

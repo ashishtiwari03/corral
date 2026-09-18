@@ -496,12 +496,12 @@ class StargazerTool(Tool):
 
 # The pinned implementation uses this fallback because no guide file is shipped.
 STARGAZER_SUBMISSION_GUIDE = (
-    "Stargazer Submission Guide\\n"
-    "1) Preferred fields: P_days, m_sin_i_mjup, e, omega_rad, l_rad\\n"
-    "2) Reference epoch: t_ref = times_days[0]\\n"
-    "3) Convert M0 to l_rad via l_rad = (Omega_rad + omega_rad + M0) mod 2pi\\n"
-    "4) Avoid mixing phase aliases; if using l_rad, treat it as canonical\\n"
-    "5) Before submit: verify converted action rv_model residual RMS is near sigma\\n"
+    "Stargazer Submission Guide\n"
+    "1) Preferred fields: P_days, m_sin_i_mjup, e, omega_rad, l_rad\n"
+    "2) Reference epoch: t_ref = times_days[0]\n"
+    "3) Convert M0 to l_rad via l_rad = (Omega_rad + omega_rad + M0) mod 2pi\n"
+    "4) Avoid mixing phase aliases; if using l_rad, treat it as canonical\n"
+    "5) Before submit: verify converted action rv_model residual RMS is near sigma\n"
 )
 PRELOADED_VARS = {
     "times_days",
