@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""Task 05: which comparisons between men and women can be defended?
+"""Generate Task 05, the defensible gender-comparisons task.
 
-The items relate to the trait the same way in both groups, so comparing the
-structure, the spread, and how the trait relates to other traits are all sound.
-But six of the ten items are answered differently by men and women at the same
-trait level, and in both directions, so no item can be trusted as a fixed point
-of reference. The comparison everyone wants, the group averages, is the one
-that cannot be made.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t05_defensible_comparisons.py             # write the task
-    python gen_l1_t05_defensible_comparisons.py --verify    # check it is solvable
-    python gen_l1_t05_defensible_comparisons.py --naive     # check the obvious answer fails
+    python gen_l1_t05_defensible_comparisons.py
+    python gen_l1_t05_defensible_comparisons.py --verify
+    python gen_l1_t05_defensible_comparisons.py --naive
 """
 
 from __future__ import annotations

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Task 02: how many traits does the Dirty Dozen measure?
+"""Generate Task 02, the Dirty Dozen factor-structure task.
 
-The answers come from one broad trait plus a narrow one per subscale. The three
-subscales the questionnaire was published with fit well enough to pass every
-usual cutoff and are still the wrong answer. Only comparing models shows it.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t02_dd_structure.py             # write the task
-    python gen_l1_t02_dd_structure.py --verify    # check it is solvable
-    python gen_l1_t02_dd_structure.py --naive     # check the obvious answer fails
+    python gen_l1_t02_dd_structure.py
+    python gen_l1_t02_dd_structure.py --verify
+    python gen_l1_t02_dd_structure.py --naive
 """
 
 from __future__ import annotations

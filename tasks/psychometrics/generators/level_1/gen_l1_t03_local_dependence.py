@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 03: does the HSNS measure one trait or two?
+"""Generate Task 03, the HSNS dimensionality and local-dependence task.
 
-The answers come from a single trait. Two pairs of items are worded so alike
-that people answer them alike for reasons the trait does not explain, which is
-enough to make the usual check report two traits. A third pair reads just as
-alike and has no such link, so it is a decoy.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t03_local_dependence.py             # write the task
-    python gen_l1_t03_local_dependence.py --verify    # check it is solvable
-    python gen_l1_t03_local_dependence.py --naive     # check the obvious answer fails
+    python gen_l1_t03_local_dependence.py
+    python gen_l1_t03_local_dependence.py --verify
+    python gen_l1_t03_local_dependence.py --naive
 """
 
 from __future__ import annotations

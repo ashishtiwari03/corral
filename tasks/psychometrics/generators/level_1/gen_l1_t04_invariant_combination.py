@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 04: which questionnaire supports a comparison between men and women?
+"""Generate Task 04, the gender-comparison measurement-invariance task.
 
-Two questionnaires were given. One really is unfair to women on four items. The
-other is fair, but only looks fair once it is modelled correctly: under its
-published subscale structure it appears unfair on three items that are not. So
-taking each questionnaire at face value suggests neither can be used.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t04_invariant_combination.py             # write the task
-    python gen_l1_t04_invariant_combination.py --verify    # check it is solvable
-    python gen_l1_t04_invariant_combination.py --naive     # check the obvious answer fails
+    python gen_l1_t04_invariant_combination.py
+    python gen_l1_t04_invariant_combination.py --verify
+    python gen_l1_t04_invariant_combination.py --naive
 """
 
 from __future__ import annotations

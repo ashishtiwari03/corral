@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 08: what may each questionnaire's scores be used for?
+"""Generate Task 08, the score-justification task.
 
-The reliability figure almost every paper reports ranks the two questionnaires
-backwards. The one with the higher figure is the one whose total score means
-nothing, because its items agree with each other without sharing a common
-trait.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t08_score_justification.py             # write the task
-    python gen_l1_t08_score_justification.py --verify    # check it is solvable
-    python gen_l1_t08_score_justification.py --naive     # check the obvious answer fails
+    python gen_l1_t08_score_justification.py
+    python gen_l1_t08_score_justification.py --verify
+    python gen_l1_t08_score_justification.py --naive
 """
 
 from __future__ import annotations

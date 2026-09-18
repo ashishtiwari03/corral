@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 09: how strongly are the two questionnaires related?
+"""Generate Task 09, the careless-responding task.
 
-A twelfth of the respondents were not reading the questions. Nothing in the
-model output says so: the structure survives intact and fits well. But every
-correlation is pulled upward, and the weak ones, which is where the answer
-lives, are pulled the furthest.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t09_careless_responding.py             # write the task
-    python gen_l1_t09_careless_responding.py --verify    # check it is solvable
-    python gen_l1_t09_careless_responding.py --naive     # check the obvious answer fails
+    python gen_l1_t09_careless_responding.py
+    python gen_l1_t09_careless_responding.py --verify
+    python gen_l1_t09_careless_responding.py --naive
 """
 
 from __future__ import annotations

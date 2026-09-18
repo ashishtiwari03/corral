@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 07: which questionnaire travels to other countries?
+"""Generate Task 07, the cross-country replication task.
 
-Both questionnaires are calibrated on the US sample and tested in six other
-countries. The one that measures better at home is the one that does not
-transfer, and it does not announce itself: the US model keeps fitting those
-countries perfectly well, it has just stopped being the best model there.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t07_cross_country_replication.py             # write the task
-    python gen_l1_t07_cross_country_replication.py --verify    # check it is solvable
-    python gen_l1_t07_cross_country_replication.py --naive     # check the obvious answer fails
+    python gen_l1_t07_cross_country_replication.py
+    python gen_l1_t07_cross_country_replication.py --verify
+    python gen_l1_t07_cross_country_replication.py --naive
 """
 
 from __future__ import annotations

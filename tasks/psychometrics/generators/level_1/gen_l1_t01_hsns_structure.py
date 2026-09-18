@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 01: how many traits does the HSNS measure?
+"""Generate Task 01, the HSNS factor-structure task.
 
-The answers come from two related traits. Two rival models fit the data better
-than the true one and are both unusable, for reasons no fit index reports. A
-third is rejected by a test that rejects the true model too, because the sample
-is large enough to notice any imperfection.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t01_hsns_structure.py             # write the task
-    python gen_l1_t01_hsns_structure.py --verify    # check it is solvable
-    python gen_l1_t01_hsns_structure.py --naive     # check the obvious answer fails
+    python gen_l1_t01_hsns_structure.py
+    python gen_l1_t01_hsns_structure.py --verify
+    python gen_l1_t01_hsns_structure.py --naive
 """
 
 from __future__ import annotations

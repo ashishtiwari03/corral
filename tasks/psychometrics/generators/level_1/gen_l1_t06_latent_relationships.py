@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 06: how do the traits behind the two questionnaires relate?
+"""Generate Task 06, the latent-dimension relationships task.
 
-Adding up item scores and correlating the totals makes every relationship look
-weaker than it is, and not by a constant amount: the worst-measured traits
-shrink furthest. That leaves a picture of mild, even relationships, where the
-real one has a pair of traits that can barely be told apart.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t06_latent_relationships.py             # write the task
-    python gen_l1_t06_latent_relationships.py --verify    # check it is solvable
-    python gen_l1_t06_latent_relationships.py --naive     # check the obvious answer fails
+    python gen_l1_t06_latent_relationships.py
+    python gen_l1_t06_latent_relationships.py --verify
+    python gen_l1_t06_latent_relationships.py --naive
 """
 
 from __future__ import annotations

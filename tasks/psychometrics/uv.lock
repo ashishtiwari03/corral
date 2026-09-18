@@ -261,7 +261,7 @@ wheels = [
 [[package]]
 name = "psychometrics-task-environment"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "factor-analyzer" },
     { name = "numpy" },

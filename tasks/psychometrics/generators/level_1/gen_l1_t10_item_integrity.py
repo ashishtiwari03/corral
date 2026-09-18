@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Task 10: which items are bad, and which is the data?
+"""Generate Task 10, the item-integrity task.
 
-Four of the ten HSNS items misbehave and only one of them is genuinely a poor
-item. Two of the other three leave no trace in the model output at all, and the
-two that look most alike - one with damaged data, one genuinely weak - differ
-by a hundredth.
+The generator simulates the survey, writes the task artifacts and scoring
+metadata, and provides checks for the intended and naive analyses.
 
-    python gen_l1_t10_item_integrity.py             # write the task
-    python gen_l1_t10_item_integrity.py --verify    # check it is solvable
-    python gen_l1_t10_item_integrity.py --naive     # check the obvious answer fails
+    python gen_l1_t10_item_integrity.py
+    python gen_l1_t10_item_integrity.py --verify
+    python gen_l1_t10_item_integrity.py --naive
 """
 
 from __future__ import annotations
