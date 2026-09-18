@@ -181,3 +181,15 @@ def test_last_line_statements_run_instead_of_being_wrapped(analysis_session):
     # A variable named after a print keyword argument is an assignment too.
     analysis_session.execute("end=times_days[-1]")
     assert analysis_session.execute("print(end == times_days[-1])") == "True\n"
+
+
+def test_last_line_inside_a_block_keeps_its_indentation(analysis_session):
+    # Dedenting the wrapped line used to raise SyntaxError, discarding the cell.
+    assert analysis_session.execute("for t in range(3):\n    t") == "0\n1\n2\n"
+
+    # Dedenting also used to hoist print(...) out of the block it belonged to,
+    # so a branch that must not run would run anyway.
+    assert analysis_session.execute("if False:\n    hidden = 1\n    hidden") == (
+        "No output. You likely forgot to print the result. "
+        "Please use `print(...)` to see any output."
+    )
