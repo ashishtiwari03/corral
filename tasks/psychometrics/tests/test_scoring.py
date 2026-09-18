@@ -97,6 +97,12 @@ TASKS = [
         "artifacts/level_2/task_01/data.csv",
         "correct",
     ),
+    (
+        "generators/level_2/gen_l2_t02_out_of_sample_generalization.py",
+        "environments/level_2/tasks_json/task_02.json",
+        "artifacts/level_2/task_02/data.csv",
+        "correct",
+    ),
 ]
 
 
@@ -200,6 +206,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if "recommendation" in good
         else "affected_items"
         if "affected_items" in good
+        else "holdout_conclusions"
+        if "holdout_conclusions" in good
         else "latent_difference"
         if "gender" in items
         else "loadings"
@@ -221,6 +229,8 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if key == "recommendation"
         else list(items)
         if key == "affected_items"
+        else {k: "generalizes" for k in good["holdout_conclusions"]}
+        if key == "holdout_conclusions"
         else 0.9
         if key == "latent_difference"
         else {k: 0.55 for k in items}

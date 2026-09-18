@@ -240,6 +240,57 @@ def biased_items_from_fit(model, items, covariate: str = "gender") -> set:
     return {row.lval for row in rows.itertuples()}
 
 
+def _standardised(model, items):
+    """A fitted model's loadings and its one factor correlation."""
+    ins = model.inspect(std_est=True)
+    load = ins[(ins.op == "~") & ins.lval.isin(items)]
+    loadings = {row["lval"]: float(row["Est. Std"]) for _, row in load.iterrows()}
+    cov = ins[(ins.op == "~~") & (ins.lval != ins.rval) & ~ins.lval.isin(items)]
+    phi = float(cov["Est. Std"].iloc[0]) if len(cov) else None
+    return loadings, phi
+
+
+def diagnose_holdouts(spec, items, train_fit, holdouts, thresholds):
+    """Refit the submitted model in each holdout and say how far it travels.
+
+    The frozen structure is re-estimated in every holdout and compared with the
+    training solution. Items that no longer track their factor the same way
+    break the measurement structure; a factor correlation that moves while the
+    loadings hold leaves the structure intact but changes what it says.
+
+    spec        the submitted model, unchanged
+    items       variables the model covers
+    train_fit   the model already fitted to the training data
+    holdouts    name -> respondents, one frame per holdout
+    thresholds  how far a loading and a factor correlation may move
+
+    Returns name -> label, and name -> the measurements behind it.
+    """
+    base_loadings, base_phi = _standardised(train_fit, items)
+    labels, detail = {}, {}
+    for name, frame in holdouts.items():
+        try:
+            _, model = evaluate_model(spec, frame, items)
+        except Exception:  # noqa: BLE001
+            labels[name] = None
+            continue
+        loadings, phi = _standardised(model, items)
+        loading_shift = max(abs(loadings[i] - base_loadings[i]) for i in base_loadings)
+        phi_shift = abs(phi - base_phi) if phi is not None and base_phi is not None else 0.0
+        if loading_shift > thresholds["loading"]:
+            labels[name] = "measurement_structure_fails"
+        elif phi_shift > thresholds["factor_correlation"]:
+            labels[name] = "measurement_structure_holds_relations_differ"
+        else:
+            labels[name] = "generalizes"
+        detail[name] = {
+            "max_loading_shift": round(loading_shift, 3),
+            "factor_correlation_shift": round(phi_shift, 3),
+            "factor_correlation": round(phi, 3) if phi is not None else None,
+        }
+    return labels, detail
+
+
 def latent_group_difference(model, items, covariate: str = "gender") -> float | None:
     """The largest group difference the model still puts on a trait.
 
@@ -312,6 +363,7 @@ def check_claims(
     n_latents: int,
     model=None,
     items: list[str] | None = None,
+    derived: dict | None = None,
 ) -> dict:
     out: dict[str, bool | None] = {}
     for item in spec:
@@ -324,6 +376,8 @@ def check_claims(
             reported = biased_items_from_fit(model, items, item.get("covariate", "gender"))
         elif item.get("derive_from") == "refit_latent_group_difference":
             reported = latent_group_difference(model, items, item.get("covariate", "gender"))
+        elif item.get("derive_from") == "refit_holdouts":
+            reported = (derived or {}).get(key)
         else:
             reported = submission.get(key)
         target = _dig(truth, item.get("truth_key", ""))
@@ -490,6 +544,23 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
             "TIER2 " + ",".join(k for k, v in dominance.items() if v is False),
         )
 
+    derived = {}
+    if params.get("holdout_datasets"):
+        folder = base / params["truth_path"].rsplit("/", 1)[0]
+        holdouts = {}
+        for name, filename in params["holdout_datasets"].items():
+            frame = pd.read_csv(folder / filename, sep="\t")
+            frame = frame[[c for c in known if c in frame.columns]]
+            holdouts[name] = frame[(frame != 0).all(axis=1)].astype(float)
+        try:
+            labels, detail = diagnose_holdouts(
+                spec, items, model, holdouts, params["holdout_thresholds"]
+            )
+        except Exception as exc:  # noqa: BLE001
+            return _zero(f"model failed to fit a holdout: {type(exc).__name__}: {exc}")
+        derived["holdout_diagnosis"] = labels
+        criteria["holdout_detail"] = detail
+
     n_latents = len({ln.split("=~")[0].strip() for ln in spec.splitlines() if "=~" in ln})
     claims = check_claims(
         submission,
@@ -498,6 +569,7 @@ def score_model_criteria(submission: str | dict, params: dict, base_dir: str | P
         n_latents,
         model=model,
         items=items,
+        derived=derived,
     )
     checks.update({k: _fmt(v) for k, v in claims.items()})
     if not all(v for v in claims.values() if v is not None):

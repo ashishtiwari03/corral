@@ -103,3 +103,4 @@ assumptions, and report a calibrated conclusion.
 | task | investigation |
 |---|---|
 | [1](generators/level_2/task_01.md) | Can this questionnaire compare the two groups? |
+| [2](generators/level_2/task_02.md) | Does the HSNS model generalize out of sample? |
