@@ -54,6 +54,9 @@ TASKS = [
     ("generators/level_1/gen_l1_t07_cross_country_replication.py",
      "environments/level_1/tasks_json/task_07.json",
      "artifacts/level_1/task_07/data.csv", "correct"),
+    ("generators/level_1/gen_l1_t08_score_justification.py",
+     "environments/level_1/tasks_json/task_08.json",
+     "artifacts/level_1/task_08/data.csv", "correct"),
 ]
 
 
@@ -131,17 +134,20 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         pooled_X = pooled_X[pooled_X.gender.isin([1, 2])]
     pooled_X = pooled_X[items]
     pooled_X = pooled_X[(pooled_X != 0).all(axis=1)].astype(float)
-    key = ("replication" if "replication" in good
+    key = ("scoring" if "scoring" in good
+           else "replication" if "replication" in good
            else "correlations" if "correlations" in good
            else "comparisons" if "comparisons" in good
            else "latent_difference" if "gender" in items else "loadings")
-    fake = ({i: {c: "exact" for c in v} for i, v in good["replication"].items()}
+    fake = ({k: "total_only" for k in good["scoring"]} if key == "scoring"
+            else {i: {c: "exact" for c in v} for i, v in good["replication"].items()}
             if key == "replication"
             else {k: 0.3 for k in good["correlations"]} if key == "correlations"
             else {k: True for k in good["comparisons"]} if key == "comparisons"
             else 0.9 if key == "latent_difference" else {k: 0.55 for k in items})
     adversarial = {
-        **({} if key in ("comparisons", "correlations", "replication") else
+        **({} if key in ("comparisons", "correlations", "replication",
+                         "scoring") else
            {"pooled sample (no US filter)":
             build_submission(gen.reference_syntax(), pooled_X, items)}),
         f"{key} fabricated": {**good, key: fake},
