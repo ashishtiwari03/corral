@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -321,7 +322,27 @@ def run_population_task(gen, params, expected_winner):
     return failures
 
 
+def ensure_generated():
+    """Build ignored task artifacts when pytest is run from a clean checkout."""
+    required = [ROOT / task_path for _, task_path, _, _ in TASKS]
+    if all(path.exists() for path in required):
+        return
+    result = subprocess.run(
+        [sys.executable, "build.py"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "could not generate task artifacts before scoring tests:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+
 def main():
+    ensure_generated()
     failures = []
     for task in TASKS:
         failures += run_task(*task)
