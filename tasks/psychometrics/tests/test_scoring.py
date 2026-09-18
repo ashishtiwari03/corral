@@ -266,5 +266,10 @@ def main():
     return 0
 
 
+def test_all_tasks_score_as_intended():
+    """Expose the integration suite to pytest-based CI as one test."""
+    assert main() == 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
