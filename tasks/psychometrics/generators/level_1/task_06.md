@@ -1,54 +1,24 @@
-# Task 06 — how do the traits behind the two questionnaires relate?
+# Task 06 — relationships between latent dimensions
 
-## The task
+## Task
 
-Select the US respondents and report how each trait behind one questionnaire
-relates to each trait behind the other, correcting for the fact that no trait
-is measured perfectly. Also name any pair too alike to tell apart.
+You are given responses from an online personality survey containing two instruments. Using respondents from the United States, investigate how the dimensions of one instrument relate to the dimensions of the other.
 
-## The data
+Estimate the correlation between every cross-instrument dimension pair while accounting for measurement error. Also decide which pairs should not be treated as distinct constructs: use a correlation of `0.80` or above as the threshold for indistinguishability. Responses are five-point ratings and `0` denotes a missing response.
 
-Five traits behind the two questionnaires: two from the HSNS, three from the
-Dirty Dozen. Loadings .40–.81.
+## What to report
 
-Put in deliberately:
+Submit one complete lavaan/semopy model covering both instruments, one latent correlation for every cross-instrument pair, and the pair or pairs that meet the indistinguishability threshold.
 
-- one HSNS trait measured poorly throughout (loadings .40–.48), so
-  relationships involving it shrink furthest when the shortcut is used
-- that same trait correlated **.86** with Dirty Dozen narcissism, close enough
-  that the two are not separate things
-- everything else moderate, so the near-duplicate pair is the only thing that
-  stands out
+Name factors as you wish; dimensions are matched by the items they cover.
 
-## The answer
+## Why this is non-trivial
 
-Five traits sit behind the two questionnaires. One cross-questionnaire pair
-correlates .86, close enough that the two are not worth treating as separate
-things. The rest are moderate.
+Correlations between raw totals are attenuated by measurement error, and the attenuation is uneven when dimensions have different loading quality. A weak observed relationship may therefore need more careful interpretation, while a very high latent relationship raises a separate discriminant-validity issue.
 
-## Traps
-
-- **Adding up item scores distorts everything.** Correlating the totals shrinks
-  every relationship, and not evenly: the worst-measured traits shrink
-  furthest. The result is a flat, mild picture with nothing standing out.
-- **The shortcut hides the one finding that matters.** The near-duplicate pair
-  shrinks most of all, because one of its traits is measured poorly.
-- **The threshold is given, not guessed.** The prompt states the correlation
-  above which two traits count as indistinguishable, so the judgement has one
-  right answer rather than being a matter of taste.
-
-## Scoring
-
-Stage 3 checks the reported correlations and which pair is called
-indistinguishable. Traits are matched by the items they cover, so an agent can
-name them anything it likes.
-
-## Rebuild
+## Synthetic task command
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t06_latent_relationships.py [--verify|--naive]
 ```
-
-`--verify` prints the numbers behind all of the above. `--naive` shows the
-obvious analysis failing.

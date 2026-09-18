@@ -1,54 +1,31 @@
-# Task 05 — which comparisons between men and women can be defended?
+# Task 05 — defensible comparisons between men and women
 
-## The task
+## Task
 
-Select the US respondents who reported male or female, then judge six specific comparisons of the HSNS between the two groups as defensible or not. Also report how the two traits relate within each group.
+You are given responses from an online personality survey. Using US respondents who reported male or female, investigate how far the HSNS supports comparisons between the two groups.
 
-## The data
+Give a defensibility judgement for each of these comparisons:
 
-The 10 HSNS items were drawn from one trait, loadings .48–.76, identical in
-both sexes. A second trait, from four Dirty Dozen items, was generated
-alongside it.
+- factor structure;
+- item loadings;
+- factor variances;
+- association with the Dirty Dozen narcissism items;
+- latent means;
+- observed total-score means.
 
-Put in deliberately:
+Also estimate the correlation between the HSNS trait and the Dirty Dozen narcissism trait separately for men and women. Responses are five-point ratings and `0` denotes a missing response.
 
-- six of the ten items shifted between the sexes, in **both** directions:
-  +.40, −.45, +.35, −.50, +.45, −.40
-- a real trait difference of .30 between the sexes, which those shifts make
-  impossible to recover
-- the two traits correlated .50 in men and .30 in women, a difference that
-  **is** recoverable
+## What to report
 
-## The answer
+Submit a complete measurement model for the HSNS and Dirty Dozen narcissism items, a Boolean judgement for every comparison, and the two group-specific trait correlations.
 
-The items relate to the trait identically in both groups, so comparing the
-structure, the spread of the trait, and how it relates to other traits are all
-sound. Comparing the group averages is not, and neither is comparing the raw
-totals.
+## Why this is non-trivial
 
-## Traps
+Different forms of comparability support different claims. Item response differences can make mean comparisons invalid even when the factor structure and associations are comparable. Bias in opposite directions may cancel in a total score, so the observed gap is not a reliable diagnostic.
 
-- **Six of ten items are answered differently.** Men and women at the same trait
-  level answer them differently, and in both directions. Since no item is
-  known to be clean, there is no fixed point to anchor a comparison of
-  averages.
-- **The comparison everyone wants is the one that fails.** Group averages are
-  the usual headline result and are exactly what these data cannot support.
-- **The bias does not announce itself.** Because the shifts run both ways they
-  roughly cancel in the totals, so there is no large obvious gap to notice.
-
-## Scoring
-
-Stage 3 checks a yes-or-no verdict on each of the six comparisons, plus the
-reported correlation between the two traits in each group, which is one of the
-comparisons that does hold.
-
-## Rebuild
+## Synthetic task command
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t05_defensible_comparisons.py [--verify|--naive]
 ```
-
-`--verify` prints the numbers behind all of the above. `--naive` shows the
-obvious analysis failing.

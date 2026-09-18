@@ -1,62 +1,28 @@
-# Task 10 — which items are bad, and which is the data?
+# Task 10 — item integrity
 
-## The task
+## Task
 
-Select the US respondents and work through the 10 HSNS items one at a time,
-classifying each as sound, damaged in one of three specific ways, or genuinely
-a poor item.
+You are given responses from an online personality survey collected in several countries. Using US respondents, investigate the 10 HSNS items and classify each item as exactly one of:
 
-## The data
+- `sound`: the item and its recorded data are usable;
+- `mis_keyed`: the response scale was stored in reverse;
+- `missing_as_neutral`: non-responses were recorded as the midpoint;
+- `truncated_scale`: the upper part of the response scale was not recorded;
+- `weak_item`: the data are intact but the item measures the trait poorly.
 
-The 10 HSNS items were drawn from one trait, loadings .48–.70.
+The Dirty Dozen items are present but are not part of this task. Responses are five-point ratings and `0` denotes a missing response.
 
-Put in deliberately, after the answers were generated:
+## What to report
 
-| item | what was done | result |
-|---|---|---|
-| HSNS4 | stored with its scale flipped | loading −.581 |
-| HSNS7 | 45% of answers rewritten to the middle option | loading .444 |
-| HSNS2 | top answer never recorded, scale capped at 4 | loading .630 |
-| HSNS6 | nothing — generated weak at .48 | loading .430 |
+Submit a complete lavaan/semopy model for the HSNS and a classification for every HSNS item.
 
-Outside the US every item is measured worse and HSNS9 runs backwards (−.45),
-as a mistranslated item would.
+## Why this is non-trivial
 
-## The answer
+A low loading does not identify the cause of an item's poor performance. Data corruption can resemble a weak item, while some corruption is visible mainly in the response range or category frequencies. The population used for analysis also matters when deciding which item is unusual.
 
-Four items misbehave. Three are good items whose recorded answers were damaged
-between the respondent and the file; only one is genuinely poor.
-
-## Traps
-
-- **Only one fault shows up in the model.** One item was stored with its scale
-  flipped, which is obvious. The tempting response, dropping it, is wrong: it
-  is a good item and recoding restores it.
-- **One fault is invisible.** Another item's top answer was never recorded, so
-  its scale runs 1 to 4 while the rest run 1 to 5. It still looks healthier
-  than several genuinely sound items. Only its range gives it away.
-- **Two items differ by a hundredth and need opposite treatment.** For one item,
-  people who declined to answer were recorded as picking the middle option. It
-  and the genuinely weak item have all but identical loadings, so no fit
-  measure or model comparison can separate them. What does is that the damaged
-  item is answered with the middle option far more often than any real trait
-  would produce.
-- **The wrong sample frames an innocent item.** Analysing every country makes a
-  perfectly sound item look like the weakest of the ten.
-
-## Scoring
-
-Stage 3 checks all ten verdicts at once, so every item has to be right. The
-scorer undoes the flipped item before fitting; otherwise its reversed loading
-would trip a stage 1 constraint and reject every submission, including the
-correct one.
-
-## Rebuild
+## Synthetic task command
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t10_item_integrity.py [--verify|--naive]
 ```
-
-`--verify` prints the numbers behind all of the above. `--naive` shows the
-obvious analysis failing.

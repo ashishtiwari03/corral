@@ -1,39 +1,24 @@
-# Task 03 — does the HSNS measure one trait or two?
+# Task 03 — HSNS dimensionality and local dependence
 
-## The task
+## Task
 
-Task is to identify how many traits lie behind HSNS. Select the US respondents, find the 10 HSNS items, and decide how many traits lie behind them. Submit that model and its loadings.
+You are given responses from an online personality survey. Use the codebook to investigate whether the HSNS measures one trait or more than one.
 
-## The data
+The analysis should also identify pairs of items whose responses share additional association beyond the common trait. Report the standardised loading of every item and the latent correlation if the selected model has multiple traits. The Dirty Dozen items are present but are not part of this task.
 
-The 10 HSNS items were drawn from a single trait, loadings .49 to .82.
+Responses are five-point ratings and `0` denotes a missing response. The target population is respondents from the United States.
 
-Put in deliberately:
+## What to report
 
-- two pairs that agree beyond the trait: items 2 and 7 (.38) and items 5 and 10 (.33), both near-paraphrases in wording
-- a decoy pair, items 1 and 8, given the two highest loadings (.82 and .80) and no extra agreement at all
-- non-US respondents measured worse (loadings ×0.75) and with no such pairs
+Submit a complete lavaan/semopy model for the 10 HSNS items, including correlated residuals where justified, plus the item loadings and any factor correlation.
 
-## The answer
+## Why this is non-trivial
 
-A single trait. Two pairs of items are worded so alike that people answer them alike for reasons the trait does not explain, and that extra agreement is enough to make the usual check report two traits.
+Local dependence can imitate an additional factor. Raw item correlations can also highlight a pair simply because both items are strong indicators. Deleting items may hide the symptom without explaining it, so distinguish item wording effects from substantive dimensionality.
 
-## Traps
-
-- **The standard method gives the wrong count.** Counting traits the usual way says two. The answer is one trait plus two pairs of near-duplicate items.
-- **A third pair is a decoy.** It reads more alike than either real pair and has no extra agreement at all. Sorting the raw correlations puts it near the top, because both its items simply track the trait strongly.
-- **Deleting items looks like a fix.** Dropping one item from each duplicated pair also removes the apparent second trait, so it seems to work while throwing away good items.
-
-## Scoring
-
-Stage 3 checks the loadings and which pairs of items agree beyond the trait. Those pairs are read out of the submitted model rather than asked for, so a submission that gets the structure right gets them right for free.
-
-## Rebuild
+## Synthetic task command
 
 ```bash
 uv run --with numpy --with pandas --with scipy --with semopy \
   python generators/level_1/gen_l1_t03_local_dependence.py [--verify|--naive]
 ```
-
-`--verify` prints the numbers behind all of the above. `--naive` shows the
-obvious analysis failing.
