@@ -198,15 +198,6 @@ def reference_syntax():
     return hsns_syntax() + "\n" + dd_bifactor()
 
 
-def alpha(X):
-    """Cronbach's alpha of a set of items, as it would be reported."""
-    values = X.values.astype(float)
-    k = values.shape[1]
-    return float(
-        k / (k - 1) * (1 - values.var(axis=0, ddof=1).sum() / values.sum(axis=1).var(ddof=1))
-    )
-
-
 def omega(general, specific, items):
     """Proportion of a sum score's variance due to the general factor, and to all
     common factors: omega_hierarchical and omega_total."""
@@ -384,7 +375,7 @@ def verify(df, pop):
     pooled = df[ITEMS][(df[ITEMS] != 0).all(axis=1)].astype(float)
     print(f"US calibration sample: {len(us):,}   whole file: {len(pooled):,}\n")
 
-    a_hsns, a_dd = alpha(us[HSNS]), alpha(us[DD])
+    a_hsns, a_dd = C.alpha(us[HSNS]), C.alpha(us[DD])
     w_hsns = hsns_omega()
     w_dd_h, w_dd_total = omega(DD_GENERAL, DD_SPECIFIC, DD)
     print(
@@ -402,7 +393,7 @@ def verify(df, pop):
         block = [i for i in DD if SPECIFIC_OF[i] == k]
         h, total = omega(DD_GENERAL, DD_SPECIFIC, block)
         print(
-            f"  {k}: alpha {alpha(us[block]):.3f}  omega_total {total:.3f}  "
+            f"  {k}: alpha {C.alpha(us[block]):.3f}  omega_total {total:.3f}  "
             f"specific share {total - h:.3f}"
         )
 
@@ -454,7 +445,7 @@ def verify(df, pop):
         f"\nSkipping the United States filter: HSNS unidimensional CFI "
         f"{fits['unidimensional'][0]:.4f} -> {pooled_cfi:.4f}, "
         f"Dirty Dozen omega_h {w_dd_h:.3f} -> {pooled_omega_h:.3f}, "
-        f"alpha {a_dd:.3f} -> {alpha(pooled[DD]):.3f}"
+        f"alpha {a_dd:.3f} -> {C.alpha(pooled[DD]):.3f}"
     )
 
     checks = [
@@ -500,7 +491,7 @@ def naive(df, pop):
     """Confirm that reporting alpha, as most papers do, picks the wrong instrument."""
     del pop
     us = C.analysis_sample(df, ITEMS)
-    a_hsns, a_dd = alpha(us[HSNS]), alpha(us[DD])
+    a_hsns, a_dd = C.alpha(us[HSNS]), C.alpha(us[DD])
     leader = "Dirty Dozen" if a_dd > a_hsns else "HSNS"
     print("Judging each total score by Cronbach's alpha:\n")
     print(f"  HSNS         alpha {a_hsns:.3f}  -> total_only")

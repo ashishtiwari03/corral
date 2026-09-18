@@ -95,8 +95,11 @@ Level 1 tasks
 
 ## Level 2
 
-Level 2 is not implemented yet.
+Level 2 tasks provide more than a dataset and a direct question. They may include
+preliminary analyses, competing interpretations, or multiple files. The agent
+must decide what evidence would distinguish the explanations, test the relevant
+assumptions, and report a calibrated conclusion.
 
-The planned format is a conflict between two or more defensible analyses that
-give opposite answers. Solving the task will require identifying what would
-settle the conflict and running an appropriate test.
+| task | investigation |
+|---|---|
+| [1](generators/level_2/task_01.md) | Can this questionnaire compare the two groups? |

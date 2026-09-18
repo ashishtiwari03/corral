@@ -326,6 +326,15 @@ def factor_correlations(model, factors):
     return {frozenset((r["lval"], r["rval"])): float(r["Est. Std"]) for _, r in rows.iterrows()}
 
 
+def alpha(X):
+    """Cronbach's alpha of a set of items, as it would be reported."""
+    values = X.values.astype(float)
+    k = values.shape[1]
+    return float(
+        k / (k - 1) * (1 - values.var(axis=0, ddof=1).sum() / values.sum(axis=1).var(ddof=1))
+    )
+
+
 def population_matrix(frame, items):
     """Correlations in a very large draw from the generating model.
 

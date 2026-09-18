@@ -10,6 +10,7 @@ A rebuild reproduces it byte for byte.
     python build.py --naive          # check the default analysis fails on each
     python build.py --check          # build, verify, naive, then the scoring tests
     python build.py --tasks 3 7      # limit any of the above to these tasks
+    python build.py --level 2        # limit it to one level instead
     python build.py --clean          # delete generated files, then build
 
 Dependencies come from the calling interpreter:
@@ -33,16 +34,22 @@ GENERATED = ["artifacts", "environments"]
 NAME = re.compile(r"gen_l(?P<level>\d+)_t(?P<task>\d+)_(?P<slug>.+)\.py")
 
 
-def generators(tasks=None):
-    """Every generator script in task order.
+def generators(tasks=None, level=None):
+    """Every generator script in level and task order.
 
     tasks  keep only these task numbers; all of them by default
+    level  keep only this level; all of them by default
     """
     found = []
     for path in sorted(ROOT.glob("generators/level_*/gen_l*_t*.py")):
         match = NAME.match(path.name)
-        if match and (tasks is None or int(match["task"]) in tasks):
-            found.append((int(match["level"]), int(match["task"]), match["slug"], path))
+        if not match:
+            continue
+        if tasks is not None and int(match["task"]) not in tasks:
+            continue
+        if level is not None and int(match["level"]) != level:
+            continue
+        found.append((int(match["level"]), int(match["task"]), match["slug"], path))
     return sorted(found)
 
 
@@ -115,9 +122,10 @@ def main():
     parser.add_argument(
         "--tasks", type=int, nargs="+", metavar="N", help="limit to these task numbers"
     )
+    parser.add_argument("--level", type=int, metavar="N", help="limit to this level")
     args = parser.parse_args()
 
-    scripts = generators(set(args.tasks) if args.tasks else None)
+    scripts = generators(set(args.tasks) if args.tasks else None, args.level)
     if not scripts:
         print("no generators matched")
         return 1

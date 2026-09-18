@@ -240,6 +240,19 @@ def biased_items_from_fit(model, items, covariate: str = "gender") -> set:
     return {row.lval for row in rows.itertuples()}
 
 
+def latent_group_difference(model, items, covariate: str = "gender") -> float | None:
+    """The largest group difference the model still puts on a trait.
+
+    Read from the refitted model, so it reflects what the submission actually
+    estimated rather than what it claimed. Returns None when the model gives
+    the covariate no path to any trait, which leaves the question unanswered.
+    """
+    ins = model.inspect(std_est=True)
+    rows = ins[(ins.op == "~") & (ins.rval == covariate) & ~ins.lval.isin(items)]
+    values = pd.to_numeric(rows["Est. Std"], errors="coerce").abs().dropna()
+    return float(values.max()) if len(values) else None
+
+
 def factor_composition(model, items) -> dict:
     """Which items each factor covers.
 
@@ -309,6 +322,8 @@ def check_claims(
             reported = residual_pairs_from_fit(model, items)
         elif item.get("derive_from") == "refit_covariate_paths":
             reported = biased_items_from_fit(model, items, item.get("covariate", "gender"))
+        elif item.get("derive_from") == "refit_latent_group_difference":
+            reported = latent_group_difference(model, items, item.get("covariate", "gender"))
         else:
             reported = submission.get(key)
         target = _dig(truth, item.get("truth_key", ""))

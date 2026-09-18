@@ -91,6 +91,12 @@ TASKS = [
         "artifacts/level_1/task_10/data.csv",
         "correct",
     ),
+    (
+        "generators/level_2/gen_l2_t01_group_comparability.py",
+        "environments/level_2/tasks_json/task_01.json",
+        "artifacts/level_2/task_01/data.csv",
+        "correct",
+    ),
 ]
 
 
@@ -188,6 +194,12 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if "correlations" in good
         else "comparisons"
         if "comparisons" in good
+        else "measurement_conclusion"
+        if "measurement_conclusion" in good
+        else "recommendation"
+        if "recommendation" in good
+        else "affected_items"
+        if "affected_items" in good
         else "latent_difference"
         if "gender" in items
         else "loadings"
@@ -203,6 +215,12 @@ def run_task(gen_path, task_path, data_path, expected_winner):
         if key == "correlations"
         else {k: True for k in good["comparisons"]}
         if key == "comparisons"
+        else {k: True for k in good["measurement_conclusion"]}
+        if key == "measurement_conclusion"
+        else {k: "supported" for k in good["recommendation"]}
+        if key == "recommendation"
+        else list(items)
+        if key == "affected_items"
         else 0.9
         if key == "latent_difference"
         else {k: 0.55 for k in items}
