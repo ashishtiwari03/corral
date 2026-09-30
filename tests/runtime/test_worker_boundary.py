@@ -1,6 +1,7 @@
 """Portable checks for the data allowed to cross the worker boundary."""
 
 import json
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -15,12 +16,13 @@ from corral.core.state import EnvironmentState, ExecutionState
 from corral.core.task import TaskDefinition
 from corral.core.tool import tool
 from corral.core.transition import ToolExecutionResult
-from corral.runtime import permissions
+from corral.runtime import agent_worker, permissions
 from corral.runtime.agent_worker import RemoteSession, _snapshot
 from corral.runtime.tool_execution import (
     PreparedToolCall,
     execute_prepared_background_call,
 )
+from corral.tools.python_repl import create_python_repl_tool
 from corral.workspace import WorkspaceFilesystem, build_terminal_tool
 
 
@@ -149,7 +151,7 @@ def test_run_worker_defaults_to_no_workspace_access(tmp_path, monkeypatch):
         del payload, workspace_fd
         assert assigned_workspace == str(workspace)
         accesses.append((kind, kwargs["workspace_access"]))
-        return {"kind": kind}
+        return {"kind": kind}, {}
 
     monkeypatch.setattr(permissions, "_enabled", True)
     monkeypatch.setattr(permissions, "_root", tmp_path)
@@ -279,3 +281,91 @@ def test_node_creation_and_copy_reject_symlink_ancestors(tmp_path):
         permissions.copy_workspace(nodes / "nested", destination)
     assert not list(destination.iterdir())
     assert (outside / "secret.txt").read_text() == "private data"
+
+
+def test_worker_response_ceiling_is_configurable(monkeypatch):
+    """The control-reply ceiling is tunable in either direction."""
+    monkeypatch.delenv("CORRAL_MAX_WORKER_RESPONSE_BYTES", raising=False)
+    assert (
+        permissions.max_worker_response_bytes()
+        == permissions.DEFAULT_MAX_WORKER_RESPONSE_BYTES
+    )
+
+    monkeypatch.setenv("CORRAL_MAX_WORKER_RESPONSE_BYTES", str(4 * 1024**3))
+    assert permissions.max_worker_response_bytes() == 4 * 1024**3
+    # The session channel carries snapshots, so it follows the same setting.
+    assert agent_worker._max_message() == 4 * 1024**3
+
+
+def test_bulk_ceiling_is_separate_and_larger_than_the_reply_ceiling(monkeypatch):
+    """Bulk payloads spool to disk, so they get their own, far higher ceiling.
+
+    Keeping them apart is what lets the reply ceiling stay small enough to be a
+    real memory guard while an environment's session grows as large as it needs.
+    """
+    monkeypatch.delenv("CORRAL_MAX_WORKER_BULK_BYTES", raising=False)
+    monkeypatch.delenv("CORRAL_MAX_WORKER_RESPONSE_BYTES", raising=False)
+    assert (
+        permissions.max_worker_bulk_bytes() == permissions.DEFAULT_MAX_WORKER_BULK_BYTES
+    )
+    assert permissions.max_worker_bulk_bytes() > permissions.max_worker_response_bytes()
+
+    monkeypatch.setenv("CORRAL_MAX_WORKER_BULK_BYTES", str(2 * 1024**3))
+    assert permissions.max_worker_bulk_bytes() == 2 * 1024**3
+
+
+@pytest.mark.parametrize("value", ["nonsense", "0", "-1"])
+def test_bulk_ceiling_rejects_unusable_values(monkeypatch, value):
+    monkeypatch.setenv("CORRAL_MAX_WORKER_BULK_BYTES", value)
+    with pytest.raises(ValueError, match="CORRAL_MAX_WORKER_BULK_BYTES"):
+        permissions.max_worker_bulk_bytes()
+
+
+def test_control_reply_carries_a_length_prefix():
+    """The prefix is what lets the controller refuse a reply before reading it."""
+    framed = permissions.framed_reply({"ok": True, "result": {"content": "hello"}})
+    (length,) = permissions._REPLY_PREFIX.unpack(
+        framed[: permissions._REPLY_PREFIX.size]
+    )
+    body = framed[permissions._REPLY_PREFIX.size :]
+    assert length == len(body)
+    assert json.loads(body)["result"]["content"] == "hello"
+
+
+def test_send_bulk_refuses_when_no_channel_is_installed():
+    """Outside a worker there is no bulk descriptor, and that must not pass quietly."""
+    assert permissions._bulk_fd is None
+    with pytest.raises(RuntimeError, match="no bulk channel"):
+        permissions.send_bulk("checkpoint", "payload")
+
+
+def test_send_bulk_frames_name_and_payload(tmp_path):
+    """A record names its payload and states its length before the bytes."""
+    spool = tmp_path / "bulk"
+    descriptor = os.open(spool, os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        permissions.set_bulk_channel(descriptor)
+        permissions.send_bulk("checkpoint", "opaque-base64")
+    finally:
+        permissions.set_bulk_channel(None)
+        os.close(descriptor)
+    written = spool.read_bytes()
+    header = permissions._BULK_RECORD.size
+    name_length, length = permissions._BULK_RECORD.unpack(written[:header])
+    assert written[header : header + name_length] == b"checkpoint"
+    assert written[header + name_length :] == b"opaque-base64"
+    assert length == len(b"opaque-base64")
+
+
+@pytest.mark.parametrize("value", ["nonsense", "0", "-1"])
+def test_worker_response_ceiling_rejects_unusable_values(monkeypatch, value):
+    monkeypatch.setenv("CORRAL_MAX_WORKER_RESPONSE_BYTES", value)
+    with pytest.raises(ValueError, match="CORRAL_MAX_WORKER_RESPONSE_BYTES"):
+        permissions.max_worker_response_bytes()
+
+
+def test_repl_tool_carries_its_own_response_ceiling():
+    """An environment can raise the ceiling without changing it globally."""
+    repl = create_python_repl_tool(name="PythonREPL", max_response_bytes=1024**3)
+    assert repl.max_response_bytes == 1024**3
+    assert create_python_repl_tool(name="PythonREPL").max_response_bytes is None

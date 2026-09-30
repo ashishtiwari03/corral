@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import importlib
-import json
 import os
 import sys
 from contextlib import suppress
@@ -21,11 +20,17 @@ from corral.runtime._worker_filesystem import (
     enter_workspace,
     isolate_network,
 )
-from corral.runtime.permissions import DENIED, drop_privileges, private_controller_types
+from corral.runtime.permissions import (
+    DENIED,
+    drop_privileges,
+    framed_reply,
+    private_controller_types,
+    set_bulk_channel,
+)
 
 
 def main() -> None:
-    request, descriptor = sys.argv[1:]
+    request, descriptor, bulk_descriptor = sys.argv[1:]
     # This file is written by the root controller in its private directory.
     with Path(request).open("rb") as stream:
         (
@@ -39,8 +44,12 @@ def main() -> None:
             resource_mounts,
         ) = cloudpickle.load(stream)
     Path(request).unlink()
-    output = os.fdopen(int(descriptor), "w")
+    output = os.fdopen(int(descriptor), "wb")
     os.set_inheritable(output.fileno(), False)
+    # Bulk payloads leave on their own descriptor. Like the reply channel it is
+    # a bare pipe, so it crosses unshare and chroot without any shared path.
+    bulk = int(bulk_descriptor)
+    os.set_inheritable(bulk, False)
     if kind == "agent":
         from corral.agents.ai_scientist.prompts import load_prompt
         from corral.agents.session import _run_agent_lifecycle
@@ -93,6 +102,7 @@ def main() -> None:
     child = os.fork()
     if child:
         output.close()
+        os.close(bulk)
         _, status = os.waitpid(child, 0)
         code = os.waitstatus_to_exitcode(status)
         os._exit(code if code >= 0 else 128 - code)
@@ -104,7 +114,7 @@ def main() -> None:
         Path(request).parent / "root",
         uid,
         gid,
-        keep_fds={0, 1, 2, output.fileno()},
+        keep_fds={0, 1, 2, output.fileno(), bulk},
         workspace_fd=workspace_fd,
         workspace_access=workspace_access,
         resource_mounts=resource_mounts,
@@ -124,6 +134,7 @@ def main() -> None:
     )
     # Linux clears the parent-death signal when credentials change.
     bind_bootstrap_parent(parent_pid)
+    set_bulk_channel(bulk)
     try:
         if kind == "agent":
             if isinstance(agent, _DelegatedAgent):
@@ -151,7 +162,7 @@ def main() -> None:
     except Exception as exc:
         response = {"ok": False, "error": str(exc)}
     with output:
-        json.dump(response, output)
+        output.write(framed_reply(response))
 
 
 if __name__ == "__main__":
