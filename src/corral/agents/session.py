@@ -443,8 +443,24 @@ class AgentSession:
             and isinstance(item.get("content"), str)
         ]
 
+    def _memory_entry_for_invocation(self, invocation_id: str) -> dict[str, str] | None:
+        """Return the memory entry already written by a tool invocation."""
+        payload = self.get_agent_state(_MEMORY_STATE_NAMESPACE)
+        raw_entries = payload.get("entries") if payload else None
+        if not isinstance(raw_entries, list):
+            return None
+        for item in raw_entries:
+            if (
+                isinstance(item, Mapping)
+                and item.get("invocation_id") == invocation_id
+                and isinstance(item.get("id"), str)
+                and isinstance(item.get("content"), str)
+            ):
+                return {"id": item["id"], "content": item["content"]}
+        return None
+
     async def _memory_effects(
-        self, action: Action, *, based_on_hash: str
+        self, action: Action, *, based_on_hash: str, invocation_id: str
     ) -> ToolEffects:
         """Execute a session memory operation as a durable agent-state update."""
         arguments = dict(action.arguments)
@@ -454,10 +470,14 @@ class AgentSession:
                     observation="memory_read takes no arguments",
                     status="invalid_args",
                 )
-            return ToolEffects(
-                observation={"entries": self._memory_entries()},
-                status="success",
-            )
+            entries = self._memory_entries()
+            if self.get_agent_state(_MEMORY_STATE_NAMESPACE) is None and entries:
+                self._last_observed_hash = based_on_hash
+                await self.set_agent_state(
+                    _MEMORY_STATE_NAMESPACE,
+                    {"schema_version": 1, "entries": entries},
+                )
+            return ToolEffects(observation={"entries": entries}, status="success")
 
         unknown = set(arguments) - {"content"}
         content = arguments.get("content")
@@ -474,10 +494,18 @@ class AgentSession:
                 status="invalid_args",
             )
 
+        existing = self._memory_entry_for_invocation(invocation_id)
+        if existing is not None:
+            return ToolEffects(observation=existing, status="success")
+
         from uuid import uuid4
 
         entries = self._memory_entries()
-        entry = {"id": str(uuid4()), "content": content.strip()}
+        entry = {
+            "id": str(uuid4()),
+            "content": content.strip(),
+            "invocation_id": invocation_id,
+        }
         entries.append(entry)
         entries = entries[-_MAX_MEMORY_ENTRIES:]
         self._last_observed_hash = based_on_hash
@@ -485,7 +513,10 @@ class AgentSession:
             _MEMORY_STATE_NAMESPACE,
             {"schema_version": 1, "entries": entries},
         )
-        return ToolEffects(observation=entry, status="success")
+        return ToolEffects(
+            observation={"id": entry["id"], "content": entry["content"]},
+            status="success",
+        )
 
     @property
     def tools(self) -> tuple[dict[str, Any], ...]:
@@ -826,7 +857,12 @@ class AgentSession:
             return ToolResponse(success=False, result=None, error=str(error))
 
         if trusted.name in {MEMORY_READ_TOOL_NAME, MEMORY_WRITE_TOOL_NAME}:
-            effects = await self._memory_effects(trusted, based_on_hash=based_on)
+            self._last_observed_hash = current.through_commit_hash
+            effects = await self._memory_effects(
+                trusted,
+                based_on_hash=based_on,
+                invocation_id=invocation_id,
+            )
             # memory_write appends an AgentStateUpdated event, so the tool
             # completion must follow that new ledger head.
             based_on = self._last_observed_hash
@@ -1130,6 +1166,7 @@ class AgentSession:
             require_submission=False,
             capabilities=child_capabilities,
             mcp_host=self.mcp_host,
+            previous_state=self.previous_state,
         )
         child._last_observed_hash = started.hash
 
