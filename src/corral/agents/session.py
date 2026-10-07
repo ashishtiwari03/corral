@@ -826,9 +826,7 @@ class AgentSession:
             return ToolResponse(success=False, result=None, error=str(error))
 
         if trusted.name in {MEMORY_READ_TOOL_NAME, MEMORY_WRITE_TOOL_NAME}:
-            effects = await self._memory_effects(
-                trusted, based_on_hash=based_on
-            )
+            effects = await self._memory_effects(trusted, based_on_hash=based_on)
             # memory_write appends an AgentStateUpdated event, so the tool
             # completion must follow that new ledger head.
             based_on = self._last_observed_hash

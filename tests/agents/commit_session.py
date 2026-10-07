@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -11,6 +10,7 @@ from corral.persistence import SQLiteCommitStore
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from corral.core.environment import Environment
     from corral.core.state import ExecutionState
