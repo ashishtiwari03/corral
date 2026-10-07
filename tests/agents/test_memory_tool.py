@@ -32,9 +32,11 @@ def make_environment() -> Environment:
 
 
 @pytest.mark.anyio()
-async def test_memory_tools_are_exposed_and_persist_between_attempts():
+async def test_memory_tools_are_exposed_and_persist_between_attempts(tmp_path):
     environment = make_environment()
-    first = await start_session(environment, actor_id="learner")
+    first = await start_session(
+        environment, actor_id="learner", store_path=tmp_path / "first.sqlite3"
+    )
 
     names = {
         tool["function"]["name"]
@@ -55,6 +57,7 @@ async def test_memory_tools_are_exposed_and_persist_between_attempts():
         environment,
         actor_id="learner",
         previous_state=first.state,
+        store_path=tmp_path / "second.sqlite3",
     )
     read = await second.execute(Action(name=MEMORY_READ_TOOL_NAME))
 
@@ -66,9 +69,11 @@ async def test_memory_tools_are_exposed_and_persist_between_attempts():
 
 
 @pytest.mark.anyio()
-async def test_memory_is_scoped_to_the_agent_identity():
+async def test_memory_is_scoped_to_the_agent_identity(tmp_path):
     environment = make_environment()
-    first = await start_session(environment, actor_id="learner-a")
+    first = await start_session(
+        environment, actor_id="learner-a", store_path=tmp_path / "first.sqlite3"
+    )
     await first.execute(
         Action(
             name=MEMORY_WRITE_TOOL_NAME,
@@ -80,6 +85,7 @@ async def test_memory_is_scoped_to_the_agent_identity():
         environment,
         actor_id="learner-b",
         previous_state=first.state,
+        store_path=tmp_path / "second.sqlite3",
     )
     read = await other.execute(Action(name=MEMORY_READ_TOOL_NAME))
 
@@ -88,8 +94,10 @@ async def test_memory_is_scoped_to_the_agent_identity():
 
 
 @pytest.mark.anyio()
-async def test_memory_write_rejects_empty_or_oversized_content():
-    session = await start_session(make_environment())
+async def test_memory_write_rejects_empty_or_oversized_content(tmp_path):
+    session = await start_session(
+        make_environment(), store_path=tmp_path / "memory.sqlite3"
+    )
 
     empty = await session.execute(
         Action(name=MEMORY_WRITE_TOOL_NAME, arguments={"content": "  "})
