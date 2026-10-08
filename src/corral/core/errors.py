@@ -26,9 +26,10 @@ def concise_error_message(exc: BaseException) -> str:
     """Format the useful final exception without traceback or wrapper layers.
 
     Explicit causes (and unsuppressed implicit contexts) are followed to the
-    outer exception. Provider exceptions are a special case: their structured
-    response body usually contains a clearer message than either the SDK
-    wrapper or its low-level HTTP cause.
+    leaf exception by default. When the leaf is an ``httpx.HTTPStatusError``
+    without structured provider details, the outer exception may contain the
+    useful provider message. Provider exceptions with structured response
+    bodies take precedence over both the SDK wrapper and low-level HTTP cause.
     """
     chain = [exc]
     seen = {id(exc)}
