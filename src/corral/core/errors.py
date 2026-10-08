@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import httpx
+
 
 def _provider_message(exc: BaseException) -> str | None:
     """Return a provider's structured error message when one is available."""
@@ -54,10 +56,7 @@ def concise_error_message(exc: BaseException) -> str:
             break
 
     if message is None:
-        if (
-            type(selected).__module__ == "httpx"
-            and type(selected).__name__ == "HTTPStatusError"
-        ):
+        if isinstance(selected, httpx.HTTPStatusError):
             selected = chain[0]
         message = str(selected).strip()
     # Projection metadata is intended for reports and JSON, not traceback rendering.
